@@ -5,6 +5,7 @@ import {
   getBackgroundsList,
   getAbilityScoresList,
   getEquipmentLookup,
+  getSkillsList,
 } from "@/lib/srd";
 import { createClient } from "@/lib/supabase-server";
 import BuilderWizard from "@/components/builder/BuilderWizard";
@@ -19,6 +20,7 @@ export default async function Builder() {
     backgrounds,
     abilityScores,
     equipment,
+    skills,
   ] = await Promise.all([
     supabase.auth.getUser(),
     getSpeciesList(),
@@ -27,6 +29,7 @@ export default async function Builder() {
     getBackgroundsList(),
     getAbilityScoresList(),
     getEquipmentLookup(),
+    getSkillsList(),
   ]);
 
   return (
@@ -39,6 +42,7 @@ export default async function Builder() {
         backgrounds={backgrounds}
         abilityScores={abilityScores}
         equipment={Array.from(equipment.values())}
+        skills={skills}
       />
     </div>
   );

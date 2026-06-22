@@ -1,23 +1,14 @@
 import { useState } from "react";
 import Link from "next/link";
-import {
-  ABILITY_ORDER,
-  abilityModifier,
-  computeArmorClass,
-  finalAbilityScores,
-  formatModifier,
-  maxHpAtLevelOne,
-  proficiencyBonusForLevel,
-  type CharacterDraft,
-  type EquipmentItem,
-  type UpdateDraftFn,
-} from "@/lib/character";
+import { ABILITY_ORDER, formatModifier, maxHpAtLevelOne, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
+import { buildCharacterSheet, computeAC } from "@/lib/character-sheet";
 import type {
   SpeciesOption,
   SubspeciesOption,
   ClassOption,
   BackgroundOption,
   EquipmentLookupItem,
+  SkillInfo,
 } from "@/lib/srd";
 import { saveCharacter } from "@/app/builder/actions";
 
@@ -29,6 +20,7 @@ interface ReviewStepProps {
   classes: ClassOption[];
   backgrounds: BackgroundOption[];
   equipment: EquipmentLookupItem[];
+  skills: SkillInfo[];
   onRestart: () => void;
   isSignedIn: boolean;
 }
@@ -41,6 +33,7 @@ export default function ReviewStep({
   classes,
   backgrounds,
   equipment,
+  skills,
   onRestart,
   isSignedIn,
 }: ReviewStepProps) {
@@ -58,41 +51,20 @@ export default function ReviewStep({
       setSaveError(result.error ?? "Something went wrong.");
     }
   }
-  const selectedSpecies = species.find((s) => s.index === draft.speciesIndex);
-  const selectedSubspecies = subspecies.find((s) => s.index === draft.subspeciesIndex);
-  const selectedClass = classes.find((c) => c.index === draft.classIndex);
-  const selectedBackground = backgrounds.find((b) => b.index === draft.backgroundIndex);
 
-  const finalScores = finalAbilityScores(draft.baseAbilityScores, draft.backgroundAbilityBonus);
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
+  const sheet = buildCharacterSheet(draft, { species, subspecies, classes, backgrounds, skills });
+  const resolvedEquipment = sheet?.ownedEquipment ?? [];
+  const allOwnedIndexes = new Set(
+    resolvedEquipment.map((i) => i.index).filter((i): i is string => Boolean(i)),
+  );
 
-  const resolvedEquipment = [
-    ...(selectedClass?.startingEquipmentFirstOption ?? []),
-    ...(selectedBackground?.equipmentFirstOption ?? []),
-  ];
+  const ac = sheet ? computeAC(resolvedEquipment, equipmentByIndex, allOwnedIndexes, sheet.modifiers.dex) : 10;
+  const hp = sheet ? maxHpAtLevelOne(sheet.hitDie, sheet.modifiers.con) : null;
+  const profBonus = sheet?.proficiencyBonus ?? 2;
 
-  const equippedForAc: EquipmentItem[] = resolvedEquipment
-    .filter((item) => item.index && equipmentByIndex.get(item.index)?.armorClass)
-    .map((item) => {
-      const lookup = equipmentByIndex.get(item.index!)!;
-      return {
-        index: lookup.index,
-        name: lookup.name,
-        categories: lookup.categories,
-        armor_class: lookup.armorClass,
-      };
-    });
-
-  const dexMod = finalScores.dex !== null ? abilityModifier(finalScores.dex) : 0;
-  const conMod = finalScores.con !== null ? abilityModifier(finalScores.con) : 0;
-  const ac = computeArmorClass(equippedForAc, dexMod);
-  const hp = selectedClass ? maxHpAtLevelOne(selectedClass.hitDie, conMod) : null;
-  const profBonus = proficiencyBonusForLevel(1);
-
-  const chosenSkillNames = (selectedClass?.proficiencyChoices ?? [])
-    .flatMap((pc) => pc.options)
-    .filter((opt) => draft.skillChoices.includes(opt.index))
-    .map((opt) => opt.name.replace(/^Skill: /, ""));
+  const chosenSkillIndexes = new Set(draft.skillChoices.map((s) => s.replace(/^skill-/, "")));
+  const chosenSkillNames = sheet?.skills.filter((s) => chosenSkillIndexes.has(s.index)) ?? [];
 
   return (
     <div>
@@ -131,7 +103,7 @@ export default function ReviewStep({
 
       <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {ABILITY_ORDER.map((ability) => {
-          const score = finalScores[ability];
+          const score = sheet?.finalScores[ability];
           return (
             <div
               key={ability}
@@ -141,8 +113,10 @@ export default function ReviewStep({
                 {ability}
               </div>
               <div className="mt-1 font-heading text-xl font-bold text-tavern-text">{score ?? "—"}</div>
-              {score !== null && (
-                <div className="text-xs text-tavern-muted">{formatModifier(abilityModifier(score))}</div>
+              {score !== undefined && (
+                <div className="text-xs text-tavern-muted">
+                  {formatModifier(sheet!.modifiers[ability])}
+                </div>
               )}
             </div>
           );
@@ -153,23 +127,25 @@ export default function ReviewStep({
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Species</dt>
           <dd className="text-tavern-text">
-            {selectedSpecies?.name}
-            {selectedSubspecies ? ` — ${selectedSubspecies.name}` : ""}
+            {sheet?.speciesName}
+            {sheet?.subspeciesName ? ` — ${sheet.subspeciesName}` : ""}
           </dd>
         </div>
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Class</dt>
           <dd className="text-tavern-text">
-            {selectedClass?.name} (d{selectedClass?.hitDie})
-            {chosenSkillNames.length > 0 ? ` — ${chosenSkillNames.join(", ")}` : ""}
+            {sheet?.className} (d{sheet?.hitDie})
+            {chosenSkillNames.length > 0
+              ? ` — ${chosenSkillNames.map((s) => s.name).join(", ")}`
+              : ""}
           </dd>
         </div>
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Background</dt>
           <dd className="text-tavern-text">
-            {selectedBackground?.name}
-            {selectedBackground?.isHomebrew ? " (Homebrew)" : ""}
-            {selectedBackground?.feat ? ` — ${selectedBackground.feat.name}` : ""}
+            {sheet?.backgroundName}
+            {sheet?.backgroundIsHomebrew ? " (Homebrew)" : ""}
+            {sheet?.backgroundFeatName ? ` — ${sheet.backgroundFeatName}` : ""}
           </dd>
         </div>
         <div className="flex flex-wrap justify-between gap-1">

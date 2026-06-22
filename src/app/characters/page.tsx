@@ -67,17 +67,19 @@ export default async function Characters() {
               const sub = subspecies.find((s) => s.index === draft.subspeciesIndex);
               const cls = classes.find((cl) => cl.index === draft.classIndex);
               return (
-                <li
-                  key={c.id}
-                  className="rounded-lg border border-tavern-border bg-tavern-card p-4"
-                >
-                  <div className="font-heading text-lg font-bold text-tavern-text">
-                    {c.name}
-                  </div>
-                  <div className="mt-1 text-sm text-tavern-muted">
-                    {sub ? sub.name : sp?.name}
-                    {cls ? ` ${cls.name}` : ""}
-                  </div>
+                <li key={c.id}>
+                  <Link
+                    href={`/characters/${c.id}`}
+                    className="block rounded-lg border border-tavern-border bg-tavern-card p-4 hover:border-tavern-gold-light"
+                  >
+                    <div className="font-heading text-lg font-bold text-tavern-text">
+                      {c.name}
+                    </div>
+                    <div className="mt-1 text-sm text-tavern-muted">
+                      {sub ? sub.name : sp?.name}
+                      {cls ? ` ${cls.name}` : ""}
+                    </div>
+                  </Link>
                 </li>
               );
             })}

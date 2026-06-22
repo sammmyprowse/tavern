@@ -15,6 +15,7 @@ import type {
   BackgroundOption,
   AbilityScoreInfo,
   EquipmentLookupItem,
+  SkillInfo,
 } from "@/lib/srd";
 
 const STORAGE_KEY = "tavern_character_draft";
@@ -27,6 +28,7 @@ interface BuilderWizardProps {
   backgrounds: BackgroundOption[];
   abilityScores: AbilityScoreInfo[];
   equipment: EquipmentLookupItem[];
+  skills: SkillInfo[];
 }
 
 export default function BuilderWizard({
@@ -37,6 +39,7 @@ export default function BuilderWizard({
   backgrounds,
   abilityScores,
   equipment,
+  skills,
 }: BuilderWizardProps) {
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
   const [step, setStep] = useState<StepId>("species");
@@ -127,6 +130,7 @@ export default function BuilderWizard({
             classes={classes}
             backgrounds={backgrounds}
             equipment={equipment}
+            skills={skills}
             onRestart={restart}
             isSignedIn={isSignedIn}
           />

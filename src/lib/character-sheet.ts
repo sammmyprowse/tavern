@@ -1,0 +1,223 @@
+import {
+  ABILITY_ORDER,
+  abilityModifier,
+  computeArmorClass,
+  finalAbilityScores,
+  proficiencyBonusForLevel,
+  type AbilityKey,
+  type CharacterDraft,
+  type EquipmentItem,
+} from "./character";
+import type {
+  SpeciesOption,
+  SubspeciesOption,
+  ClassOption,
+  BackgroundOption,
+  SkillInfo,
+  EquipmentLookupItem,
+  EquipmentBundleItem,
+} from "./srd";
+
+export interface CharacterSheetRefs {
+  species: SpeciesOption[];
+  subspecies: SubspeciesOption[];
+  classes: ClassOption[];
+  backgrounds: BackgroundOption[];
+  skills: SkillInfo[];
+}
+
+export interface ResolvedSkill {
+  index: string;
+  name: string;
+  ability: AbilityKey;
+  bonus: number;
+  proficient: boolean;
+}
+
+export interface ResolvedSave {
+  ability: AbilityKey;
+  bonus: number;
+  proficient: boolean;
+}
+
+export interface CharacterSheet {
+  name: string;
+  speciesName: string;
+  subspeciesName: string | null;
+  className: string;
+  hitDie: number;
+  backgroundName: string;
+  backgroundIsHomebrew: boolean;
+  backgroundFeatName: string | null;
+  finalScores: Record<AbilityKey, number>;
+  modifiers: Record<AbilityKey, number>;
+  proficiencyBonus: number;
+  savingThrows: ResolvedSave[];
+  skills: ResolvedSkill[];
+  ownedEquipment: EquipmentBundleItem[];
+  initiative: number;
+  speed: number | null;
+  passivePerception: number;
+}
+
+export function buildCharacterSheet(
+  draft: CharacterDraft,
+  refs: CharacterSheetRefs,
+): CharacterSheet | null {
+  const species = refs.species.find((s) => s.index === draft.speciesIndex);
+  const subspecies = refs.subspecies.find((s) => s.index === draft.subspeciesIndex);
+  const cls = refs.classes.find((c) => c.index === draft.classIndex);
+  const background = refs.backgrounds.find((b) => b.index === draft.backgroundIndex);
+
+  if (!species || !cls || !background) return null;
+
+  const rawScores = finalAbilityScores(draft.baseAbilityScores, draft.backgroundAbilityBonus);
+  const finalScores = {} as Record<AbilityKey, number>;
+  const modifiers = {} as Record<AbilityKey, number>;
+  for (const ability of ABILITY_ORDER) {
+    finalScores[ability] = rawScores[ability] ?? 10;
+    modifiers[ability] = abilityModifier(finalScores[ability]);
+  }
+
+  const proficiencyBonus = proficiencyBonusForLevel(1);
+
+  const proficientSaves = new Set(cls.savingThrows.map((s) => s.index));
+  const savingThrows: ResolvedSave[] = ABILITY_ORDER.map((ability) => {
+    const proficient = proficientSaves.has(ability);
+    return {
+      ability,
+      proficient,
+      bonus: modifiers[ability] + (proficient ? proficiencyBonus : 0),
+    };
+  });
+
+  // Proficiency-table refs use a "skill-" prefixed index (e.g. "skill-athletics");
+  // the skills table itself uses the bare index ("athletics"). Normalize to bare
+  // form here so lookups against refs.skills (below) actually match.
+  const backgroundSkillIndexes = background.proficiencies
+    .filter((p) => p.index.startsWith("skill-"))
+    .map((p) => p.index.replace(/^skill-/, ""));
+  const proficientSkills = new Set([
+    ...draft.skillChoices.map((s) => s.replace(/^skill-/, "")),
+    ...backgroundSkillIndexes,
+  ]);
+
+  const skills: ResolvedSkill[] = refs.skills.map((skill) => {
+    const ability = skill.abilityScore as AbilityKey;
+    const proficient = proficientSkills.has(skill.index);
+    return {
+      index: skill.index,
+      name: skill.name,
+      ability,
+      proficient,
+      bonus: modifiers[ability] + (proficient ? proficiencyBonus : 0),
+    };
+  });
+
+  const perception = skills.find((s) => s.index === "perception");
+  const passivePerception = 10 + (perception?.bonus ?? modifiers.wis);
+
+  const ownedEquipment = [
+    ...cls.startingEquipmentFirstOption,
+    ...background.equipmentFirstOption,
+  ];
+
+  return {
+    name: draft.name,
+    speciesName: species.name,
+    subspeciesName: subspecies?.name ?? null,
+    className: cls.name,
+    hitDie: cls.hitDie,
+    backgroundName: background.name,
+    backgroundIsHomebrew: background.isHomebrew,
+    backgroundFeatName: background.feat?.name ?? null,
+    finalScores,
+    modifiers,
+    proficiencyBonus,
+    savingThrows,
+    skills,
+    ownedEquipment,
+    initiative: modifiers.dex,
+    speed: species.speed,
+    passivePerception,
+  };
+}
+
+export function resolveEquippedItems(
+  ownedEquipment: EquipmentBundleItem[],
+  equipmentLookup: Map<string, EquipmentLookupItem>,
+  equippedIndexes: Set<string>,
+): EquipmentItem[] {
+  return ownedEquipment
+    .filter((item) => item.index && equippedIndexes.has(item.index))
+    .map((item) => {
+      const lookup = equipmentLookup.get(item.index!);
+      return {
+        index: item.index!,
+        name: item.name,
+        categories: lookup?.categories ?? null,
+        armor_class: lookup?.armorClass ?? null,
+      };
+    });
+}
+
+export function computeAC(
+  ownedEquipment: EquipmentBundleItem[],
+  equipmentLookup: Map<string, EquipmentLookupItem>,
+  equippedIndexes: Set<string>,
+  dexMod: number,
+): number {
+  const equipped = resolveEquippedItems(ownedEquipment, equipmentLookup, equippedIndexes).filter(
+    (item) => item.armor_class,
+  );
+  return computeArmorClass(equipped, dexMod);
+}
+
+export interface ResolvedWeapon {
+  index: string;
+  name: string;
+  ability: AbilityKey;
+  attackBonus: number;
+  damageDice: string;
+  damageBonus: number;
+  damageType: string | null;
+  mastery: { index: string; name: string } | null;
+}
+
+const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
+
+export function resolveWeapons(
+  ownedEquipment: EquipmentBundleItem[],
+  equipmentLookup: Map<string, EquipmentLookupItem>,
+  modifiers: Record<AbilityKey, number>,
+  proficiencyBonus: number,
+): ResolvedWeapon[] {
+  const weapons: ResolvedWeapon[] = [];
+  for (const item of ownedEquipment) {
+    if (!item.index) continue;
+    const lookup = equipmentLookup.get(item.index);
+    if (!lookup?.damage) continue;
+
+    const isFinesse = lookup.properties.some((p) => p.index === "finesse");
+    const isRanged = (lookup.categories ?? []).some((c) => RANGED_CATEGORIES.includes(c));
+    const ability: AbilityKey = isRanged
+      ? "dex"
+      : isFinesse
+        ? modifiers.dex > modifiers.str
+          ? "dex"
+          : "str"
+        : "str";
+
+    weapons.push({
+      index: lookup.index,
+      name: lookup.name,
+      ability,
+      attackBonus: modifiers[ability] + proficiencyBonus,
+      damageDice: lookup.damage.damageDice,
+      damageBonus: modifiers[ability],
+      damageType: lookup.damage.damageType,
+      mastery: lookup.mastery,
+    });
+  }
+  return weapons;
+}

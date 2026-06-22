@@ -65,11 +65,26 @@ export interface AbilityScoreInfo {
   description: string;
 }
 
+export interface WeaponDamage {
+  damageDice: string;
+  damageType: string | null;
+}
+
 export interface EquipmentLookupItem {
   index: string;
   name: string;
   categories: string[] | null;
   armorClass: ArmorClassData | null;
+  damage: WeaponDamage | null;
+  twoHandedDamage: WeaponDamage | null;
+  properties: { index: string; name: string }[];
+  mastery: { index: string; name: string } | null;
+}
+
+export interface SkillInfo {
+  index: string;
+  name: string;
+  abilityScore: string;
 }
 
 function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
@@ -266,13 +281,41 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
 
   const map = new Map<string, EquipmentLookupItem>();
   for (const item of data ?? []) {
-    const d = item.data as { armor_class?: ArmorClassData };
+    const d = item.data as {
+      armor_class?: ArmorClassData;
+      damage?: { damage_dice: string; damage_type?: { name: string } };
+      two_handed_damage?: { damage_dice: string; damage_type?: { name: string } };
+      properties?: { index: string; name: string }[];
+      mastery?: { index: string; name: string };
+    };
     map.set(item.index, {
       index: item.index,
       name: item.name,
       categories: item.categories,
       armorClass: d.armor_class ?? null,
+      damage: d.damage
+        ? { damageDice: d.damage.damage_dice, damageType: d.damage.damage_type?.name ?? null }
+        : null,
+      twoHandedDamage: d.two_handed_damage
+        ? {
+            damageDice: d.two_handed_damage.damage_dice,
+            damageType: d.two_handed_damage.damage_type?.name ?? null,
+          }
+        : null,
+      properties: d.properties ?? [],
+      mastery: d.mastery ?? null,
     });
   }
   return map;
+}
+
+export async function getSkillsList(): Promise<SkillInfo[]> {
+  const { data } = await supabase
+    .from("skills")
+    .select("index, name, ability_score")
+    .eq("ruleset", "2024");
+
+  return (data ?? [])
+    .map((s) => ({ index: s.index, name: s.name, abilityScore: s.ability_score ?? "str" }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -101,3 +101,51 @@ Save action at `src/app/builder/actions.ts` (`saveCharacter`), list page at
 Casting `CharacterDraft` ⇄ the generated `Json` type needs `as unknown as X` — a
 plain TS interface doesn't structurally satisfy `Json`'s index signature even though
 every field is JSON-safe. Known/expected, not a bug to "fix" by loosening types.
+
+## Character-sheet computation (`src/lib/character-sheet.ts`)
+Shared module — both `ReviewStep` (builder preview) and `PlaySheet` (the dynamic
+sheet) resolve a `CharacterDraft` through `buildCharacterSheet()` rather than each
+having their own copy of the derivation logic. If you add a new derived stat, add it
+here once, not in both call sites.
+
+**The "skill-" prefix trap:** the `proficiencies` table uses prefixed indexes
+("skill-athletics") to reference skills; the `skills` table itself uses the bare
+index ("athletics"). `draft.skillChoices` and `background.proficiencies` are
+proficiency-table refs (prefixed); `refs.skills[].index` is bare. Always strip the
+prefix (`.replace(/^skill-/, "")`) before comparing — `buildCharacterSheet` does this
+when building the `proficientSkills` set. Got this wrong once already during the
+ReviewStep refactor (skills silently showed as non-proficient); the play sheet's full
+skill list is what surfaced it, since ReviewStep only showed 2 chosen skill names and
+didn't expose enough surface area to catch the bug visually.
+
+Crit damage: roll the weapon's dice twice (`doubleDiceNotation`), add the ability
+modifier **once**, not twice. The modifier must travel with the `DiceLogEntry`
+(`critDamageBonus`) since the crit-confirm tap happens in a later render than the
+original attack roll — don't try to recompute it by re-deriving the weapon at that
+point, the entry needs to carry everything it needs to resolve itself.
+
+## Play sheet (`/characters/[id]`, `src/components/playsheet/`)
+Dynamic generalization of the original hand-built Angrenor HTML sheet. Per-character
+play state (HP, temp HP, hit dice used, death saves, equipped items, roll mode)
+persists to localStorage keyed by `tavern_play_${characterId}` — separate from the
+character's saved build (which lives in Supabase). Dice log is session-only, not
+persisted (resets on reload — this is intentional, not a gap).
+
+**Deferred / not yet built** (don't assume these work — verify against
+`PlaySheet.tsx` before telling a user they exist):
+- Fighting Styles (e.g. Defense +1 AC) — not modeled at all yet
+- Class-specific resources beyond Hit Dice + Death Saves (Second Wind, Rage, Spell
+  Slots, etc.) — only universal resources are tracked
+- Species/subspecies-trait-granted skill proficiencies (e.g. a trait granting
+  Perception proficiency) — only class-chosen + background-granted skills count
+  toward `proficient`
+- Custom item/weapon builder
+- The rich per-element "explain the rule" detail panels from the original sheet —
+  current version just shows computed numbers
+- Mobile phone-tab-bar navigation — responsive stacking only for now
+- Light/dark theme toggle — the whole app is dark-only by design already (unlike the
+  original standalone sheet, which needed its own theme system)
+
+These are why a generated sheet's AC/HP can legitimately differ from a hand-built
+reference sheet for the same concept character (e.g. Angrenor) — it's not a
+calculation bug, it's uncovered class/feat content.
