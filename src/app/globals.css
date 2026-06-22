@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-heading: var(--font-cinzel);
+  --font-body: var(--font-eb-garamond);
+
+  --color-tavern-bg: #0f1215;
+  --color-tavern-surface: #1a1d21;
+  --color-tavern-card: #1e2227;
+  --color-tavern-border: #2a2e33;
+  --color-tavern-text: #e8e0d4;
+  --color-tavern-muted: #9a9080;
+  --color-tavern-gold: #b9933f;
+  --color-tavern-gold-light: #d4af61;
+  --color-tavern-oxblood: #7c241a;
+  --color-tavern-oxblood-light: #a03020;
+  --color-tavern-amber: #c47f17;
+  --color-tavern-parchment: #f4e8c1;
+  --color-tavern-parchment-dark: #d4c89e;
+}
