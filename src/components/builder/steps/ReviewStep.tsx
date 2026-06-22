@@ -1,3 +1,5 @@
+import { useState } from "react";
+import Link from "next/link";
 import {
   ABILITY_ORDER,
   abilityModifier,
@@ -17,6 +19,7 @@ import type {
   BackgroundOption,
   EquipmentLookupItem,
 } from "@/lib/srd";
+import { saveCharacter } from "@/app/builder/actions";
 
 interface ReviewStepProps {
   draft: CharacterDraft;
@@ -27,6 +30,7 @@ interface ReviewStepProps {
   backgrounds: BackgroundOption[];
   equipment: EquipmentLookupItem[];
   onRestart: () => void;
+  isSignedIn: boolean;
 }
 
 export default function ReviewStep({
@@ -38,7 +42,22 @@ export default function ReviewStep({
   backgrounds,
   equipment,
   onRestart,
+  isSignedIn,
 }: ReviewStepProps) {
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaveState("saving");
+    setSaveError(null);
+    const result = await saveCharacter(draft);
+    if (result.success) {
+      setSaveState("saved");
+    } else {
+      setSaveState("error");
+      setSaveError(result.error ?? "Something went wrong.");
+    }
+  }
   const selectedSpecies = species.find((s) => s.index === draft.speciesIndex);
   const selectedSubspecies = subspecies.find((s) => s.index === draft.subspeciesIndex);
   const selectedClass = classes.find((c) => c.index === draft.classIndex);
@@ -167,9 +186,41 @@ export default function ReviewStep({
 
       <p className="mt-6 text-xs text-tavern-muted">
         Starting equipment shown is option A from your class and background — choosing between
-        equipment packages is coming soon. Accounts and cloud saving are coming soon too; for now
-        your character lives in this browser.
+        equipment packages is coming soon.
       </p>
+
+      <div className="mt-6 flex flex-wrap items-center gap-4">
+        {isSignedIn ? (
+          <>
+            <button
+              onClick={handleSave}
+              disabled={!draft.name.trim() || saveState === "saving"}
+              className="rounded-lg bg-tavern-oxblood px-6 py-2.5 font-heading text-sm font-bold tracking-widest text-tavern-parchment uppercase transition-colors hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {saveState === "saving" ? "Saving…" : "Save Character"}
+            </button>
+            {saveState === "saved" && (
+              <span className="text-sm text-tavern-gold-light">
+                Saved! View it in{" "}
+                <Link href="/characters" className="underline hover:text-tavern-gold">
+                  My Characters
+                </Link>
+                .
+              </span>
+            )}
+            {saveState === "error" && (
+              <span className="text-sm text-tavern-oxblood-light">{saveError}</span>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-tavern-muted">
+            <Link href="/login" className="text-tavern-gold-light underline hover:text-tavern-gold">
+              Sign in
+            </Link>{" "}
+            to save this character to your account.
+          </p>
+        )}
+      </div>
 
       <button
         onClick={onRestart}

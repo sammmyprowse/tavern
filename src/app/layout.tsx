@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cinzel, EB_Garamond } from "next/font/google";
+import Header from "@/components/Header";
 import "./globals.css";
 
 const cinzel = Cinzel({
@@ -31,6 +32,7 @@ export default function RootLayout({
       className={`${cinzel.variable} ${ebGaramond.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-tavern-bg text-tavern-text font-body">
+        <Header />
         {children}
       </body>
     </html>

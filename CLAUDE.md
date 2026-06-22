@@ -65,3 +65,39 @@ homebrew entries as homebrew. Never silently blend them in as if official.
 If extending this pattern to other content types (e.g. more feats), follow the same
 rule: original mechanics/wording only, tagged `ruleset = 'homebrew'`, never a
 reproduction of paid sourcebook text.
+
+## Auth
+Email + password via Supabase Auth (OAuth deferred until provider credentials exist —
+see project memory). Uses `@supabase/ssr`, NOT the plain `@supabase/supabase-js`
+client, for anything session-aware:
+- `src/lib/supabase-browser.ts` — browser client, for Client Components
+- `src/lib/supabase-server.ts` — server client (cookie-based), for Server
+  Components/Server Actions that need the current user
+- `src/proxy.ts` — refreshes the session cookie on every request. This is Next.js
+  16's renamed `middleware.ts` (the "middleware" file convention is deprecated in
+  favor of "proxy" — see AGENTS.md, this project tracks Next.js canary/latest
+  breaking changes). Exported function is `proxy`, not `middleware`.
+- `src/lib/supabase.ts` (the original plain client) stays in use for anonymous SRD
+  reference reads — those tables are public and don't need session awareness.
+
+Sign-up/in/out lives at `/login` (`src/app/login/`), Server Actions in
+`src/app/login/actions.ts`. Email confirmation is ON for this project — signUp()
+returns no session until confirmed; the UI handles both cases (immediate session vs
+"check your email") rather than assuming one.
+
+`Header` (`src/components/Header.tsx`, in root layout) shows sign-in state
+everywhere. Adding it made the whole app dynamic (every route went from ○ Static to
+ƒ Dynamic at build) since auth state can't be known at build time — expected, not a
+regression.
+
+## Characters table
+`characters` (user_id → auth.users, name, draft jsonb, created_at, updated_at) with
+RLS so users can only see/edit their own rows. `draft` stores the same
+`CharacterDraft` shape the builder wizard uses — no separate save-format translation.
+Save action at `src/app/builder/actions.ts` (`saveCharacter`), list page at
+`src/app/characters/page.tsx`. Migration at
+`supabase/migrations/20260622213000_create_characters_table.sql`.
+
+Casting `CharacterDraft` ⇄ the generated `Json` type needs `as unknown as X` — a
+plain TS interface doesn't structurally satisfy `Json`'s index signature even though
+every field is JSON-safe. Known/expected, not a bug to "fix" by loosening types.

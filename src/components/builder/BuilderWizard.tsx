@@ -20,6 +20,7 @@ import type {
 const STORAGE_KEY = "tavern_character_draft";
 
 interface BuilderWizardProps {
+  isSignedIn: boolean;
   species: SpeciesOption[];
   subspecies: SubspeciesOption[];
   classes: ClassOption[];
@@ -29,6 +30,7 @@ interface BuilderWizardProps {
 }
 
 export default function BuilderWizard({
+  isSignedIn,
   species,
   subspecies,
   classes,
@@ -126,6 +128,7 @@ export default function BuilderWizard({
             backgrounds={backgrounds}
             equipment={equipment}
             onRestart={restart}
+            isSignedIn={isSignedIn}
           />
         )}
       </div>
