@@ -43,3 +43,25 @@ both: the 3 official 2024 stat blocks plus the full 334-monster 2014 list (the
 by default and fall back to '2014' for the supplement-only tables.
 
 Migration recorded at `supabase/migrations/20260622122024_create_srd_content_tables.sql`.
+
+## Homebrew content — IMPORTANT, read before touching backgrounds/feats/etc.
+The free 2024 SRD only ships 4 backgrounds (Acolyte, Criminal, Sage, Soldier) — the
+other 12 PHB backgrounds (Farmer, Artisan, Charlatan, Entertainer, Guard, Guide,
+Hermit, Merchant, Noble, Sailor, Scribe, Wayfarer) are licensed Player's Handbook
+content, NOT covered by the open SRD licence. They are NOT in 5e-bits/5e-database
+for that reason, and must never be reproduced from WotC's actual text — that would
+contradict Tavern's whole premise ("not a licensed product, not selling books") and
+create real copyright exposure.
+
+Those 12 are instead original homebrew: same mechanical shape (2 skills + 1 tool +
+3-ability bonus choice + Origin feat from the 4 available in the SRD: Alert, Magic
+Initiate, Savage Attacker, Skilled), but own flavor text and own grants — not copied
+from any sourcebook. Stored in `backgrounds` with `ruleset = 'homebrew'` (vs '2024'
+for the official 4), source JSON at `supabase/seed/homebrew-backgrounds.json`.
+`getBackgroundsList()` in `src/lib/srd.ts` fetches both rulesets and exposes
+`isHomebrew` — the UI (`BackgroundStep`, `ReviewStep`) must always visibly tag
+homebrew entries as homebrew. Never silently blend them in as if official.
+
+If extending this pattern to other content types (e.g. more feats), follow the same
+rule: original mechanics/wording only, tagged `ruleset = 'homebrew'`, never a
+reproduction of paid sourcebook text.

@@ -1,0 +1,421 @@
+[
+  {
+    "index": "artisan",
+    "name": "Artisan",
+    "description": "Years at the workbench taught you patience, precision, and the value of a job done right — skills that translate surprisingly well to a life of adventure.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "int", "name": "INT"}],
+    "feat": {"index": "skilled", "name": "Skilled"},
+    "proficiencies": [
+      {"index": "skill-investigation", "name": "Skill: Investigation"},
+      {"index": "skill-persuasion", "name": "Skill: Persuasion"},
+      {"index": "woodcarvers-tools", "name": "Woodcarver's Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Woodcarver's Tools, Traveler's Clothes, Pouch, 9 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "woodcarvers-tools", "name": "Woodcarver's Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-travelers", "name": "Clothes, Traveler's"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 9}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "charlatan",
+    "name": "Charlatan",
+    "description": "You've talked your way out of more trouble than most people ever get into, usually by convincing someone you're somebody you're not.",
+    "ability_scores": [{"index": "int", "name": "INT"}, {"index": "wis", "name": "WIS"}, {"index": "cha", "name": "CHA"}],
+    "feat": {"index": "alert", "name": "Alert"},
+    "proficiencies": [
+      {"index": "skill-deception", "name": "Skill: Deception"},
+      {"index": "skill-sleight-of-hand", "name": "Skill: Sleight of Hand"},
+      {"index": "forgery-kit", "name": "Forgery Kit"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Forgery Kit, Clothes, Fine, Pouch, 11 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "forgery-kit", "name": "Forgery Kit"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-fine", "name": "Clothes, Fine"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 11}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "entertainer",
+    "name": "Entertainer",
+    "description": "The road has been your stage for as long as you can remember, and you've learned to read a crowd as easily as a book.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "cha", "name": "CHA"}],
+    "feat": {"index": "skilled", "name": "Skilled"},
+    "proficiencies": [
+      {"index": "skill-acrobatics", "name": "Skill: Acrobatics"},
+      {"index": "skill-performance", "name": "Skill: Performance"},
+      {"index": "lute", "name": "Lute"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Lute, Costume, Pouch, 11 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "lute", "name": "Lute"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "costume", "name": "Costume"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 11}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "farmer",
+    "name": "Farmer",
+    "description": "You grew up working land that didn't care how tired you were, and it left you stronger and steadier than people expect.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "con", "name": "CON"}, {"index": "wis", "name": "WIS"}],
+    "feat": {"index": "savage-attacker", "name": "Savage Attacker"},
+    "proficiencies": [
+      {"index": "skill-animal-handling", "name": "Skill: Animal Handling"},
+      {"index": "skill-nature", "name": "Skill: Nature"},
+      {"index": "carpenters-tools", "name": "Carpenter's Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Carpenter's Tools, Shovel, Rope, Clothes, Traveler's, 9 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "carpenters-tools", "name": "Carpenter's Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "shovel", "name": "Shovel"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "rope", "name": "Rope"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-travelers", "name": "Clothes, Traveler's"}},
+                {"option_type": "money", "unit": "gp", "count": 9}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "guard",
+    "name": "Guard",
+    "description": "Long nights on watch taught you to notice the details everyone else missed — and to act on them before trouble had a chance to start.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "wis", "name": "WIS"}],
+    "feat": {"index": "alert", "name": "Alert"},
+    "proficiencies": [
+      {"index": "skill-athletics", "name": "Skill: Athletics"},
+      {"index": "skill-perception", "name": "Skill: Perception"},
+      {"index": "tool-dice", "name": "Tool: Dice"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Dice, Manacles, Signal Whistle, Lantern, Hooded, Pouch, 3 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "dice", "name": "Dice"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "manacles", "name": "Manacles"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "signal-whistle", "name": "Signal Whistle"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "lantern-hooded", "name": "Lantern, Hooded"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 3}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "guide",
+    "name": "Guide",
+    "description": "You know how to read a trail, a sky, and a stranger's intentions, and you've led more travelers safely through the wild than you can count.",
+    "ability_scores": [{"index": "dex", "name": "DEX"}, {"index": "con", "name": "CON"}, {"index": "wis", "name": "WIS"}],
+    "feat": {"index": "magic-initiate", "name": "Magic Initiate", "note": "Druid"},
+    "proficiencies": [
+      {"index": "skill-survival", "name": "Skill: Survival"},
+      {"index": "skill-stealth", "name": "Skill: Stealth"},
+      {"index": "cartographers-tools", "name": "Cartographer's Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Cartographer's Tools, Rope, Map, Clothes, Traveler's, 3 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "cartographers-tools", "name": "Cartographer's Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "rope", "name": "Rope"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "map", "name": "Map"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-travelers", "name": "Clothes, Traveler's"}},
+                {"option_type": "money", "unit": "gp", "count": 3}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "hermit",
+    "name": "Hermit",
+    "description": "Years of solitude gave you space to think — and, eventually, to listen to something beyond yourself.",
+    "ability_scores": [{"index": "con", "name": "CON"}, {"index": "wis", "name": "WIS"}, {"index": "int", "name": "INT"}],
+    "feat": {"index": "magic-initiate", "name": "Magic Initiate", "note": "Cleric"},
+    "proficiencies": [
+      {"index": "skill-medicine", "name": "Skill: Medicine"},
+      {"index": "skill-religion", "name": "Skill: Religion"},
+      {"index": "herbalism-kit", "name": "Herbalism Kit"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Herbalism Kit, Robe, Waterskin, Parchment, 5 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "herbalism-kit", "name": "Herbalism Kit"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "robe", "name": "Robe"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "waterskin", "name": "Waterskin"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "parchment", "name": "Parchment"}},
+                {"option_type": "money", "unit": "gp", "count": 5}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "merchant",
+    "name": "Merchant",
+    "description": "You learned to read a room before you learned to read a ledger, and both skills have kept you in business.",
+    "ability_scores": [{"index": "con", "name": "CON"}, {"index": "int", "name": "INT"}, {"index": "cha", "name": "CHA"}],
+    "feat": {"index": "skilled", "name": "Skilled"},
+    "proficiencies": [
+      {"index": "skill-insight", "name": "Skill: Insight"},
+      {"index": "skill-persuasion", "name": "Skill: Persuasion"},
+      {"index": "tool-navigators-tools", "name": "Tool: Navigator's Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Navigator's Tools, Clothes, Fine, Pouch, Ink, Paper, 4 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "navigators-tools", "name": "Navigator's Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-fine", "name": "Clothes, Fine"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "ink", "name": "Ink"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "paper", "name": "Paper"}},
+                {"option_type": "money", "unit": "gp", "count": 4}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "noble",
+    "name": "Noble",
+    "description": "Raised with privilege you didn't ask for, you learned early how to wield influence — and how little it actually protects you out here.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "int", "name": "INT"}, {"index": "cha", "name": "CHA"}],
+    "feat": {"index": "skilled", "name": "Skilled"},
+    "proficiencies": [
+      {"index": "skill-history", "name": "Skill: History"},
+      {"index": "skill-persuasion", "name": "Skill: Persuasion"},
+      {"index": "tool-dragonchess", "name": "Tool: Dragonchess"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Dragonchess, Clothes, Fine, Perfume, Pouch, 21 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "dragonchess", "name": "Dragonchess"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-fine", "name": "Clothes, Fine"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "perfume", "name": "Perfume"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 21}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "sailor",
+    "name": "Sailor",
+    "description": "The sea doesn't forgive mistakes, and neither did the crews you sailed with — so you learned fast, and you learned to hold your own.",
+    "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "con", "name": "CON"}],
+    "feat": {"index": "savage-attacker", "name": "Savage Attacker"},
+    "proficiencies": [
+      {"index": "skill-athletics", "name": "Skill: Athletics"},
+      {"index": "skill-perception", "name": "Skill: Perception"},
+      {"index": "tool-navigators-tools", "name": "Tool: Navigator's Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Navigator's Tools, Rope, Waterskin, Clothes, Traveler's, 4 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "navigators-tools", "name": "Navigator's Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "rope", "name": "Rope"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "waterskin", "name": "Waterskin"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-travelers", "name": "Clothes, Traveler's"}},
+                {"option_type": "money", "unit": "gp", "count": 4}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "scribe",
+    "name": "Scribe",
+    "description": "You've spent more hours bent over a desk than most people spend awake, and it left you with a memory for detail that serves you well.",
+    "ability_scores": [{"index": "dex", "name": "DEX"}, {"index": "int", "name": "INT"}, {"index": "wis", "name": "WIS"}],
+    "feat": {"index": "skilled", "name": "Skilled"},
+    "proficiencies": [
+      {"index": "skill-investigation", "name": "Skill: Investigation"},
+      {"index": "skill-history", "name": "Skill: History"},
+      {"index": "tool-calligraphers-supplies", "name": "Tool: Calligrapher's Supplies"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Calligrapher's Supplies, Parchment, Ink, Ink Pen, Book, 5 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "calligraphers-supplies", "name": "Calligrapher's Supplies"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "parchment", "name": "Parchment"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "ink", "name": "Ink"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "ink-pen", "name": "Ink Pen"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "book", "name": "Book"}},
+                {"option_type": "money", "unit": "gp", "count": 5}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "index": "wayfarer",
+    "name": "Wayfarer",
+    "description": "You grew up with no fixed address and learned to read streets, strangers, and trouble long before anyone taught you anything else.",
+    "ability_scores": [{"index": "dex", "name": "DEX"}, {"index": "con", "name": "CON"}, {"index": "cha", "name": "CHA"}],
+    "feat": {"index": "alert", "name": "Alert"},
+    "proficiencies": [
+      {"index": "skill-insight", "name": "Skill: Insight"},
+      {"index": "skill-stealth", "name": "Skill: Stealth"},
+      {"index": "tool-thieves-tools", "name": "Tool: Thieves' Tools"}
+    ],
+    "equipment_options": [
+      {
+        "desc": "Choose A or B: (A) Thieves' Tools, Clothes, Traveler's, Pouch, 11 GP; or (B) 50 GP",
+        "type": "equipment",
+        "choose": 1,
+        "from": {
+          "option_set_type": "options_array",
+          "options": [
+            {
+              "option_type": "multiple",
+              "items": [
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "thieves-tools", "name": "Thieves' Tools"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "clothes-travelers", "name": "Clothes, Traveler's"}},
+                {"option_type": "counted_reference", "count": 1, "of": {"index": "pouch", "name": "Pouch"}},
+                {"option_type": "money", "unit": "gp", "count": 11}
+              ]
+            },
+            {"option_type": "money", "unit": "gp", "count": 50}
+          ]
+        }
+      }
+    ]
+  }
+]

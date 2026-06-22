@@ -59,13 +59,18 @@ export default function BackgroundStep({ backgrounds, draft, onUpdate }: Backgro
             <button
               key={b.index}
               onClick={() => selectBackground(b)}
-              className={`rounded-lg border p-4 text-left transition-colors ${
+              className={`relative rounded-lg border p-4 text-left transition-colors ${
                 isSelected
                   ? "border-tavern-gold bg-tavern-bg"
                   : "border-tavern-border hover:border-tavern-gold-light"
               }`}
             >
               <div className="font-heading font-bold text-tavern-text">{b.name}</div>
+              {b.isHomebrew && (
+                <span className="mt-1 inline-block rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                  Homebrew
+                </span>
+              )}
             </button>
           );
         })}
@@ -73,6 +78,15 @@ export default function BackgroundStep({ backgrounds, draft, onUpdate }: Backgro
 
       {selected && (
         <div className="mt-6 space-y-4">
+          {selected.isHomebrew && (
+            <p className="text-xs text-tavern-muted">
+              <span className="text-tavern-gold-light">Homebrew background</span> — original
+              content written for Tavern, not part of the official SRD.
+            </p>
+          )}
+          {selected.description && (
+            <p className="text-sm text-tavern-muted italic">{selected.description}</p>
+          )}
           <div className="rounded-lg border border-tavern-border bg-tavern-bg p-4 text-sm text-tavern-muted">
             <div>
               <span className="text-tavern-gold-light">Skill &amp; Tool Proficiencies:</span>{" "}

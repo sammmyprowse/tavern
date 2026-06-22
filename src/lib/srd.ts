@@ -49,6 +49,8 @@ export interface EquipmentBundleItem {
 export interface BackgroundOption {
   index: string;
   name: string;
+  description: string | null;
+  isHomebrew: boolean;
   abilityScores: { index: string; name: string }[];
   feat: { index: string; name: string; note?: string } | null;
   proficiencies: { index: string; name: string }[];
@@ -209,12 +211,13 @@ export async function getClassesList(): Promise<ClassOption[]> {
 export async function getBackgroundsList(): Promise<BackgroundOption[]> {
   const { data } = await supabase
     .from("backgrounds")
-    .select("index, name, data")
-    .eq("ruleset", "2024");
+    .select("index, name, ruleset, data")
+    .in("ruleset", ["2024", "homebrew"]);
 
   return (data ?? [])
     .map((b) => {
       const d = b.data as {
+        description?: string;
         ability_scores?: { index: string; name: string }[];
         feat?: { index: string; name: string; note?: string };
         proficiencies?: { index: string; name: string }[];
@@ -223,6 +226,8 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
       return {
         index: b.index,
         name: b.name,
+        description: d.description ?? null,
+        isHomebrew: b.ruleset === "homebrew",
         abilityScores: d.ability_scores ?? [],
         feat: d.feat ?? null,
         proficiencies: d.proficiencies ?? [],
@@ -230,7 +235,10 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
         equipmentFirstOption: parseEquipmentOptions(d.equipment_options?.[0]),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (a.isHomebrew !== b.isHomebrew) return a.isHomebrew ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export async function getAbilityScoresList(): Promise<AbilityScoreInfo[]> {

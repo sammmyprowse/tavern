@@ -149,6 +149,7 @@ export default function ReviewStep({
           <dt className="text-tavern-gold-light">Background</dt>
           <dd className="text-tavern-text">
             {selectedBackground?.name}
+            {selectedBackground?.isHomebrew ? " (Homebrew)" : ""}
             {selectedBackground?.feat ? ` — ${selectedBackground.feat.name}` : ""}
           </dd>
         </div>
