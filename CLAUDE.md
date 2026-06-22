@@ -149,3 +149,34 @@ persisted (resets on reload — this is intentional, not a gap).
 These are why a generated sheet's AC/HP can legitimately differ from a hand-built
 reference sheet for the same concept character (e.g. Angrenor) — it's not a
 calculation bug, it's uncovered class/feat content.
+
+## Public share links
+`characters.is_public` (boolean, default false) + a second permissive RLS SELECT
+policy ("Public characters are viewable by anyone", `is_public = true`) — Postgres
+OR's multiple permissive policies together, so a row is visible if EITHER the owner
+policy OR the public policy matches. INSERT/UPDATE/DELETE stay owner-only
+(`auth.uid() = user_id`); sharing only ever widens read access, never write access.
+Migration at `supabase/migrations/20260623013000_add_character_public_sharing.sql`.
+
+The character's own UUID `id` doubles as the unguessable share token — no separate
+token column. `/characters/[id]/page.tsx` no longer hard-requires sign-in: it queries
+the row (RLS decides visibility for owner/public/neither), then separately checks
+`userData.user?.id === character.user_id` to compute `isOwner` for UI purposes only
+(showing the `ShareControl` toggle, hiding the read-only notice). "Not found" is the
+single response for "doesn't exist", "exists but private and not yours", and "exists
+but you're not signed in" — collapsing these is deliberate, not an oversight: a
+distinct "this is private" message would leak that a given ID corresponds to a real
+private character.
+
+`setCharacterPublic` (`src/app/characters/actions.ts`) double-enforces ownership: the
+Server Action filters `.eq("user_id", userData.user.id)` itself, AND the UPDATE RLS
+policy would reject a forged request anyway even if that filter were ever removed.
+Verified by testing three identities against one private character: owner (sees it),
+a second signed-in user (404), and signed-out/anonymous (404) — only flipping
+`is_public` changes the latter two from 404 to a working read-only sheet.
+
+Non-owners get a full *working* sheet, not a stripped-down preview — dice
+rolls/HP/equip-toggle all function normally for them. This is safe because none of it
+writes back to Supabase; the play sheet's entire interactive state is
+client-side-only localStorage (see "Play sheet" above), so a stranger playing with
+someone else's public character can't affect the owner's actual data.

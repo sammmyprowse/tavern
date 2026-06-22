@@ -29,7 +29,7 @@ export default async function Characters() {
   const [{ data: characters }, species, subspecies, classes] = await Promise.all([
     supabase
       .from("characters")
-      .select("id, name, draft, created_at")
+      .select("id, name, draft, created_at, is_public")
       .order("created_at", { ascending: false }),
     getSpeciesList(),
     getSubspeciesList(),
@@ -72,8 +72,15 @@ export default async function Characters() {
                     href={`/characters/${c.id}`}
                     className="block rounded-lg border border-tavern-border bg-tavern-card p-4 hover:border-tavern-gold-light"
                   >
-                    <div className="font-heading text-lg font-bold text-tavern-text">
-                      {c.name}
+                    <div className="flex items-center gap-2">
+                      <div className="font-heading text-lg font-bold text-tavern-text">
+                        {c.name}
+                      </div>
+                      {c.is_public && (
+                        <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                          Public
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-sm text-tavern-muted">
                       {sub ? sub.name : sp?.name}

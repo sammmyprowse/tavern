@@ -14,6 +14,7 @@ import type {
   EquipmentLookupItem,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
+import ShareControl from "./ShareControl";
 
 interface PlaySheetProps {
   characterId: string;
@@ -24,6 +25,8 @@ interface PlaySheetProps {
   backgrounds: BackgroundOption[];
   skills: SkillInfo[];
   equipment: EquipmentLookupItem[];
+  isOwner: boolean;
+  isPublic: boolean;
 }
 
 interface PlayState {
@@ -45,6 +48,8 @@ export default function PlaySheet({
   backgrounds,
   skills,
   equipment,
+  isOwner,
+  isPublic,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
@@ -255,13 +260,25 @@ export default function PlaySheet({
           &larr; My Characters
         </Link>
 
-        <h1 className="mt-2 font-heading text-3xl font-bold text-tavern-gold">
-          {sheet.name || "Unnamed"}
-        </h1>
-        <p className="text-tavern-muted">
-          {sheet.subspeciesName ?? sheet.speciesName} {sheet.className} — {sheet.backgroundName}
-          {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
-        </p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-heading text-3xl font-bold text-tavern-gold">
+              {sheet.name || "Unnamed"}
+            </h1>
+            <p className="text-tavern-muted">
+              {sheet.subspeciesName ?? sheet.speciesName} {sheet.className} — {sheet.backgroundName}
+              {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
+            </p>
+          </div>
+          {isOwner && <ShareControl characterId={characterId} initialIsPublic={isPublic} />}
+        </div>
+
+        {!isOwner && (
+          <p className="mt-2 text-xs text-tavern-muted">
+            You&apos;re viewing someone else&apos;s character. Rolls and HP changes here are
+            local to your browser only — they don&apos;t affect the owner&apos;s copy.
+          </p>
+        )}
 
         {/* Stat chips */}
         <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
@@ -445,9 +462,9 @@ export default function PlaySheet({
               Attacks
             </h2>
             <div className="mt-3 space-y-2">
-              {weapons.map((weapon) => (
+              {weapons.map((weapon, i) => (
                 <div
-                  key={weapon.index}
+                  key={`${weapon.index}-${i}`}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3"
                 >
                   <div>

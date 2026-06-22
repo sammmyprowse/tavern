@@ -18,27 +18,11 @@ export default async function CharacterPlaySheet({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
 
-  if (!userData.user) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <div className="flex max-w-md flex-col items-center gap-6 text-center">
-          <h1 className="font-heading text-2xl font-bold text-tavern-gold">Sign In Required</h1>
-          <Link
-            href="/login"
-            className="rounded-lg bg-tavern-oxblood px-6 py-2.5 font-heading text-sm font-bold tracking-widest text-tavern-parchment uppercase hover:bg-tavern-oxblood-light"
-          >
-            Sign In
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const [{ data: character }, species, subspecies, classes, backgrounds, skills, equipment] =
+  const [{ data: userData }, { data: character }, species, subspecies, classes, backgrounds, skills, equipment] =
     await Promise.all([
-      supabase.from("characters").select("id, name, draft").eq("id", id).maybeSingle(),
+      supabase.auth.getUser(),
+      supabase.from("characters").select("id, user_id, name, draft, is_public").eq("id", id).maybeSingle(),
       getSpeciesList(),
       getSubspeciesList(),
       getClassesList(),
@@ -53,7 +37,8 @@ export default async function CharacterPlaySheet({
         <div className="flex max-w-md flex-col items-center gap-6 text-center">
           <h1 className="font-heading text-2xl font-bold text-tavern-gold">Character Not Found</h1>
           <p className="text-tavern-muted">
-            This character doesn&apos;t exist, or doesn&apos;t belong to your account.
+            This character doesn&apos;t exist, isn&apos;t shared publicly, or doesn&apos;t belong
+            to your account.
           </p>
           <Link
             href="/characters"
@@ -66,6 +51,8 @@ export default async function CharacterPlaySheet({
     );
   }
 
+  const isOwner = userData.user?.id === character.user_id;
+
   return (
     <PlaySheet
       characterId={character.id}
@@ -76,6 +63,8 @@ export default async function CharacterPlaySheet({
       backgrounds={backgrounds}
       skills={skills}
       equipment={Array.from(equipment.values())}
+      isOwner={isOwner}
+      isPublic={character.is_public}
     />
   );
 }
