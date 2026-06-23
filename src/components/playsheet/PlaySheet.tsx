@@ -10,13 +10,20 @@ import {
   MAX_LEVEL,
   ORDER_CHOICES,
   ASI_LEVELS,
+  EXPERTISE_SCHEDULE,
   type AbilityKey,
   type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
 import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
-import { levelUpCharacter, chooseSubclass, chooseOriginOrder, chooseFeat } from "@/app/characters/actions";
+import {
+  levelUpCharacter,
+  chooseSubclass,
+  chooseOriginOrder,
+  chooseFeat,
+  chooseExpertise,
+} from "@/app/characters/actions";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -90,6 +97,9 @@ export default function PlaySheet({
   const [selectedFeatIndex, setSelectedFeatIndex] = useState<string | null>(null);
   const [asiBonus, setAsiBonus] = useState<AbilityBonusChoice | null>(null);
   const [featPending, setFeatPending] = useState(false);
+  const [expertisePickerLevel, setExpertisePickerLevel] = useState<number | null>(null);
+  const [selectedExpertiseSkills, setSelectedExpertiseSkills] = useState<string[]>([]);
+  const [expertisePending, setExpertisePending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -199,6 +209,17 @@ export default function PlaySheet({
   const unlockedFeatures = [...baseFeaturesWithoutResolvedAsi, ...subclassFeatures, ...featFeatures]
     .filter((f) => f.level <= sheet.level)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
+  const expertiseSchedule = EXPERTISE_SCHEDULE[sheet.classIndex] ?? [];
+  const pendingExpertiseMilestone = expertiseSchedule.find((m) => {
+    const priorCount = expertiseSchedule
+      .filter((x) => x.level < m.level)
+      .reduce((sum, x) => sum + x.count, 0);
+    return m.level <= sheet.level && currentDraft.expertiseChoices.length === priorCount;
+  });
+  const expertiseEligibleSkills = sheet.skills.filter(
+    (s) => s.proficient && !currentDraft.expertiseChoices.includes(s.index),
+  );
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -428,6 +449,51 @@ export default function PlaySheet({
       setChoiceError(result.error ?? "Couldn't choose feat.");
     }
     setFeatPending(false);
+  }
+
+  function openExpertisePicker(level: number) {
+    setExpertisePickerLevel(level);
+    setSelectedExpertiseSkills([]);
+    setChoiceError(null);
+  }
+
+  function cancelExpertisePicker() {
+    setExpertisePickerLevel(null);
+    setSelectedExpertiseSkills([]);
+    setChoiceError(null);
+  }
+
+  function toggleExpertiseSkill(skillIndex: string, count: number) {
+    setSelectedExpertiseSkills((prev) => {
+      if (prev.includes(skillIndex)) return prev.filter((s) => s !== skillIndex);
+      if (prev.length >= count) return prev;
+      return [...prev, skillIndex];
+    });
+  }
+
+  async function confirmExpertise() {
+    if (expertisePickerLevel == null) return;
+    setExpertisePending(true);
+    setChoiceError(null);
+    const result = await chooseExpertise(characterId, expertisePickerLevel, selectedExpertiseSkills);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      cancelExpertisePicker();
+    } else {
+      setChoiceError(result.error ?? "Couldn't choose Expertise.");
+    }
+    setExpertisePending(false);
+  }
+
+  function rollSneakAttack() {
+    if (!sheet?.sneakAttackDice) return;
+    const notation = `${sheet.sneakAttackDice}d6`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Sneak Attack",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
   }
 
   function toggleFeature(index: string) {
@@ -740,6 +806,62 @@ export default function PlaySheet({
             </div>
           ))}
 
+        {isOwner && pendingExpertiseMilestone && (
+          <div className="mt-4">
+            {expertisePickerLevel !== pendingExpertiseMilestone.level ? (
+              <button
+                onClick={() => openExpertisePicker(pendingExpertiseMilestone.level)}
+                className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+              >
+                Choose Expertise ({pendingExpertiseMilestone.count}) — Level {pendingExpertiseMilestone.level}
+              </button>
+            ) : (
+              <div className="rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+                <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+                  Choose {pendingExpertiseMilestone.count} Skills for Expertise
+                </p>
+                <p className="mt-1 text-xs text-tavern-muted">
+                  Expertise doubles your proficiency bonus on the chosen skill. Only skills you&apos;re
+                  already proficient in are eligible.
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {expertiseEligibleSkills.map((s) => (
+                    <button
+                      key={s.index}
+                      onClick={() => toggleExpertiseSkill(s.index, pendingExpertiseMilestone.count)}
+                      className={`rounded-md border p-2 text-left text-sm transition-colors ${
+                        selectedExpertiseSkills.includes(s.index)
+                          ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                          : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={confirmExpertise}
+                    disabled={
+                      expertisePending || selectedExpertiseSkills.length !== pendingExpertiseMilestone.count
+                    }
+                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={cancelExpertisePicker}
+                    disabled={expertisePending}
+                    className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {choiceError && <p className="mt-1 text-xs text-tavern-oxblood-light">{choiceError}</p>}
 
         {/* Stat chips */}
@@ -907,7 +1029,11 @@ export default function PlaySheet({
                 }`}
               >
                 <span>
-                  {skill.proficient && <span className="mr-1.5 text-tavern-gold-light">&bull;</span>}
+                  {skill.proficient && (
+                    <span className="mr-1.5 text-tavern-gold-light">
+                      {skill.expertise ? "••" : "•"}
+                    </span>
+                  )}
                   {skill.name}{" "}
                   <span className="text-xs opacity-60">({skill.ability.toUpperCase()})</span>
                 </span>
@@ -955,6 +1081,23 @@ export default function PlaySheet({
             <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
               Attacks
             </h2>
+            {sheet.sneakAttackDice && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading font-bold text-tavern-text">Sneak Attack</div>
+                  <div className="text-xs text-tavern-muted">
+                    Once per turn, with Advantage or an ally adjacent to the target, on a hit with a
+                    Finesse or Ranged weapon.
+                  </div>
+                </div>
+                <button
+                  onClick={rollSneakAttack}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll {sheet.sneakAttackDice}d6
+                </button>
+              </div>
+            )}
             <div className="mt-3 space-y-2">
               {weapons.map((weapon, i) => (
                 <div

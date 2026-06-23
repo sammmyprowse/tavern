@@ -5,6 +5,7 @@ import {
   finalAbilityScores,
   maxHp,
   proficiencyBonusForLevel,
+  sneakAttackDice,
   type AbilityKey,
   type CharacterDraft,
   type EquipmentItem,
@@ -33,6 +34,7 @@ export interface ResolvedSkill {
   ability: AbilityKey;
   bonus: number;
   proficient: boolean;
+  expertise: boolean;
 }
 
 export interface ResolvedSave {
@@ -62,6 +64,7 @@ export interface CharacterSheet {
   initiative: number;
   speed: number | null;
   passivePerception: number;
+  sneakAttackDice: number | null;
 }
 
 export function buildCharacterSheet(
@@ -113,15 +116,18 @@ export function buildCharacterSheet(
     ...backgroundSkillIndexes,
   ]);
 
+  const expertiseSkills = new Set(draft.expertiseChoices);
   const skills: ResolvedSkill[] = refs.skills.map((skill) => {
     const ability = skill.abilityScore as AbilityKey;
     const proficient = proficientSkills.has(skill.index);
+    const expertise = proficient && expertiseSkills.has(skill.index);
     return {
       index: skill.index,
       name: skill.name,
       ability,
       proficient,
-      bonus: modifiers[ability] + (proficient ? proficiencyBonus : 0),
+      expertise,
+      bonus: modifiers[ability] + (proficient ? proficiencyBonus * (expertise ? 2 : 1) : 0),
     };
   });
 
@@ -154,6 +160,7 @@ export function buildCharacterSheet(
     initiative: modifiers.dex,
     speed: species.speed,
     passivePerception,
+    sneakAttackDice: cls.index === "rogue" ? sneakAttackDice(draft.level) : null,
   };
 }
 

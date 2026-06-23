@@ -380,3 +380,40 @@ by name.
 Most feats can only be taken once; Ability Score Improvement is the explicit
 exception (its own SRD text says so) and is the only one excluded from the
 already-taken filter in both the picker UI and `chooseFeat`'s server-side check.
+
+## Class resources — Rogue (Expertise, Sneak Attack)
+First of the class-by-class resource passes (user-prioritized: Rogue, Wizard,
+Sorcerer, Cleric next). Unlike the licensing-gapped content (backgrounds,
+subclasses, feats), Rogue's resources are pure SRD mechanics with no
+content-gap question — both needed hardcoded progressions for the same reason
+spell slots will: the SRD's feature text names the mechanic but references an
+external table ("as shown in the Sneak Attack column of the Rogue Features
+table") that isn't itself in the structured data.
+
+`sneakAttackDice(level)` = `Math.ceil(level / 2)` — the real, unchanged-since-
+2014 progression (1d6 at level 1, +1d6 every 2 levels). Exposed on
+`CharacterSheet.sneakAttackDice` (null for non-Rogues). Surfaced as a "Roll Xd6"
+button in the Attacks section, NOT auto-added to weapon attacks — Sneak Attack's
+real conditions (Advantage, or an ally adjacent and no Disadvantage, once per
+turn, Finesse/Ranged weapon only) aren't tracked by the sheet, so whether it
+applies is the player's judgment call, same as Fighting Style/Second Wind/Rage
+text being shown but not auto-applied.
+
+`CharacterDraft.expertiseChoices: string[]` — bare skill indexes with doubled
+proficiency bonus. `EXPERTISE_SCHEDULE` (`src/lib/character.ts`) models WHEN and
+HOW MANY as milestones (`{level, count}[]`) keyed by class, not hardcoded to
+Rogue specifically — Bard gets Expertise too at a higher level in 2024 rules, so
+this can extend without a shape change when that class's pass comes up. The
+picker only offers skills the character is already proficient in (Expertise
+requires existing proficiency) and excludes ones already chosen; `chooseFeat`'s
+sibling `chooseExpertise` validates the milestone is reached, not already
+resolved, and the right count was submitted — same rigor level as the other
+choice actions, not deeper (e.g. it does NOT re-derive proficiency server-side,
+consistent with `chooseSubclass` not re-validating its index against the real
+subclass list either — this is an owner-only mutation on the player's own
+character, not an adversarial multi-tenant boundary).
+
+`ResolvedSkill.expertise: boolean` added alongside `proficient` —
+`character-sheet.ts`'s skill bonus calc multiplies proficiency bonus by 2 when
+both are true. Skills list shows `••` for Expertise vs `•` for plain
+proficiency so the two are visually distinct, not just numerically.

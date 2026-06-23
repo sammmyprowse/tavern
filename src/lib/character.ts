@@ -35,6 +35,36 @@ export interface CharacterDraft {
   orderChoice: string | null;
   // Leveling (Phase 2). One entry per resolved ASI_LEVELS milestone.
   featChoices: FeatChoice[];
+  // Class resources. Bare skill indexes with doubled proficiency bonus — see
+  // EXPERTISE_SCHEDULE for which classes/levels grant picks and how many.
+  expertiseChoices: string[];
+}
+
+export interface ExpertiseMilestone {
+  level: number;
+  count: number;
+}
+
+// Rogue's Expertise feature ("gain Expertise in two skill proficiencies of your
+// choice... at Rogue level 6, two more") names the picks but, like Sneak Attack's
+// dice progression below, doesn't give a clean lookup table — it's two prose
+// mentions. Modeled as milestones so other classes (e.g. Bard) can extend this
+// later without changing the shape.
+export const EXPERTISE_SCHEDULE: Record<string, ExpertiseMilestone[]> = {
+  rogue: [
+    { level: 1, count: 2 },
+    { level: 6, count: 2 },
+  ],
+};
+
+// Sneak Attack's damage text ("the extra damage increases as you gain Rogue
+// levels, as shown in the Sneak Attack column of the Rogue Features table")
+// references a table that isn't in the SRD's structured data — only the
+// unstructured mention above. The progression itself (1d6 at level 1, +1d6
+// every 2 levels) is unchanged since 2014 and hardcoded the same way
+// proficiency bonus's formula is.
+export function sneakAttackDice(level: number): number {
+  return Math.ceil(level / 2);
 }
 
 export interface FeatChoice {
@@ -112,6 +142,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   subclassIndex: null,
   orderChoice: null,
   featChoices: [],
+  expertiseChoices: [],
 };
 
 export const MAX_LEVEL = 20;

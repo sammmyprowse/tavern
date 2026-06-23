@@ -6,6 +6,7 @@ import {
   MAX_LEVEL,
   ORDER_CHOICES,
   ASI_LEVELS,
+  EXPERTISE_SCHEDULE,
   type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
@@ -227,6 +228,54 @@ export async function chooseFeat(
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+export interface ChooseExpertiseResult {
+  success: boolean;
+  error?: string;
+  draft?: CharacterDraft;
+}
+
+export async function chooseExpertise(
+  characterId: string,
+  level: number,
+  skillIndexes: string[],
+): Promise<ChooseExpertiseResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  const schedule = EXPERTISE_SCHEDULE[draft.classIndex ?? ""];
+  const milestone = schedule?.find((m) => m.level === level);
+  if (!milestone || level > draft.level) {
+    return { success: false, error: "Not an Expertise choice you can make yet." };
+  }
+
+  const priorCount = schedule
+    .filter((m) => m.level < level)
+    .reduce((sum, m) => sum + m.count, 0);
+  if (draft.expertiseChoices.length !== priorCount) {
+    return { success: false, error: "Already chose Expertise for that level." };
+  }
+
+  const uniqueSkills = new Set(skillIndexes);
+  if (uniqueSkills.size !== milestone.count || skillIndexes.length !== milestone.count) {
+    return { success: false, error: `Choose exactly ${milestone.count} skills.` };
+  }
+  if (skillIndexes.some((s) => draft.expertiseChoices.includes(s))) {
+    return { success: false, error: "Already have Expertise in one of those skills." };
+  }
+
+  const nextDraft: CharacterDraft = {
+    ...draft,
+    expertiseChoices: [...draft.expertiseChoices, ...skillIndexes],
+  };
+
+  const { error: saveError } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (saveError) return { success: false, error: saveError.message };
 
   revalidatePath(`/characters/${characterId}`);
   return { success: true, draft: nextDraft };
