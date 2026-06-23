@@ -53,6 +53,7 @@ export default async function Parties() {
     }
   }
 
+  const leaderPartyIds = new Set((createdParties ?? []).map((p) => p.id));
   const partyMap = new Map<string, { id: string; name: string; created_at: string }>();
   for (const p of [...(createdParties ?? []), ...memberParties]) partyMap.set(p.id, p);
   const parties = [...partyMap.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -82,7 +83,16 @@ export default async function Parties() {
                   href={`/parties/${p.id}`}
                   className="block rounded-lg border border-tavern-border bg-tavern-card p-4 hover:border-tavern-gold-light"
                 >
-                  <div className="font-heading text-lg font-bold text-tavern-text">{p.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-heading text-lg font-bold text-tavern-text">
+                      {p.name}
+                    </div>
+                    {leaderPartyIds.has(p.id) && (
+                      <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                        Leader
+                      </span>
+                    )}
+                  </div>
                 </Link>
               </li>
             ))}

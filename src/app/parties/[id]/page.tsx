@@ -5,6 +5,7 @@ import type { CharacterDraft } from "@/lib/character";
 import CopyPartyLink from "@/components/parties/CopyPartyLink";
 import AddCharacterControl from "@/components/parties/AddCharacterControl";
 import RemoveFromPartyButton from "@/components/parties/RemoveFromPartyButton";
+import RenamePartyControl from "@/components/parties/RenamePartyControl";
 
 export default async function PartyRoster({
   params,
@@ -16,7 +17,7 @@ export default async function PartyRoster({
 
   const [{ data: userData }, { data: party }, species, subspecies, classes] = await Promise.all([
     supabase.auth.getUser(),
-    supabase.from("parties").select("id, name").eq("id", id).maybeSingle(),
+    supabase.from("parties").select("id, name, created_by").eq("id", id).maybeSingle(),
     getSpeciesList(),
     getSubspeciesList(),
     getClassesList(),
@@ -49,6 +50,7 @@ export default async function PartyRoster({
     .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
   const myUserId = userData.user?.id;
+  const isLeader = Boolean(myUserId) && myUserId === party.created_by;
   let addableCharacters: { id: string; name: string }[] = [];
 
   if (myUserId) {
@@ -72,7 +74,10 @@ export default async function PartyRoster({
 
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <h1 className="font-heading text-3xl font-bold text-tavern-gold">{party.name}</h1>
-          <CopyPartyLink partyId={party.id} />
+          <div className="flex flex-wrap items-center gap-3">
+            {isLeader && <RenamePartyControl partyId={party.id} currentName={party.name} />}
+            <CopyPartyLink partyId={party.id} />
+          </div>
         </div>
 
         {roster.length === 0 ? (
@@ -85,21 +90,36 @@ export default async function PartyRoster({
               const sub = subspecies.find((s) => s.index === draft.subspeciesIndex);
               const cls = classes.find((cl) => cl.index === draft.classIndex);
               const isMine = c.user_id === myUserId;
+              const ownerIsLeader = c.user_id === party.created_by;
               return (
                 <li
                   key={c.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-tavern-border bg-tavern-card p-4"
                 >
                   <Link href={`/characters/${c.id}`} className="flex-1 hover:opacity-80">
-                    <div className="font-heading text-lg font-bold text-tavern-text">
-                      {c.name}
+                    <div className="flex items-center gap-2">
+                      <div className="font-heading text-lg font-bold text-tavern-text">
+                        {c.name}
+                      </div>
+                      {isMine && (
+                        <span className="rounded-full border border-tavern-border px-2 py-0.5 text-[10px] tracking-wider text-tavern-muted uppercase">
+                          You
+                        </span>
+                      )}
+                      {ownerIsLeader && (
+                        <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                          Leader
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-sm text-tavern-muted">
                       {sub ? sub.name : sp?.name}
                       {cls ? ` ${cls.name}` : ""}
                     </div>
                   </Link>
-                  {isMine && <RemoveFromPartyButton partyId={party.id} characterId={c.id} />}
+                  {(isMine || isLeader) && (
+                    <RemoveFromPartyButton partyId={party.id} characterId={c.id} />
+                  )}
                 </li>
               );
             })}

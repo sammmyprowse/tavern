@@ -191,10 +191,23 @@ anyone", `exists` against `party_characters`) makes party membership work via th
 *existing* character play-sheet route with no changes needed there — visibility is
 just "owner OR public OR party-member," all three OR'd by Postgres automatically.
 Write access (insert/update/delete on `characters` itself) is untouched by any of
-this; you can only add/remove your OWN characters to/from a party
-(`party_characters` insert/delete policies check `characters.user_id`), never
-someone else's, even if you created the party. There's no "kick" feature — only a
-character's owner controls its own party memberships.
+this; you can only add your OWN characters to a party (`party_characters` insert
+policy checks `characters.user_id`), never someone else's, even if you created the
+party.
+
+**Leader:** `parties.created_by` doubles as "the leader," no separate role column.
+Two leader-only capabilities, both via a second permissive policy that ORs with the
+member-scoped one rather than replacing it:
+- Remove ANY character from the party (`party_characters` DELETE: "owner of the
+  character" OR "leader of the party" — two separate policies, RLS ORs them). The
+  `removeCharacterFromParty` action has no explicit ownership check of its own; it
+  relies entirely on this OR composition, same character used both ways depending
+  on who's calling it.
+- Rename the party (`parties` UPDATE, leader-only — members can't rename).
+No "kick a member's account" concept exists — leadership control is scoped to
+characters and the party's own name, not to membership in some broader sense.
+Leadership itself isn't transferable for now (whoever created it leads it,
+permanently) — don't add transfer logic unless asked.
 
 **Real bug this surfaced, worth re-reading before adding a 4th permissive SELECT
 policy to `characters`:** `/characters/page.tsx` ("My Characters") queried
