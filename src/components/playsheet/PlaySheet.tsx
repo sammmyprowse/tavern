@@ -23,6 +23,8 @@ import {
   chooseOriginOrder,
   chooseFeat,
   chooseExpertise,
+  setKnownCantrips,
+  setPreparedSpells,
 } from "@/app/characters/actions";
 import type {
   SpeciesOption,
@@ -34,6 +36,7 @@ import type {
   ClassFeature,
   SubclassOption,
   FeatOption,
+  SpellOption,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
@@ -50,6 +53,7 @@ interface PlaySheetProps {
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
+  classSpells: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
 }
@@ -62,6 +66,9 @@ interface PlayState {
   deathSaveFailures: number;
   equippedIndexes: string[];
   rollMode: RollMode;
+  // expendedSlots[i] = slots used at spell level i+1. Play state, not part of
+  // the saved draft — resets every Long Rest the same way hit dice used does.
+  expendedSlots: number[];
 }
 
 export default function PlaySheet({
@@ -76,6 +83,7 @@ export default function PlaySheet({
   features,
   subclassOptions,
   generalFeats,
+  classSpells,
   isOwner,
   isPublic,
 }: PlaySheetProps) {
@@ -91,6 +99,7 @@ export default function PlaySheet({
   const [levelUpPending, setLevelUpPending] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
   const [subclassPending, setSubclassPending] = useState(false);
+  const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<string | null>(null);
   const [orderPending, setOrderPending] = useState(false);
   const [choiceError, setChoiceError] = useState<string | null>(null);
   const [featPickerLevel, setFeatPickerLevel] = useState<number | null>(null);
@@ -100,6 +109,11 @@ export default function PlaySheet({
   const [expertisePickerLevel, setExpertisePickerLevel] = useState<number | null>(null);
   const [selectedExpertiseSkills, setSelectedExpertiseSkills] = useState<string[]>([]);
   const [expertisePending, setExpertisePending] = useState(false);
+  const [cantripPickerOpen, setCantripPickerOpen] = useState(false);
+  const [selectedCantrips, setSelectedCantrips] = useState<string[]>([]);
+  const [preparedPickerOpen, setPreparedPickerOpen] = useState(false);
+  const [selectedPrepared, setSelectedPrepared] = useState<string[]>([]);
+  const [spellsPending, setSpellsPending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -113,6 +127,7 @@ export default function PlaySheet({
     deathSaveFailures: 0,
     equippedIndexes: allOwnedIndexes,
     rollMode: "normal",
+    expendedSlots: [],
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -221,6 +236,21 @@ export default function PlaySheet({
     (s) => s.proficient && !currentDraft.expertiseChoices.includes(s.index),
   );
 
+  const cantripOptions = classSpells.filter((s) => s.level === 0);
+  // Spells of a level you have no slots for yet aren't preparable.
+  const maxSpellLevel = sheet.spellSlots.reduce(
+    (max, count, i) => (count > 0 ? i + 1 : max),
+    0,
+  );
+  const preparedOptions = classSpells.filter((s) => s.level >= 1 && s.level <= maxSpellLevel);
+  const knownCantripDetails = currentDraft.knownCantrips
+    .map((index) => cantripOptions.find((s) => s.index === index))
+    .filter((s): s is SpellOption => Boolean(s));
+  const preparedSpellDetails = currentDraft.preparedSpells
+    .map((index) => preparedOptions.find((s) => s.index === index))
+    .filter((s): s is SpellOption => Boolean(s))
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
   }
@@ -314,7 +344,24 @@ export default function PlaySheet({
       hitDiceUsed: Math.max(0, prev.hitDiceUsed - Math.max(1, Math.ceil(totalHitDice / 2))),
       deathSaveSuccesses: 0,
       deathSaveFailures: 0,
+      expendedSlots: [],
     }));
+  }
+
+  function expendSpellSlot(levelIndex: number) {
+    setPlay((prev) => {
+      const next = [...prev.expendedSlots];
+      next[levelIndex] = (next[levelIndex] ?? 0) + 1;
+      return { ...prev, expendedSlots: next };
+    });
+  }
+
+  function restoreSpellSlot(levelIndex: number) {
+    setPlay((prev) => {
+      const next = [...prev.expendedSlots];
+      next[levelIndex] = Math.max(0, (next[levelIndex] ?? 0) - 1);
+      return { ...prev, expendedSlots: next };
+    });
   }
 
   function spendHitDie() {
@@ -366,6 +413,7 @@ export default function PlaySheet({
     const result = await chooseSubclass(characterId, subclassIndex);
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
+      setSelectedSubclassIndex(null);
     } else {
       setChoiceError(result.error ?? "Couldn't choose subclass.");
     }
@@ -496,6 +544,60 @@ export default function PlaySheet({
     });
   }
 
+  function openCantripPicker() {
+    setSelectedCantrips(currentDraft.knownCantrips);
+    setCantripPickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function toggleCantripSelection(index: string, limit: number) {
+    setSelectedCantrips((prev) => {
+      if (prev.includes(index)) return prev.filter((s) => s !== index);
+      if (prev.length >= limit) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function saveCantrips() {
+    setSpellsPending(true);
+    setChoiceError(null);
+    const result = await setKnownCantrips(characterId, selectedCantrips);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setCantripPickerOpen(false);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save cantrips.");
+    }
+    setSpellsPending(false);
+  }
+
+  function openPreparedPicker() {
+    setSelectedPrepared(currentDraft.preparedSpells);
+    setPreparedPickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function togglePreparedSelection(index: string, limit: number) {
+    setSelectedPrepared((prev) => {
+      if (prev.includes(index)) return prev.filter((s) => s !== index);
+      if (prev.length >= limit) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function savePrepared() {
+    setSpellsPending(true);
+    setChoiceError(null);
+    const result = await setPreparedSpells(characterId, selectedPrepared);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setPreparedPickerOpen(false);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save prepared spells.");
+    }
+    setSpellsPending(false);
+  }
+
   function toggleFeature(index: string) {
     setExpandedFeatures((prev) => {
       const next = new Set(prev);
@@ -544,10 +646,12 @@ export default function PlaySheet({
             <h1 className="font-heading text-3xl font-bold text-tavern-gold">
               {sheet.name || "Unnamed"}
             </h1>
+            <p className="font-heading text-base font-bold tracking-wide text-tavern-gold-light">
+              {sheet.className}
+              {chosenSubclass ? ` (${chosenSubclass.name})` : ""}
+            </p>
             <p className="text-tavern-muted">
-              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} {sheet.className}
-              {chosenSubclass ? ` (${chosenSubclass.name})` : ""} —{" "}
-              {sheet.backgroundName}
+              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} — {sheet.backgroundName}
               {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
             </p>
             {chosenOrder && (
@@ -649,18 +753,71 @@ export default function PlaySheet({
               </p>
             )}
             <div className="mt-2 space-y-2">
-              {subclassOptions.map((opt) => (
-                <button
-                  key={opt.index}
-                  onClick={() => handleChooseSubclass(opt.index)}
-                  disabled={subclassPending}
-                  className="block w-full rounded-md border border-tavern-border p-3 text-left hover:border-tavern-gold-light disabled:opacity-50"
-                >
-                  <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
-                  {opt.summary && <p className="mt-1 text-xs text-tavern-muted">{opt.summary}</p>}
-                </button>
-              ))}
+              {subclassOptions.map((opt) => {
+                const isSelected = selectedSubclassIndex === opt.index;
+                return (
+                  <div
+                    key={opt.index}
+                    className={`rounded-md border ${isSelected ? "border-tavern-gold" : "border-tavern-border"}`}
+                  >
+                    <button
+                      onClick={() => setSelectedSubclassIndex(opt.index)}
+                      className="block w-full p-3 text-left hover:bg-tavern-bg"
+                    >
+                      <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
+                      {opt.summary && <p className="mt-1 text-xs text-tavern-muted">{opt.summary}</p>}
+                    </button>
+                    {isSelected && (
+                      <div className="space-y-1 border-t border-tavern-border p-2">
+                        <p className="px-1 pb-1 text-[10px] tracking-wider text-tavern-muted uppercase">
+                          What you&apos;ll gain
+                        </p>
+                        {opt.features.map((f) => {
+                          const key = `picker-${opt.index}-${f.name}`;
+                          const expanded = expandedFeatures.has(key);
+                          return (
+                            <div key={key} className="rounded-md border border-tavern-border">
+                              <button
+                                onClick={() => toggleFeature(key)}
+                                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                              >
+                                <span className="text-tavern-text">{f.name}</span>
+                                <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                                  Lvl {f.level}
+                                </span>
+                              </button>
+                              {expanded && (
+                                <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                                  {f.description}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+            {selectedSubclassIndex && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={() => handleChooseSubclass(selectedSubclassIndex)}
+                  disabled={subclassPending}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                >
+                  Confirm {subclassOptions.find((o) => o.index === selectedSubclassIndex)?.name}
+                </button>
+                <button
+                  onClick={() => setSelectedSubclassIndex(null)}
+                  disabled={subclassPending}
+                  className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1042,6 +1199,287 @@ export default function PlaySheet({
             ))}
           </div>
         </div>
+
+        {/* Spells */}
+        {sheet.spellcastingAbility && (
+          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Spells
+            </h2>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
+                <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                  Spell Save DC
+                </div>
+                <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
+                  {sheet.spellSaveDC}
+                </div>
+              </div>
+              <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
+                <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                  Spell Attack
+                </div>
+                <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
+                  {formatModifier(sheet.spellAttackBonus ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            {sheet.spellSlots.some((n) => n > 0) && (
+              <div className="mt-4">
+                <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Spell Slots
+                </h3>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {sheet.spellSlots.map((total, i) => {
+                    if (total === 0) return null;
+                    const used = play.expendedSlots[i] ?? 0;
+                    const remaining = total - used;
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between rounded-md border border-tavern-border px-3 py-2"
+                      >
+                        <span className="text-sm text-tavern-muted">Level {i + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => restoreSpellSlot(i)}
+                            disabled={remaining >= total}
+                            className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                          <span className="font-heading font-bold text-tavern-text">
+                            {remaining}/{total}
+                          </span>
+                          <button
+                            onClick={() => expendSpellSlot(i)}
+                            disabled={remaining <= 0}
+                            className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                          >
+                            &minus;
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {sheet.cantripsKnownCount > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Cantrips Known ({knownCantripDetails.length}/{sheet.cantripsKnownCount})
+                  </h3>
+                  {isOwner && !cantripPickerOpen && (
+                    <button
+                      onClick={openCantripPicker}
+                      className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {!cantripPickerOpen ? (
+                  <div className="mt-2 space-y-1">
+                    {knownCantripDetails.map((s) => {
+                      const key = `spell-${s.index}`;
+                      const expanded = expandedFeatures.has(key);
+                      return (
+                        <div key={key} className="rounded-md border border-tavern-border">
+                          <button
+                            onClick={() => toggleFeature(key)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                          >
+                            <span className="text-tavern-text">{s.name}</span>
+                            <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                              {s.school}
+                            </span>
+                          </button>
+                          {expanded && s.description && (
+                            <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                              {s.description}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {knownCantripDetails.length === 0 && (
+                      <p className="text-xs text-tavern-muted">No cantrips chosen yet.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                    <p className="text-xs text-tavern-muted">
+                      Choose up to {sheet.cantripsKnownCount} ({selectedCantrips.length} selected).
+                    </p>
+                    <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+                      {cantripOptions.map((s) => {
+                        const key = `picker-spell-${s.index}`;
+                        const expanded = expandedFeatures.has(key);
+                        const selected = selectedCantrips.includes(s.index);
+                        return (
+                          <div
+                            key={s.index}
+                            className={`rounded-md border ${
+                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
+                            }`}
+                          >
+                            <button
+                              onClick={() => toggleCantripSelection(s.index, sheet.cantripsKnownCount)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                            >
+                              <span className="text-tavern-text">{s.name}</span>
+                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                                {s.school}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
+                            >
+                              {expanded ? "Hide details" : "Show details"}
+                            </button>
+                            {expanded && s.description && (
+                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                                {s.description}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button
+                        onClick={saveCantrips}
+                        disabled={spellsPending}
+                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setCantripPickerOpen(false)}
+                        disabled={spellsPending}
+                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sheet.preparedSpellsCount > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Prepared Spells ({preparedSpellDetails.length}/{sheet.preparedSpellsCount})
+                  </h3>
+                  {isOwner && !preparedPickerOpen && (
+                    <button
+                      onClick={openPreparedPicker}
+                      className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {!preparedPickerOpen ? (
+                  <div className="mt-2 space-y-1">
+                    {preparedSpellDetails.map((s) => {
+                      const key = `spell-${s.index}`;
+                      const expanded = expandedFeatures.has(key);
+                      return (
+                        <div key={key} className="rounded-md border border-tavern-border">
+                          <button
+                            onClick={() => toggleFeature(key)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                          >
+                            <span className="text-tavern-text">{s.name}</span>
+                            <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                              Lvl {s.level} &middot; {s.school}
+                            </span>
+                          </button>
+                          {expanded && s.description && (
+                            <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                              {s.description}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {preparedSpellDetails.length === 0 && (
+                      <p className="text-xs text-tavern-muted">No spells prepared yet.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                    <p className="text-xs text-tavern-muted">
+                      Choose up to {sheet.preparedSpellsCount} ({selectedPrepared.length} selected).
+                    </p>
+                    <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+                      {preparedOptions.map((s) => {
+                        const key = `picker-spell-${s.index}`;
+                        const expanded = expandedFeatures.has(key);
+                        const selected = selectedPrepared.includes(s.index);
+                        return (
+                          <div
+                            key={s.index}
+                            className={`rounded-md border ${
+                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
+                            }`}
+                          >
+                            <button
+                              onClick={() => togglePreparedSelection(s.index, sheet.preparedSpellsCount)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                            >
+                              <span className="text-tavern-text">{s.name}</span>
+                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                                Lvl {s.level} &middot; {s.school}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
+                            >
+                              {expanded ? "Hide details" : "Show details"}
+                            </button>
+                            {expanded && s.description && (
+                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                                {s.description}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button
+                        onClick={savePrepared}
+                        disabled={spellsPending}
+                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setPreparedPickerOpen(false)}
+                        disabled={spellsPending}
+                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Features */}
         {unlockedFeatures.length > 0 && (

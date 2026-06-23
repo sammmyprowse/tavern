@@ -38,6 +38,14 @@ export interface CharacterDraft {
   // Class resources. Bare skill indexes with doubled proficiency bonus — see
   // EXPERTISE_SCHEDULE for which classes/levels grant picks and how many.
   expertiseChoices: string[];
+  // Spellcasting. Spell indexes (2014 ruleset — see srd.ts). Unlike
+  // subclass/feat/expertise picks, these are freely re-settable at any time
+  // (2024 rules let prepared casters swap their list on every Long Rest), so
+  // they're plain overwritable arrays, not an append-only choice log. Slot
+  // expenditure itself is play state (PlaySheet's local PlayState), not here —
+  // it resets every Long Rest the same way current HP and hit dice used do.
+  knownCantrips: string[];
+  preparedSpells: string[];
 }
 
 export interface ExpertiseMilestone {
@@ -143,6 +151,8 @@ export const EMPTY_DRAFT: CharacterDraft = {
   orderChoice: null,
   featChoices: [],
   expertiseChoices: [],
+  knownCantrips: [],
+  preparedSpells: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -239,4 +249,65 @@ export function hpGainForLevelUp(hitDie: number, conMod: number, roll: number): 
 
 export function fixedAverageHpGain(hitDie: number): number {
   return Math.floor(hitDie / 2) + 1;
+}
+
+// Full-caster spell slot table (1st through 9th-level slots, by character
+// level) — shared by every full-caster class (Bard/Cleric/Druid/Sorcerer/
+// Wizard). The SRD's own spellcasting text only ever references this as "the
+// [Class] Features table," never as structured data, so it's hardcoded here
+// the same way proficiency bonus's formula is. Half-casters (Paladin/Ranger)
+// and Warlock's Pact Magic use different tables — not modeled yet, only
+// needed once one of those classes' pass comes up.
+const FULL_CASTER_SLOTS: number[][] = [
+  [2, 0, 0, 0, 0, 0, 0, 0, 0],
+  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 2, 1, 1],
+];
+
+// Index 0 = 1st-level slots, index 8 = 9th-level slots.
+export function fullCasterSlots(level: number): number[] {
+  return FULL_CASTER_SLOTS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// 2024 rules unified prepared-caster spell counts onto "character level +
+// spellcasting ability modifier" (minimum 1) for Wizard/Cleric/Druid,
+// replacing 2014's separate fixed tables per class. Cross-checked against the
+// SRD's own Wizard text ("choose four spells" at level 1, consistent with a
+// +3 INT modifier example: 1 + 3 = 4).
+export function preparedSpellCount(level: number, abilityMod: number): number {
+  return Math.max(1, level + abilityMod);
+}
+
+export function spellSaveDC(proficiencyBonus: number, abilityMod: number): number {
+  return 8 + proficiencyBonus + abilityMod;
+}
+
+export function spellAttackBonus(proficiencyBonus: number, abilityMod: number): number {
+  return proficiencyBonus + abilityMod;
+}
+
+// Wizard's cantrip-known progression specifically ("you know three Wizard
+// cantrips... at Wizard levels 4 and 10, you learn another"). Named for
+// Wizard explicitly rather than generically — confirm each other caster's own
+// progression from its own spellcasting text when that class's pass comes up,
+// don't assume they match this one.
+export function wizardCantripsKnown(level: number): number {
+  return level >= 10 ? 5 : level >= 4 ? 4 : 3;
 }

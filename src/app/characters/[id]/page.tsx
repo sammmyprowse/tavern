@@ -10,6 +10,7 @@ import {
   getFeaturesForClass,
   getSubclassesForClass,
   getGeneralFeatsList,
+  getSpellsForClass,
 } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
 import PlaySheet from "@/components/playsheet/PlaySheet";
@@ -66,12 +67,13 @@ export default async function CharacterPlaySheet({
 
   const isOwner = userData.user?.id === character.user_id;
   const draft = character.draft as unknown as CharacterDraft;
-  const [features, subclassOptions] = draft.classIndex
+  const [features, subclassOptions, classSpells] = draft.classIndex
     ? await Promise.all([
         getFeaturesForClass(draft.classIndex),
         getSubclassesForClass(draft.classIndex),
+        getSpellsForClass(draft.classIndex),
       ])
-    : [[], []];
+    : [[], [], []];
 
   return (
     <PlaySheet
@@ -86,6 +88,7 @@ export default async function CharacterPlaySheet({
       features={features}
       subclassOptions={subclassOptions}
       generalFeats={generalFeats}
+      classSpells={classSpells}
       isOwner={isOwner}
       isPublic={character.is_public}
     />

@@ -280,3 +280,59 @@ export async function chooseExpertise(
   revalidatePath(`/characters/${characterId}`);
   return { success: true, draft: nextDraft };
 }
+
+export interface SetSpellsResult {
+  success: boolean;
+  error?: string;
+  draft?: CharacterDraft;
+}
+
+// Unlike feat/subclass/expertise picks, known cantrips and prepared spells are
+// freely re-settable (2024 rules let prepared casters swap their list on
+// every Long Rest) — this overwrites the list wholesale rather than appending
+// to a permanent choice log. Count limits are enforced by the picker UI, not
+// re-derived here (same level of rigor as the other choice actions, which
+// don't re-validate e.g. a subclass index against the real subclass list
+// either — owner-only mutation on the player's own character, not an
+// adversarial boundary), just a sanity cap against a malformed payload.
+export async function setKnownCantrips(
+  characterId: string,
+  cantripIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(cantripIndexes) || cantripIndexes.length > 30) {
+    return { success: false, error: "Invalid cantrip list." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, knownCantrips: cantripIndexes };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+export async function setPreparedSpells(
+  characterId: string,
+  spellIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(spellIndexes) || spellIndexes.length > 60) {
+    return { success: false, error: "Invalid spell list." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, preparedSpells: spellIndexes };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}

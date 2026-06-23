@@ -3,9 +3,14 @@ import {
   abilityModifier,
   computeArmorClass,
   finalAbilityScores,
+  fullCasterSlots,
   maxHp,
+  preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
+  spellAttackBonus as computeSpellAttackBonus,
+  spellSaveDC as computeSpellSaveDC,
   sneakAttackDice,
+  wizardCantripsKnown,
   type AbilityKey,
   type CharacterDraft,
   type EquipmentItem,
@@ -65,6 +70,12 @@ export interface CharacterSheet {
   speed: number | null;
   passivePerception: number;
   sneakAttackDice: number | null;
+  spellcastingAbility: AbilityKey | null;
+  spellSaveDC: number | null;
+  spellAttackBonus: number | null;
+  spellSlots: number[];
+  cantripsKnownCount: number;
+  preparedSpellsCount: number;
 }
 
 export function buildCharacterSheet(
@@ -139,6 +150,9 @@ export function buildCharacterSheet(
     ...background.equipmentFirstOption,
   ];
 
+  const spellcastingAbility = cls.spellcastingAbility;
+  const spellAbilityMod = spellcastingAbility ? modifiers[spellcastingAbility] : 0;
+
   return {
     name: draft.name,
     level: draft.level,
@@ -161,6 +175,13 @@ export function buildCharacterSheet(
     speed: species.speed,
     passivePerception,
     sneakAttackDice: cls.index === "rogue" ? sneakAttackDice(draft.level) : null,
+    spellcastingAbility,
+    spellSaveDC: spellcastingAbility ? computeSpellSaveDC(proficiencyBonus, spellAbilityMod) : null,
+    spellAttackBonus: spellcastingAbility ? computeSpellAttackBonus(proficiencyBonus, spellAbilityMod) : null,
+    spellSlots: spellcastingAbility ? fullCasterSlots(draft.level) : [],
+    cantripsKnownCount: cls.index === "wizard" ? wizardCantripsKnown(draft.level) : 0,
+    preparedSpellsCount:
+      cls.index === "wizard" ? computePreparedSpellCount(draft.level, spellAbilityMod) : 0,
   };
 }
 

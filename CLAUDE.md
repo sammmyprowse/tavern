@@ -417,3 +417,80 @@ character, not an adversarial multi-tenant boundary).
 `character-sheet.ts`'s skill bonus calc multiplies proficiency bonus by 2 when
 both are true. Skills list shows `••` for Expertise vs `•` for plain
 proficiency so the two are visually distinct, not just numerically.
+
+## Pending-choice picker UX — two improvements applied to all pickers
+User feedback after Rogue shipped: pickers should explain what each option
+actually does, not just name it, and subclass should be prominent on the
+sheet once chosen.
+
+**Subclass picker now shows the full feature list, not just the one-line
+summary.** Changed from "click a card to immediately choose it" to a
+select-then-confirm flow (matching the Feat picker's existing pattern):
+clicking a subclass card expands its feature list (name + level, each
+independently expandable to full description via the same `expandedFeatures`
+Set/`toggleFeature` the Features section already uses, just with a
+`picker-${subclassIndex}-${featureName}` key prefix to stay collision-free), a
+separate "Confirm {name}" button actually commits it. This was a deliberate
+upgrade, not just decoration — once more than one subclass option exists per
+class (the open future homebrew question from Phase 1), immediate-commit-on-
+click would risk locking in a permanent choice before reading what it does.
+
+**Header now shows "{ClassName} ({SubclassName})" as a prominent subtitle**
+directly under the character name (gold-light, bold — between the name and
+the smaller "Level X species — background" line), e.g. "Fighter (Champion)".
+Shows just the class name before a subclass is chosen. The smaller line below
+no longer repeats the class name, to avoid showing it twice.
+
+## Class resources — Wizard spellcasting
+Second class-by-class pass (after Rogue), and the first to need real
+spellcasting infrastructure — built generically so Sorcerer/Cleric's passes
+can reuse it rather than duplicating per class.
+
+**`ClassOption.spellcastingAbility: AbilityKey | null`** (`src/lib/srd.ts`) —
+parsed from `classes.data.spellcasting.spellcasting_ability.index`, null for
+non-casters. Generic by design, not Wizard-specific.
+
+**Hardcoded math in `character.ts`** (same reasoning as every other hardcoded
+table in this app — the SRD's spellcasting text references "the [Class]
+Features table" but never ships it as structured data):
+- `fullCasterSlots(level)` — the standard 9-level full-caster slot table,
+  shared by Bard/Cleric/Druid/Sorcerer/Wizard alike. Half-casters and
+  Warlock's Pact Magic use different tables, not modeled yet.
+- `preparedSpellCount(level, abilityMod)` = `max(1, level + abilityMod)` —
+  the 2024 rules' unified prepared-caster formula (replaces 2014's separate
+  fixed tables for Wizard/Cleric/Druid). Cross-checked against the SRD's own
+  Wizard text, which uses "choose four spells" as its level-1 example —
+  consistent with a +3 INT modifier (1 + 3 = 4).
+- `spellSaveDC`/`spellAttackBonus` — standard formulas, no surprises.
+- `wizardCantripsKnown(level)` — deliberately NOT named generically. Confirmed
+  from Wizard's own spellcasting text (3 at level 1, +1 at level 4, +1 at
+  level 10) — don't assume Sorcerer/Cleric match this without checking each
+  one's own text when that class's pass comes up.
+
+**`getSpellsForClass(classIndex)`** (`src/lib/srd.ts`) reads the `spells`
+table — 2014 ruleset only (2024 SRD hasn't published spells yet; close to but
+not guaranteed byte-identical to 2024 spell text). No `class_index` column
+here unlike features/subclasses, so class membership is checked against the
+nested `data.classes[]` array client-side after fetching the whole ruleset,
+not pushed down as a Postgres filter.
+
+**Known cantrips and prepared spells are NOT a permanent choice log** like
+feats/subclass/Expertise — 2024 rules let prepared casters swap their list on
+every Long Rest, so `CharacterDraft.knownCantrips`/`preparedSpells` are plain
+overwritable `string[]`, and `setKnownCantrips`/`setPreparedSpells`
+(`src/app/characters/actions.ts`) just replace the array wholesale rather than
+append-validate like `chooseFeat`/`chooseExpertise` do.
+
+**Spell slot expenditure is play state, not draft state** — lives in
+`PlaySheet`'s local `PlayState.expendedSlots: number[]` (localStorage), not
+`CharacterDraft` (Supabase), for the same reason current HP and hit-dice-used
+already are: it's moment-to-moment combat bookkeeping that resets every Long
+Rest, not a permanent build choice. `longRest()` now also clears
+`expendedSlots` alongside its existing HP/death-save resets.
+
+Tested live with INT 16 (not the builder's default +0, deliberately bumped via
+SQL for a meaningful test): Spell Save DC 13, Spell Attack +5, 2 level-1 slots,
+3 cantrips known, 4 prepared spells — every number matched the formulas
+exactly. Verified slot expend/restore and Long Rest, persistence of cantrips/
+prepared spells across reload, and that the prepared-spell picker correctly
+excludes spells above the character's available slot level.

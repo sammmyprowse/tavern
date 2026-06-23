@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { ArmorClassData } from "./character";
+import type { AbilityKey, ArmorClassData } from "./character";
 
 export interface SpeciesOption {
   index: string;
@@ -37,6 +37,9 @@ export interface ClassOption {
   proficiencyChoices: ProficiencyChoice[];
   startingEquipmentDesc: string | null;
   startingEquipmentFirstOption: EquipmentBundleItem[];
+  // null for non-casters. Generic (not Wizard-specific) so the same field
+  // works once Sorcerer/Cleric's spellcasting passes happen.
+  spellcastingAbility: AbilityKey | null;
 }
 
 export interface EquipmentBundleItem {
@@ -202,6 +205,7 @@ export async function getClassesList(): Promise<ClassOption[]> {
           from?: { options?: { item?: { index: string; name: string } }[] };
         }[];
         starting_equipment_options?: { desc?: string; from?: { options?: unknown[] } }[];
+        spellcasting?: { spellcasting_ability?: { index?: string } };
       };
       return {
         index: c.index,
@@ -218,6 +222,7 @@ export async function getClassesList(): Promise<ClassOption[]> {
         })),
         startingEquipmentDesc: d.starting_equipment_options?.[0]?.desc ?? null,
         startingEquipmentFirstOption: parseEquipmentOptions(d.starting_equipment_options?.[0]),
+        spellcastingAbility: (d.spellcasting?.spellcasting_ability?.index as AbilityKey) ?? null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -307,6 +312,47 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
     });
   }
   return map;
+}
+
+export interface SpellOption {
+  index: string;
+  name: string;
+  level: number;
+  school: string | null;
+  concentration: boolean;
+  ritual: boolean;
+  description: string | null;
+}
+
+// Spell data only exists in the 2014 ruleset (2024 SRD hasn't published
+// spells yet) — close to, but not guaranteed byte-identical to, 2024 spell
+// text. Unlike features/subclasses, there's no `class_index` column here, so
+// class membership is checked against the nested `data.classes[]` array
+// client-side rather than pushed down as a Postgres filter.
+export async function getSpellsForClass(classIndex: string): Promise<SpellOption[]> {
+  const { data } = await supabase
+    .from("spells")
+    .select("index, name, level, school, concentration, ritual, data")
+    .eq("ruleset", "2014");
+
+  return (data ?? [])
+    .filter((s) => {
+      const classes = (s.data as { classes?: { index: string }[] }).classes ?? [];
+      return classes.some((c) => c.index === classIndex);
+    })
+    .map((s) => {
+      const d = s.data as { desc?: string[] };
+      return {
+        index: s.index,
+        name: s.name,
+        level: s.level ?? 0,
+        school: s.school,
+        concentration: s.concentration ?? false,
+        ritual: s.ritual ?? false,
+        description: d.desc ? d.desc.join("\n\n") : null,
+      };
+    })
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
 export interface ClassFeature {
