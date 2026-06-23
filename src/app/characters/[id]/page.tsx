@@ -9,6 +9,7 @@ import {
   getEquipmentLookup,
   getFeaturesForClass,
   getSubclassesForClass,
+  getGeneralFeatsList,
 } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
 import PlaySheet from "@/components/playsheet/PlaySheet";
@@ -21,17 +22,27 @@ export default async function CharacterPlaySheet({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: userData }, { data: character }, species, subspecies, classes, backgrounds, skills, equipment] =
-    await Promise.all([
-      supabase.auth.getUser(),
-      supabase.from("characters").select("id, user_id, name, draft, is_public").eq("id", id).maybeSingle(),
-      getSpeciesList(),
-      getSubspeciesList(),
-      getClassesList(),
-      getBackgroundsList(),
-      getSkillsList(),
-      getEquipmentLookup(),
-    ]);
+  const [
+    { data: userData },
+    { data: character },
+    species,
+    subspecies,
+    classes,
+    backgrounds,
+    skills,
+    equipment,
+    generalFeats,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("characters").select("id, user_id, name, draft, is_public").eq("id", id).maybeSingle(),
+    getSpeciesList(),
+    getSubspeciesList(),
+    getClassesList(),
+    getBackgroundsList(),
+    getSkillsList(),
+    getEquipmentLookup(),
+    getGeneralFeatsList(),
+  ]);
 
   if (!character) {
     return (
@@ -74,6 +85,7 @@ export default async function CharacterPlaySheet({
       equipment={Array.from(equipment.values())}
       features={features}
       subclassOptions={subclassOptions}
+      generalFeats={generalFeats}
       isOwner={isOwner}
       isPublic={character.is_public}
     />

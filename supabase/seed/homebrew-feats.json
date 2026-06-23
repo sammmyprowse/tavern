@@ -1,0 +1,122 @@
+[
+  {
+    "index": "hardened",
+    "name": "Hardened",
+    "description": "Your hit point maximum increases by 2, and increases by 2 again every time you gain a level thereafter.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "bulwark",
+    "name": "Bulwark",
+    "description": "When a creature within 5 feet of you makes an attack roll against a target other than you, you can make an opportunity attack against that creature. A creature you hit with an opportunity attack has its speed reduced to 0 until the start of its next turn.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "deadeye",
+    "name": "Deadeye",
+    "description": "Attacking at long range with a ranged weapon no longer imposes Disadvantage on your attack roll, and you ignore the benefit of Half and Three-Quarters Cover on your target. Once per turn, before making a ranged attack roll with a weapon, you can choose to take a -5 penalty to the roll; if the attack hits, you deal an extra 10 damage.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "brutal-striker",
+    "name": "Brutal Striker",
+    "description": "Once per turn, before making a melee attack roll with a Heavy weapon, you can choose to take a -5 penalty to the roll; if the attack hits, you deal an extra 10 damage. When you score a Critical Hit with a melee weapon, you can make one additional weapon attack as part of the same action.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "fleet-of-foot",
+    "name": "Fleet of Foot",
+    "description": "Your Speed increases by 10 feet. Difficult terrain no longer costs you extra movement when you take the Dash action. If you make a melee attack against a creature, that creature can't make an Opportunity Attack against you for the rest of the turn when you move away from it.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "fortunate",
+    "name": "Fortunate",
+    "description": "You have 3 Luck Points. Whenever you make an attack roll, an ability check, or a saving throw, or whenever a creature makes an attack roll against you, you can spend 1 Luck Point to roll a d20 and choose which of the two rolls to use. You can spend only 1 Luck Point per roll, and you must choose to spend it before the roll's outcome is determined. You regain all spent Luck Points when you finish a Long Rest.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "reach-fighter",
+    "name": "Reach Fighter",
+    "description": "While wielding a weapon with the Reach property, you can make an Opportunity Attack against a creature that enters your reach, not just one that leaves it. Immediately after you hit a creature with such a weapon on your turn, you can make an additional attack against the same creature with the weapon's butt or haft, dealing 1d4 Bludgeoning damage on a hit.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "battle-caster",
+    "name": "Battle Caster",
+    "description": "You have Advantage on saving throws to maintain Concentration on a spell. You can perform the somatic components of spells even when your hands are full with weapons or a shield. When a creature provokes an Opportunity Attack from you, you can cast a spell with a casting time of 1 action at that creature instead of making the attack, provided the spell targets only that creature and has a range of 5 feet or requires a melee spell attack.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "steadfast",
+    "name": "Steadfast",
+    "description": "Choose Strength, Dexterity, Constitution, Intelligence, Wisdom, or Charisma. You gain proficiency in saving throws using the chosen ability. If you already have this proficiency, you instead gain Advantage on saving throws using the chosen ability against being Frightened.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "mind-over-matter",
+    "name": "Mind Over Matter",
+    "description": "As a Bonus Action, you can shove a creature within 30 feet of you with a flick of unseen force, or lightly push, pull, or lift an unattended object weighing up to 20 pounds. A creature targeted this way must succeed on a Strength saving throw (DC 8 plus your proficiency bonus and the higher of your Intelligence, Wisdom, or Charisma modifier) or be pushed 5 feet in a direction of your choice. You can use this feature a number of times equal to your proficiency bonus, regaining all uses when you finish a Long Rest.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "umbral-step",
+    "name": "Umbral Step",
+    "description": "You can take the Hide action as a Bonus Action. While you are Hidden, missing with a ranged attack doesn't reveal your position. You have no penalty to Dexterity (Stealth) checks made in dim light.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "battlefield-medic",
+    "name": "Battlefield Medic",
+    "description": "When you use a Healer's Kit to stabilize a creature, that creature also regains 1 Hit Point. As an action, you can spend one use of a Healer's Kit to tend to a creature within 5 feet of you, restoring Hit Points to it equal to 1d6 plus your proficiency bonus plus the creature's number of Hit Dice. A creature can benefit from this feature only once per Long Rest.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "twin-blade",
+    "name": "Twin Blade",
+    "description": "While you are wielding two melee weapons, you gain a +1 bonus to Armor Class, and you can use any one-handed Melee weapons (not just ones with the Light property) when fighting with two weapons. You can draw or stow two one-handed weapons at once, instead of only one.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "spellbreaker",
+    "name": "Spellbreaker",
+    "description": "When a creature within 5 feet of you casts a spell, you can make an Opportunity Attack against it. You have Advantage on saving throws against spells cast by a creature within 5 feet of you. When you damage a creature that is concentrating on a spell, that creature has Disadvantage on the saving throw it makes to maintain Concentration.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "stunning-force",
+    "name": "Stunning Force",
+    "description": "Once per turn when you hit a creature with a weapon that deals Bludgeoning damage, you can push that creature up to 5 feet directly away from you. When you score a Critical Hit against a creature with a weapon that deals Bludgeoning damage, that creature has Disadvantage on the next attack roll it makes before the end of its next turn.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "vital-strike",
+    "name": "Vital Strike",
+    "description": "Once per turn when you hit a creature with a weapon that deals Piercing damage, you can reroll one of the weapon's damage dice, using the new roll. When you score a Critical Hit with a weapon that deals Piercing damage, roll one additional damage die.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "shieldwall-veteran",
+    "name": "Shieldwall Veteran",
+    "description": "While you are wielding a Shield, you can use a Bonus Action to shove a creature within 5 feet of you, knocking it Prone or pushing it 5 feet away (your choice), provided the creature is no more than one size larger than you. While wielding a Shield, you add its AC bonus to Dexterity saving throws against effects that target only you.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "sharp-eyed",
+    "name": "Sharp-Eyed",
+    "description": "Your passive Wisdom (Perception) and passive Wisdom (Investigation) scores each increase by 5. You can read lips when you can clearly see a creature's mouth, and you discern minor details others might miss, gaining Advantage on Wisdom (Perception) checks made to spot a creature that's Hidden.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "warding-instinct",
+    "name": "Warding Instinct",
+    "description": "When a creature you can see targets you with an attack, you can use your Reaction to add your proficiency bonus to your Armor Class against that attack, possibly causing it to miss. You can use this feature a number of times equal to your proficiency bonus, regaining all uses when you finish a Long Rest.",
+    "prerequisites": { "minimum_level": 4 }
+  },
+  {
+    "index": "skirmishers-instinct",
+    "name": "Skirmisher's Instinct",
+    "description": "When you make a ranged attack against a creature within 30 feet of you, you don't have Disadvantage on the attack roll for the target being within 5 feet of a hostile creature other than you. After you make a ranged attack as part of the Attack action, you can move up to half your Speed without provoking Opportunity Attacks from the creature you targeted.",
+    "prerequisites": { "minimum_level": 4 }
+  }
+]

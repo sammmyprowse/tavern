@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
-import { MAX_LEVEL, ORDER_CHOICES, type CharacterDraft } from "@/lib/character";
+import {
+  MAX_LEVEL,
+  ORDER_CHOICES,
+  ASI_LEVELS,
+  type AbilityBonusChoice,
+  type CharacterDraft,
+} from "@/lib/character";
 import type { Json } from "@/lib/database.types";
 
 // Shared by every action below that mutates a single owned character's draft:
@@ -163,6 +169,61 @@ export async function chooseOriginOrder(
   }
 
   const nextDraft: CharacterDraft = { ...draft, orderChoice: choiceKey };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+export interface ChooseFeatResult {
+  success: boolean;
+  error?: string;
+  draft?: CharacterDraft;
+}
+
+function isValidAsiBonus(bonus: AbilityBonusChoice): boolean {
+  if (bonus.mode !== "two") return false;
+  if (bonus.plusTwo) return bonus.plusOne.length === 0;
+  return bonus.plusOne.length === 2 && bonus.plusOne[0] !== bonus.plusOne[1];
+}
+
+export async function chooseFeat(
+  characterId: string,
+  level: number,
+  featIndex: string,
+  abilityBonus: AbilityBonusChoice | null,
+): Promise<ChooseFeatResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!ASI_LEVELS.includes(level) || level > draft.level) {
+    return { success: false, error: "Not a feat choice you can make yet." };
+  }
+  if (draft.featChoices.some((fc) => fc.level === level)) {
+    return { success: false, error: "Already chose a feat for that level." };
+  }
+
+  const isAsi = featIndex === "ability-score-improvement";
+  if (isAsi) {
+    if (!abilityBonus || !isValidAsiBonus(abilityBonus)) {
+      return { success: false, error: "Invalid ability score choice." };
+    }
+  } else {
+    if (abilityBonus) {
+      return { success: false, error: "Invalid choice." };
+    }
+    if (draft.featChoices.some((fc) => fc.featIndex === featIndex)) {
+      return { success: false, error: "You already have that feat." };
+    }
+  }
+
+  const nextDraft: CharacterDraft = {
+    ...draft,
+    featChoices: [...draft.featChoices, { level, featIndex, abilityBonus }],
+  };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };

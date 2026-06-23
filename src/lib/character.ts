@@ -33,7 +33,24 @@ export interface CharacterDraft {
   // Cleric's Divine Order / Druid's Primal Order pick (key into ORDER_CHOICES),
   // unrelated to subclass — available at level 1, only for those two classes.
   orderChoice: string | null;
+  // Leveling (Phase 2). One entry per resolved ASI_LEVELS milestone.
+  featChoices: FeatChoice[];
 }
+
+export interface FeatChoice {
+  level: number;
+  featIndex: string;
+  // Only set when featIndex === "ability-score-improvement" — every other
+  // feat is informational/listed only, same as class and subclass features.
+  abilityBonus: AbilityBonusChoice | null;
+}
+
+// 2024 rules unified every class onto the same General Feat schedule (no more
+// of 2014's class-specific bonus ASIs for Fighter/Rogue) — confirmed against
+// the SRD feature data, which only tags level 4 explicitly per class but the
+// repeating 4/8/12/16/19 pattern itself isn't structured data, so it's
+// hardcoded here the same way proficiency bonus's formula is.
+export const ASI_LEVELS = [4, 8, 12, 16, 19];
 
 export interface OrderChoiceOption {
   key: string;
@@ -94,6 +111,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   hpRolls: [],
   subclassIndex: null,
   orderChoice: null,
+  featChoices: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -110,17 +128,29 @@ export function proficiencyBonusForLevel(level: number): number {
   return Math.ceil(level / 4) + 1;
 }
 
+// Accepts every bonus source that applies (background's choice, plus one per
+// Ability Score Improvement feat taken) since a character can take ASI more
+// than once across its ASI_LEVELS milestones. Each final score is capped at
+// 20, the real 5e rule ("can't increase an ability score above 20") — without
+// this, stacking background + multiple ASI picks could push a score past it.
 export function finalAbilityScores(
   base: AbilityScores,
-  bonus: AbilityBonusChoice | null,
+  bonuses: (AbilityBonusChoice | null)[],
 ): AbilityScores {
   const result = { ...base };
-  if (!bonus) return result;
-  if (bonus.mode === "two" && bonus.plusTwo) {
-    result[bonus.plusTwo] = (result[bonus.plusTwo] ?? 0) + 2;
+  for (const bonus of bonuses) {
+    if (!bonus) continue;
+    if (bonus.mode === "two" && bonus.plusTwo) {
+      result[bonus.plusTwo] = (result[bonus.plusTwo] ?? 0) + 2;
+    }
+    for (const ability of bonus.plusOne) {
+      result[ability] = (result[ability] ?? 0) + 1;
+    }
   }
-  for (const ability of bonus.plusOne) {
-    result[ability] = (result[ability] ?? 0) + 1;
+  for (const ability of ABILITY_ORDER) {
+    if (result[ability] != null) {
+      result[ability] = Math.min(20, result[ability]);
+    }
   }
   return result;
 }

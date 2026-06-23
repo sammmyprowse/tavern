@@ -330,3 +330,53 @@ Phase 0 established. Cleric/Druid's Order choice text is SRD prose split into tw
 selectable options (verbatim, not paraphrased) since the SRD only stores it as one
 prose paragraph naming two sub-choices, not structured data — see `ORDER_CHOICES`
 in `src/lib/character.ts`.
+
+## Leveling (Phase 2) — ASI/Feats at levels 4/8/12/16/19
+**Content-gap decision — different outcome than backgrounds/subclass:** the free
+SRD only has 2 general feats (Ability Score Improvement, Grappler) vs ~20+ in the
+real PHB. The user explicitly asked for the real PHB feats reproduced; that was
+declined (regular copyright, no "personal use" exception for reproducing a whole
+mechanically-dense rules chapter, unlike the openly-licensed SRD) — explained to
+them directly rather than silently substituting something else. They chose, when
+asked, a full original homebrew set instead: 20 feats at PHB-comparable breadth
+and power (`supabase/seed/homebrew-feats.json`, `ruleset='homebrew'`,
+`type='general'`), deliberately written with **no flat ability-score-increase
+clauses** of their own — that mechanic is reserved for Ability Score Improvement
+specifically, the one feat whose entire purpose is the numeric stat change. Every
+other feat (Grappler included) is informational/listed only, same treatment as
+class and subclass features — consistent with the rest of the app's existing
+"real rule, text shown, not yet mechanically simulated" boundary (Fighting
+Styles, Rage, etc.), not a new gap introduced by this phase.
+
+`ASI_LEVELS = [4, 8, 12, 16, 19]`, hardcoded — 2024 rules unified every class onto
+this same schedule (no more 2014-style bonus ASIs for Fighter/Rogue at different
+levels), but like spell slots this repeating pattern isn't structured SRD data;
+only the level-4 instance is tagged per class in the `features` table.
+
+`CharacterDraft.featChoices: FeatChoice[]` — one entry per resolved level
+(`{level, featIndex, abilityBonus}`). `finalAbilityScores` was generalized from a
+single optional bonus to an array (`(AbilityBonusChoice | null)[]`), since a
+character can take Ability Score Improvement more than once across different ASI
+levels and every instance must stack — background's bonus plus one per ASI pick,
+all applied in `character-sheet.ts`. Each final score is clamped to 20 (the real
+rule), which matters once background + multiple ASI picks could otherwise stack
+past it; the feat-choice picker UI also proactively excludes already-maxed
+abilities from its dropdowns so a choice never gets "wasted" on a no-op +1/+2.
+
+**Same duplicate-features bug as Phase 1, different cause:** the base `features`
+table has a generic "Ability Score Improvement" marker feature at level 4 for
+every class (informational placeholder, present regardless of what's actually
+chosen). Once that level's choice resolves, the real pick (which might be
+Grappler, a homebrew feat, or ASI itself) needs to replace that generic marker,
+not sit next to it. Fixed in `PlaySheet.tsx` by dropping any base feature named
+exactly "Ability Score Improvement" whose level has an entry in `featChoices` —
+narrower than Phase 1's name-based dedupe (that was about incidental overlap with
+subclass content; this is about a generic placeholder always present at level 4
+regardless of class or choice). **Any future per-level "you get a choice here"
+generic marker in the base features data will hit this same bug shape** — drop
+the marker once that level's real choice is resolved, don't just merge and dedupe
+by name.
+
+Most feats can only be taken once; Ability Score Improvement is the explicit
+exception (its own SRD text says so) and is the only one excluded from the
+already-taken filter in both the picker UI and `chooseFeat`'s server-side check.

@@ -379,6 +379,36 @@ export async function getSubclassesForClass(classIndex: string): Promise<Subclas
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export interface FeatOption {
+  index: string;
+  name: string;
+  description: string | null;
+  isHomebrew: boolean;
+}
+
+export async function getGeneralFeatsList(): Promise<FeatOption[]> {
+  const { data } = await supabase
+    .from("feats")
+    .select("index, name, ruleset, data")
+    .eq("type", "general")
+    .in("ruleset", ["2024", "homebrew"]);
+
+  return (data ?? [])
+    .map((f) => {
+      const d = f.data as { description?: string };
+      return {
+        index: f.index,
+        name: f.name,
+        description: d.description ?? null,
+        isHomebrew: f.ruleset === "homebrew",
+      };
+    })
+    .sort((a, b) => {
+      if (a.isHomebrew !== b.isHomebrew) return a.isHomebrew ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
 export async function getSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")

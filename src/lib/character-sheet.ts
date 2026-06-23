@@ -75,7 +75,13 @@ export function buildCharacterSheet(
 
   if (!species || !cls || !background) return null;
 
-  const rawScores = finalAbilityScores(draft.baseAbilityScores, draft.backgroundAbilityBonus);
+  const asiBonuses = draft.featChoices
+    .filter((fc) => fc.featIndex === "ability-score-improvement")
+    .map((fc) => fc.abilityBonus);
+  const rawScores = finalAbilityScores(draft.baseAbilityScores, [
+    draft.backgroundAbilityBonus,
+    ...asiBonuses,
+  ]);
   const finalScores = {} as Record<AbilityKey, number>;
   const modifiers = {} as Record<AbilityKey, number>;
   for (const ability of ABILITY_ORDER) {

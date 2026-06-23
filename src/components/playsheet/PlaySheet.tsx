@@ -9,11 +9,14 @@ import {
   fixedAverageHpGain,
   MAX_LEVEL,
   ORDER_CHOICES,
+  ASI_LEVELS,
+  type AbilityKey,
+  type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
 import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
-import { levelUpCharacter, chooseSubclass, chooseOriginOrder } from "@/app/characters/actions";
+import { levelUpCharacter, chooseSubclass, chooseOriginOrder, chooseFeat } from "@/app/characters/actions";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -23,6 +26,7 @@ import type {
   EquipmentLookupItem,
   ClassFeature,
   SubclassOption,
+  FeatOption,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
@@ -38,6 +42,7 @@ interface PlaySheetProps {
   equipment: EquipmentLookupItem[];
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
+  generalFeats: FeatOption[];
   isOwner: boolean;
   isPublic: boolean;
 }
@@ -63,6 +68,7 @@ export default function PlaySheet({
   equipment,
   features,
   subclassOptions,
+  generalFeats,
   isOwner,
   isPublic,
 }: PlaySheetProps) {
@@ -80,6 +86,10 @@ export default function PlaySheet({
   const [subclassPending, setSubclassPending] = useState(false);
   const [orderPending, setOrderPending] = useState(false);
   const [choiceError, setChoiceError] = useState<string | null>(null);
+  const [featPickerLevel, setFeatPickerLevel] = useState<number | null>(null);
+  const [selectedFeatIndex, setSelectedFeatIndex] = useState<string | null>(null);
+  const [asiBonus, setAsiBonus] = useState<AbilityBonusChoice | null>(null);
+  const [featPending, setFeatPending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -162,7 +172,31 @@ export default function PlaySheet({
         }))
     : [];
 
-  const unlockedFeatures = [...features, ...subclassFeatures]
+  const pendingAsiLevels = ASI_LEVELS.filter(
+    (lvl) => lvl <= sheet.level && !currentDraft.featChoices.some((fc) => fc.level === lvl),
+  );
+  const takenFeatIndexes = new Set(currentDraft.featChoices.map((fc) => fc.featIndex));
+  const featFeatures: ClassFeature[] = currentDraft.featChoices.map((fc) => {
+    const opt = generalFeats.find((f) => f.index === fc.featIndex);
+    return {
+      index: `feat-${fc.featIndex}-${fc.level}`,
+      name: opt?.name ?? fc.featIndex,
+      level: fc.level,
+      description: opt?.description ?? null,
+    };
+  });
+
+  // The base class features table has a generic "Ability Score Improvement"
+  // marker at level 4 for every class (it doesn't repeat at 8/12/16/19 in that
+  // data, just the one mention) — once that level's choice is actually
+  // resolved below, drop the generic marker so it doesn't sit next to the
+  // real pick (which might not even be Ability Score Improvement).
+  const resolvedFeatLevels = new Set(currentDraft.featChoices.map((fc) => fc.level));
+  const baseFeaturesWithoutResolvedAsi = features.filter(
+    (f) => !(f.name === "Ability Score Improvement" && resolvedFeatLevels.has(f.level)),
+  );
+
+  const unlockedFeatures = [...baseFeaturesWithoutResolvedAsi, ...subclassFeatures, ...featFeatures]
     .filter((f) => f.level <= sheet.level)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
@@ -327,6 +361,73 @@ export default function PlaySheet({
       setChoiceError(result.error ?? "Couldn't save choice.");
     }
     setOrderPending(false);
+  }
+
+  function openFeatPicker(level: number) {
+    setFeatPickerLevel(level);
+    setSelectedFeatIndex(null);
+    setAsiBonus(null);
+    setChoiceError(null);
+  }
+
+  function cancelFeatPicker() {
+    setFeatPickerLevel(null);
+    setSelectedFeatIndex(null);
+    setAsiBonus(null);
+    setChoiceError(null);
+  }
+
+  function availableAbilities(exclude: AbilityKey[] = []): AbilityKey[] {
+    return ABILITY_ORDER.filter(
+      (a) => (sheet!.finalScores[a] ?? 0) < 20 && !exclude.includes(a),
+    );
+  }
+
+  function selectFeatOption(featIndex: string) {
+    setSelectedFeatIndex(featIndex);
+    if (featIndex === "ability-score-improvement") {
+      const first = availableAbilities()[0];
+      setAsiBonus(first ? { mode: "two", plusTwo: first, plusOne: [] } : null);
+    } else {
+      setAsiBonus(null);
+    }
+  }
+
+  function setAsiSplitMode(mode: "plus-two" | "plus-one-each") {
+    if (mode === "plus-two") {
+      const first = availableAbilities()[0];
+      setAsiBonus(first ? { mode: "two", plusTwo: first, plusOne: [] } : null);
+    } else {
+      const [a, b] = availableAbilities();
+      setAsiBonus(a && b ? { mode: "two", plusTwo: undefined, plusOne: [a, b] } : null);
+    }
+  }
+
+  function setAsiPlusTwoAbility(ability: AbilityKey) {
+    setAsiBonus({ mode: "two", plusTwo: ability, plusOne: [] });
+  }
+
+  function setAsiPlusOneAt(slot: 0 | 1, ability: AbilityKey) {
+    setAsiBonus((prev) => {
+      if (!prev || prev.plusTwo) return prev;
+      const next = [...prev.plusOne];
+      next[slot] = ability;
+      return { mode: "two", plusTwo: undefined, plusOne: next };
+    });
+  }
+
+  async function confirmFeatChoice() {
+    if (featPickerLevel == null || !selectedFeatIndex) return;
+    setFeatPending(true);
+    setChoiceError(null);
+    const result = await chooseFeat(characterId, featPickerLevel, selectedFeatIndex, asiBonus);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      cancelFeatPicker();
+    } else {
+      setChoiceError(result.error ?? "Couldn't choose feat.");
+    }
+    setFeatPending(false);
   }
 
   function toggleFeature(index: string) {
@@ -496,6 +597,148 @@ export default function PlaySheet({
             </div>
           </div>
         )}
+
+        {isOwner &&
+          pendingAsiLevels.map((lvl) => (
+            <div key={lvl} className="mt-4">
+              {featPickerLevel !== lvl ? (
+                <button
+                  onClick={() => openFeatPicker(lvl)}
+                  className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+                >
+                  Choose a Feat (Level {lvl})
+                </button>
+              ) : (
+                <div className="rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+                  <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+                    Choose a Feat — Level {lvl}
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {generalFeats
+                      .filter(
+                        (f) => f.index === "ability-score-improvement" || !takenFeatIndexes.has(f.index),
+                      )
+                      .map((f) => (
+                        <button
+                          key={f.index}
+                          onClick={() => selectFeatOption(f.index)}
+                          className={`rounded-md border p-3 text-left text-sm transition-colors ${
+                            selectedFeatIndex === f.index
+                              ? "border-tavern-gold bg-tavern-bg"
+                              : "border-tavern-border hover:border-tavern-gold-light"
+                          }`}
+                        >
+                          <span className="font-heading font-bold text-tavern-text">{f.name}</span>
+                          {f.isHomebrew && (
+                            <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
+                              Homebrew
+                            </span>
+                          )}
+                          {f.description && (
+                            <p className="mt-1 text-xs text-tavern-muted">{f.description}</p>
+                          )}
+                        </button>
+                      ))}
+                  </div>
+
+                  {selectedFeatIndex === "ability-score-improvement" && asiBonus && (
+                    <div className="mt-4 rounded-md border border-tavern-border bg-tavern-bg p-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setAsiSplitMode("plus-two")}
+                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                            asiBonus.plusTwo
+                              ? "border-tavern-gold text-tavern-text"
+                              : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                          }`}
+                        >
+                          +2 to one
+                        </button>
+                        <button
+                          onClick={() => setAsiSplitMode("plus-one-each")}
+                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                            !asiBonus.plusTwo
+                              ? "border-tavern-gold text-tavern-text"
+                              : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                          }`}
+                        >
+                          +1 to two
+                        </button>
+                      </div>
+                      {asiBonus.plusTwo ? (
+                        <label className="mt-3 block text-sm text-tavern-muted">
+                          +2 to{" "}
+                          <select
+                            value={asiBonus.plusTwo}
+                            onChange={(e) => setAsiPlusTwoAbility(e.target.value as AbilityKey)}
+                            className="ml-1 rounded-md border border-tavern-border bg-tavern-card px-2 py-1 text-tavern-text uppercase"
+                          >
+                            {availableAbilities().map((a) => (
+                              <option key={a} value={a}>
+                                {a.toUpperCase()}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-4">
+                          <label className="text-sm text-tavern-muted">
+                            +1 to{" "}
+                            <select
+                              value={asiBonus.plusOne[0]}
+                              onChange={(e) => setAsiPlusOneAt(0, e.target.value as AbilityKey)}
+                              className="ml-1 rounded-md border border-tavern-border bg-tavern-card px-2 py-1 text-tavern-text uppercase"
+                            >
+                              {availableAbilities([asiBonus.plusOne[1]]).map((a) => (
+                                <option key={a} value={a}>
+                                  {a.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-sm text-tavern-muted">
+                            +1 to{" "}
+                            <select
+                              value={asiBonus.plusOne[1]}
+                              onChange={(e) => setAsiPlusOneAt(1, e.target.value as AbilityKey)}
+                              className="ml-1 rounded-md border border-tavern-border bg-tavern-card px-2 py-1 text-tavern-text uppercase"
+                            >
+                              {availableAbilities([asiBonus.plusOne[0]]).map((a) => (
+                                <option key={a} value={a}>
+                                  {a.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      onClick={confirmFeatChoice}
+                      disabled={
+                        featPending ||
+                        !selectedFeatIndex ||
+                        (selectedFeatIndex === "ability-score-improvement" && !asiBonus)
+                      }
+                      className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={cancelFeatPicker}
+                      disabled={featPending}
+                      className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
 
         {choiceError && <p className="mt-1 text-xs text-tavern-oxblood-light">{choiceError}</p>}
 
