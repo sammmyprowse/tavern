@@ -20,6 +20,12 @@ export default async function Header() {
           >
             My Characters
           </Link>
+          <Link
+            href="/parties"
+            className="font-heading text-xs tracking-widest text-tavern-muted uppercase hover:text-tavern-gold-light"
+          >
+            Parties
+          </Link>
           <span className="text-sm text-tavern-muted">{data.user.email}</span>
           <form action={signOut}>
             <button

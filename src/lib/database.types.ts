@@ -449,6 +449,60 @@ export type Database = {
         }
         Relationships: []
       }
+      parties: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      party_characters: {
+        Row: {
+          added_at: string
+          character_id: string
+          party_id: string
+        }
+        Insert: {
+          added_at?: string
+          character_id: string
+          party_id: string
+        }
+        Update: {
+          added_at?: string
+          character_id?: string
+          party_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "party_characters_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "party_characters_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       poisons: {
         Row: {
           created_at: string

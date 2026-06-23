@@ -30,6 +30,10 @@ export default async function Characters() {
     supabase
       .from("characters")
       .select("id, name, draft, created_at, is_public")
+      // RLS also permits seeing public/party-shared characters that aren't mine —
+      // "My Characters" specifically means owned by me, so filter explicitly
+      // rather than relying on RLS visibility alone.
+      .eq("user_id", userData.user.id)
       .order("created_at", { ascending: false }),
     getSpeciesList(),
     getSubspeciesList(),

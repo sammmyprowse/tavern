@@ -180,3 +180,33 @@ rolls/HP/equip-toggle all function normally for them. This is safe because none 
 writes back to Supabase; the play sheet's entire interactive state is
 client-side-only localStorage (see "Play sheet" above), so a stranger playing with
 someone else's public character can't affect the owner's actual data.
+
+## Parties (`/parties`, `/parties/[id]`, `src/app/parties/actions.ts`)
+A party is a named group whose own UUID is its share link (same token model as
+character sharing). `parties` (id, name, created_by) + `party_characters` join table
+(party_id, character_id) — many-to-many, a character can be in multiple parties.
+
+Adding a THIRD permissive SELECT policy on `characters` ("in a party → visible to
+anyone", `exists` against `party_characters`) makes party membership work via the
+*existing* character play-sheet route with no changes needed there — visibility is
+just "owner OR public OR party-member," all three OR'd by Postgres automatically.
+Write access (insert/update/delete on `characters` itself) is untouched by any of
+this; you can only add/remove your OWN characters to/from a party
+(`party_characters` insert/delete policies check `characters.user_id`), never
+someone else's, even if you created the party. There's no "kick" feature — only a
+character's owner controls its own party memberships.
+
+**Real bug this surfaced, worth re-reading before adding a 4th permissive SELECT
+policy to `characters`:** `/characters/page.tsx` ("My Characters") queried
+`characters` with NO `user_id` filter, trusting RLS alone to scope it to "mine." That
+was fine with one owner-only policy, but the moment a second/third permissive policy
+existed, the *same unfiltered query* started returning OTHER people's
+public/party-shared characters too — Bob's "My Characters" page showed Alice's
+private character the instant her character joined a party with one of Bob's
+characters in it. Fixed by adding an explicit `.eq("user_id", userData.user.id)` —
+**"My Characters" means owned-by-me, which is a stricter condition than
+"visible-to-me," and must never be expressed by omitting a filter and hoping RLS
+happens to land on the right set.** Audited every other `characters` query in the
+codebase for the same mistake (none had it) — re-run that audit if you add another
+permissive policy here. Caught by testing with two real separate accounts, not by
+reading the policy SQL — the bug was in application code, not in Postgres.
