@@ -46,6 +46,14 @@ export interface CharacterDraft {
   // it resets every Long Rest the same way current HP and hit dice used do.
   knownCantrips: string[];
   preparedSpells: string[];
+  // Sorcerer's Metamagic (see METAMAGIC_OPTIONS below). Modeled as a freely
+  // overwritable list gated by metamagicKnownMax(level), the same shape as
+  // knownCantrips/preparedSpells — NOT the real rule's stricter "replace only
+  // one option per Sorcerer level gained." That exact retraining cadence
+  // would need tracking when each option was learned for little real benefit
+  // here, especially since the option list itself is already homebrew (see
+  // METAMAGIC_OPTIONS) rather than the official one.
+  metamagicChoices: string[];
 }
 
 export interface ExpertiseMilestone {
@@ -153,6 +161,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   expertiseChoices: [],
   knownCantrips: [],
   preparedSpells: [],
+  metamagicChoices: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -340,3 +349,96 @@ export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> 
 export function sorceryPointsMax(level: number): number {
   return level >= 2 ? level : 0;
 }
+
+// Real, confirmed schedule for how many Metamagic options a Sorcerer knows —
+// taken directly from the Metamagic feature's own SRD text ("you gain two
+// Metamagic options... You gain two more options at Sorcerer level 10 and two
+// more at Sorcerer level 17"), cross-checked against the 2014 levels table's
+// metamagic_known progression. 0/2/4/6, NOT the 2014 rules' 0/2/3/4 — 2024
+// doubled the level-10/17 grants.
+export function metamagicKnownMax(level: number): number {
+  return level >= 17 ? 6 : level >= 10 ? 4 : level >= 2 ? 2 : 0;
+}
+
+export interface MetamagicOption {
+  key: string;
+  name: string;
+  cost: string;
+  description: string;
+}
+
+// Original homebrew content, NOT the official Metamagic options list — the
+// SRD's Metamagic feature explicitly defers to "Metamagic Options" text later
+// in the class's official description, but that subsection isn't part of the
+// free SRD data anywhere in this app's content pipeline (checked the feats
+// table, the features table, and the 5e-bits/5e-database source repo itself —
+// the actual option list/effects just aren't published as open content here).
+// The schedule above IS real; these specific 9 options are original, written
+// at a comparable Sorcery Point cost/power band to the genre-standard "spend
+// points to tweak a spell" mechanic. User-authorized homebrew, same spirit as
+// the homebrew backgrounds and general feats.
+export const METAMAGIC_OPTIONS: MetamagicOption[] = [
+  {
+    key: "hushed-casting",
+    name: "Hushed Casting",
+    cost: "1 Sorcery Point",
+    description:
+      "When you cast a spell, you can spend 1 Sorcery Point to cast it without its verbal component and without any showy gestures, so onlookers must succeed on a Wisdom (Perception) check against your spell save DC to notice you casting at all.",
+  },
+  {
+    key: "snapcast",
+    name: "Snapcast",
+    cost: "2 Sorcery Points",
+    description:
+      "When you cast a spell that has a casting time of 1 action, you can spend 2 Sorcery Points to change its casting time to 1 bonus action for this casting.",
+  },
+  {
+    key: "farcast",
+    name: "Farcast",
+    cost: "1 Sorcery Point",
+    description:
+      "When you cast a spell that has a range of 5 feet or greater, you can spend 1 Sorcery Point to double that spell's range. If the spell has a range of touch, you can spend 1 Sorcery Point to instead give it a range of 30 feet.",
+  },
+  {
+    key: "splitcast",
+    name: "Splitcast",
+    cost: "Spell's level (minimum 1)",
+    description:
+      "When you cast a spell that targets only one creature and doesn't have a range of self, you can spend a number of Sorcery Points equal to the spell's level to also target a second creature within range with the same spell.",
+  },
+  {
+    key: "steadfast-casting",
+    name: "Steadfast Casting",
+    cost: "1 Sorcery Point",
+    description:
+      "When you fail a Constitution saving throw to maintain concentration on a spell, you can spend 1 Sorcery Point to reroll the saving throw and use the new result.",
+  },
+  {
+    key: "overpowered-casting",
+    name: "Overpowered Casting",
+    cost: "2 Sorcery Points",
+    description:
+      "When you roll damage for a spell, you can spend 2 Sorcery Points to reroll any number of the damage dice once and use the new rolls.",
+  },
+  {
+    key: "lingering-casting",
+    name: "Lingering Casting",
+    cost: "1 Sorcery Point",
+    description:
+      "When you cast a spell that has a duration of 1 minute or longer, you can spend 1 Sorcery Point to double its duration, to a maximum of 24 hours.",
+  },
+  {
+    key: "resistant-casting",
+    name: "Resistant Casting",
+    cost: "1 Sorcery Point",
+    description:
+      "When a creature succeeds on a saving throw against a damaging spell you cast, you can spend 1 Sorcery Point to deal half that spell's damage to the creature anyway.",
+  },
+  {
+    key: "unseen-casting",
+    name: "Unseen Casting",
+    cost: "1 Sorcery Point",
+    description:
+      "When you cast a spell that has a material component costing no gold and not consumed by the spell, you can spend 1 Sorcery Point to ignore that material component, conjuring the magic from yourself instead.",
+  },
+];

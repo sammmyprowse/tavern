@@ -528,18 +528,54 @@ shared with any other class yet:
   buttons, capped `sm:max-w-[200px]` since it's one pool, not per-level rows
   like Spell Slots) right above Cantrips Known in the Spells section.
 
-**Metamagic options — disclosed gap, not built.** Searched the SRD's `feats`
-table and a dedicated-table search for Metamagic option data (Careful Spell,
-Twinned Spell, etc.) and found none — no structured data anywhere, only the
-Metamagic feature's own description text ("you gain two Metamagic options...
-from 'Metamagic Options' later in this class's description," referencing
-content the free SRD doesn't ship). Building an interactive picker would mean
-either fabricating option text from memory (same copyright issue as the PHB
-feats — see "Leveling (Phase 2)") or homebrewing without being asked first, so
-neither happened. The Metamagic feature still appears in the Features list via
-the existing Phase 0 infrastructure, showing its real SRD text as-is — the gap
-is disclosed through that existing UI, not hidden. Revisit if the user wants
-homebrew Metamagic options written, same as the backgrounds/feats gaps.
+**Metamagic options — real schedule, homebrew option list.** Originally
+shipped as a disclosed gap (searched the SRD's `feats` table, the `features`
+table, and a broad ILIKE search across every table for "metamagic" and found
+no structured option data). User later explicitly authorized homebrewing it
+("I'm happy for you to homebrew it. Use real stats if you can find them"),
+which prompted a second, deeper search before defaulting to original content:
+
+- The `levels` table (2014 ruleset, `class_index='sorcerer'`) has a
+  `class_specific.metamagic_known` count per level — real structured data,
+  confirming a schedule exists, though its level-16 value turned out to be a
+  known off-by-one artifact in that derived field (see below).
+- The Sorcerer's own `sorcerer-metamagic` feature row in `features` (2024
+  ruleset) gives the authoritative schedule directly in prose: "you gain two
+  Metamagic options... You gain two more options at Sorcerer level 10 and two
+  more at Sorcerer level 17." This is the real, current (2024) schedule —
+  2/4/6, NOT the 2014 levels table's implied 2/3/4 (2024 doubled the level-10
+  and level-17 grants). Trusted this features-array-derived schedule over the
+  levels table's `metamagic_known` snapshot specifically because the snapshot
+  shows 4 a level early (at 16, not 17) while the feature-grant attribution
+  (which level 17's `features` array lists "metamagic-3") lines up with the
+  well-documented real PHB table (2/10/17) — the same kind of derived-field
+  quirk this app already treats `features`-table level attribution as more
+  authoritative than for ASI_LEVELS and EXPERTISE_SCHEDULE.
+- Checked the actual 5e-bits/5e-database GitHub source (the project's content
+  pipeline origin) directly via its file listing for `src/2024/en/` — confirms
+  there's no separate "Metamagic Options" JSON resource; the file list matches
+  exactly what's already imported. The real option list/effects genuinely
+  aren't published as structured open content anywhere in this pipeline.
+
+So: `metamagicKnownMax(level)` in `character.ts` (0 / 2 / 4 / 6 at levels
+0-1 / 2-9 / 10-16 / 17+) is real, grounded data. **`METAMAGIC_OPTIONS`** (9
+entries, also in `character.ts`) is original homebrew — fresh names, fresh
+wording, no reproduction of real option text — written at a comparable
+Sorcery Point cost/power band (1-2 points each, one scaling with spell level)
+to the genre-standard "spend points to tweak a spell" mechanic. Same
+homebrew-when-authorized pattern as the backgrounds and general feats, and
+disclosed the same way: a one-line note under the section heading on the play
+sheet ("Original homebrew options — the official Metamagic list isn't part of
+the free SRD...").
+
+**Modeled as a freely-overwritable list, not the stricter real rule.** The
+actual rule lets you replace only one Metamagic option per Sorcerer level
+gained — `CharacterDraft.metamagicChoices: string[]` instead just mirrors
+`knownCantrips`/`preparedSpells`'s shape (overwrite-the-whole-array, gated
+only by `metamagicKnownMax(level)`, via `setMetamagicChoices` in actions.ts).
+Deliberate scope simplification: tracking exactly when each option was
+learned to enforce a one-swap-per-level cadence would be real complexity for
+a feature whose option list is already homebrew, not official.
 
 Tested live with CHA 18 (16 base + Acolyte's +2 background bonus) at level 4:
 Spell Save DC 14, Spell Attack +6, 4/3 level-1/2 slots (`fullCasterSlots(4)`),
@@ -550,3 +586,11 @@ matched exactly. Verified Sorcery Points expend/restore, boundary clamping at
 Points + HP together, and the cantrip picker's Save/Cancel flow persisting a
 real selection across the generic `setKnownCantrips` action (reused from
 Wizard with no Sorcerer-specific changes).
+
+Metamagic tested separately, live, at both ends of its schedule: at level 2,
+picker showed "0/2", selecting a 3rd option after 2 was rejected by the UI; at
+level 17 (same character, bumped via SQL), picker showed the existing 2 picks
+pre-selected against a new "/6" cap, selected 4 more to reach 6, a 7th was
+rejected, and the save persisted across a real page reload both times. "Show
+details" expansion and the homebrew-disclosure paragraph both rendered
+correctly.

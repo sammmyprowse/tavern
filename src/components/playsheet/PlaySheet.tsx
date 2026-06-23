@@ -11,9 +11,11 @@ import {
   ORDER_CHOICES,
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
+  METAMAGIC_OPTIONS,
   type AbilityKey,
   type AbilityBonusChoice,
   type CharacterDraft,
+  type MetamagicOption,
 } from "@/lib/character";
 import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
@@ -25,6 +27,7 @@ import {
   chooseExpertise,
   setKnownCantrips,
   setPreparedSpells,
+  setMetamagicChoices,
 } from "@/app/characters/actions";
 import type {
   SpeciesOption,
@@ -117,6 +120,9 @@ export default function PlaySheet({
   const [preparedPickerOpen, setPreparedPickerOpen] = useState(false);
   const [selectedPrepared, setSelectedPrepared] = useState<string[]>([]);
   const [spellsPending, setSpellsPending] = useState(false);
+  const [metamagicPickerOpen, setMetamagicPickerOpen] = useState(false);
+  const [selectedMetamagic, setSelectedMetamagic] = useState<string[]>([]);
+  const [metamagicPending, setMetamagicPending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -254,6 +260,9 @@ export default function PlaySheet({
     .map((index) => preparedOptions.find((s) => s.index === index))
     .filter((s): s is SpellOption => Boolean(s))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+  const knownMetamagicDetails = currentDraft.metamagicChoices
+    .map((key) => METAMAGIC_OPTIONS.find((m) => m.key === key))
+    .filter((m): m is MetamagicOption => Boolean(m));
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -612,6 +621,33 @@ export default function PlaySheet({
       setChoiceError(result.error ?? "Couldn't save prepared spells.");
     }
     setSpellsPending(false);
+  }
+
+  function openMetamagicPicker() {
+    setSelectedMetamagic(currentDraft.metamagicChoices);
+    setMetamagicPickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function toggleMetamagicSelection(key: string, limit: number) {
+    setSelectedMetamagic((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (prev.length >= limit) return prev;
+      return [...prev, key];
+    });
+  }
+
+  async function saveMetamagic() {
+    setMetamagicPending(true);
+    setChoiceError(null);
+    const result = await setMetamagicChoices(characterId, selectedMetamagic);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setMetamagicPickerOpen(false);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save Metamagic options.");
+    }
+    setMetamagicPending(false);
   }
 
   function toggleFeature(index: string) {
@@ -1307,6 +1343,117 @@ export default function PlaySheet({
                     &minus;
                   </button>
                 </div>
+              </div>
+            )}
+
+            {sheet.metamagicKnownMax > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Metamagic ({knownMetamagicDetails.length}/{sheet.metamagicKnownMax})
+                  </h3>
+                  {isOwner && !metamagicPickerOpen && (
+                    <button
+                      onClick={openMetamagicPicker}
+                      className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-tavern-muted">
+                  Original homebrew options — the official Metamagic list isn&apos;t part of the
+                  free SRD. The schedule above (2 at level 2, +2 at 10, +2 at 17) is from the real
+                  rules.
+                </p>
+
+                {!metamagicPickerOpen ? (
+                  <div className="mt-2 space-y-1">
+                    {knownMetamagicDetails.map((m) => {
+                      const key = `metamagic-${m.key}`;
+                      const expanded = expandedFeatures.has(key);
+                      return (
+                        <div key={key} className="rounded-md border border-tavern-border">
+                          <button
+                            onClick={() => toggleFeature(key)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                          >
+                            <span className="text-tavern-text">{m.name}</span>
+                            <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                              {m.cost}
+                            </span>
+                          </button>
+                          {expanded && (
+                            <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                              {m.description}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {knownMetamagicDetails.length === 0 && (
+                      <p className="text-xs text-tavern-muted">No Metamagic options chosen yet.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                    <p className="text-xs text-tavern-muted">
+                      Choose up to {sheet.metamagicKnownMax} ({selectedMetamagic.length} selected).
+                    </p>
+                    <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+                      {METAMAGIC_OPTIONS.map((m) => {
+                        const key = `picker-metamagic-${m.key}`;
+                        const expanded = expandedFeatures.has(key);
+                        const selected = selectedMetamagic.includes(m.key);
+                        return (
+                          <div
+                            key={m.key}
+                            className={`rounded-md border ${
+                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
+                            }`}
+                          >
+                            <button
+                              onClick={() => toggleMetamagicSelection(m.key, sheet.metamagicKnownMax)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                            >
+                              <span className="text-tavern-text">{m.name}</span>
+                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                                {m.cost}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
+                            >
+                              {expanded ? "Hide details" : "Show details"}
+                            </button>
+                            {expanded && (
+                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                                {m.description}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button
+                        onClick={saveMetamagic}
+                        disabled={metamagicPending}
+                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setMetamagicPickerOpen(false)}
+                        disabled={metamagicPending}
+                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

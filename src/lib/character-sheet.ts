@@ -5,6 +5,7 @@ import {
   finalAbilityScores,
   fullCasterSlots,
   maxHp,
+  metamagicKnownMax,
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
   sorceryPointsMax,
@@ -78,6 +79,7 @@ export interface CharacterSheet {
   cantripsKnownCount: number;
   preparedSpellsCount: number;
   sorceryPointsMax: number;
+  metamagicKnownMax: number;
 }
 
 export function buildCharacterSheet(
@@ -190,6 +192,7 @@ export function buildCharacterSheet(
         ? computePreparedSpellCount(draft.level, spellAbilityMod)
         : 0,
     sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
+    metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
   };
 }
 

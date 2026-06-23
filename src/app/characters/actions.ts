@@ -336,3 +336,28 @@ export async function setPreparedSpells(
   revalidatePath(`/characters/${characterId}`);
   return { success: true, draft: nextDraft };
 }
+
+// Same freely-overwritable shape as setKnownCantrips/setPreparedSpells, same
+// reasoning — the cap here (10) is just a sanity check against a malformed
+// payload, not a re-derivation of metamagicKnownMax(level); the picker UI
+// enforces the real limit.
+export async function setMetamagicChoices(
+  characterId: string,
+  optionKeys: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(optionKeys) || optionKeys.length > 10) {
+    return { success: false, error: "Invalid Metamagic selection." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, metamagicChoices: optionKeys };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
