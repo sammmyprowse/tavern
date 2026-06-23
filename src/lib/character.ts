@@ -311,3 +311,32 @@ export function spellAttackBonus(proficiencyBonus: number, abilityMod: number): 
 export function wizardCantripsKnown(level: number): number {
   return level >= 10 ? 5 : level >= 4 ? 4 : 3;
 }
+
+// Sorcerer's own cantrip-known progression ("you know four Sorcerer
+// cantrips... at Sorcerer levels 4 and 10, you learn another") — confirmed
+// from Sorcerer's own spellcasting text, NOT assumed from Wizard's (which
+// starts at 3, not 4).
+export function sorcererCantripsKnown(level: number): number {
+  return level >= 10 ? 6 : level >= 4 ? 5 : 4;
+}
+
+// Maps each prepared-caster class to its own cantrip-known function — 2024
+// rules also moved Sorcerer onto the same "prepared spells" model as Wizard
+// (confirmed from Sorcerer's own spellcasting text: "choose two level 1
+// Sorcerer spells" at level 1 with a +1 CHA mod example, consistent with
+// preparedSpellCount's level+modifier formula), so preparedSpellCount itself
+// needs no per-class variant — only cantrips known differs per class.
+export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
+  wizard: wizardCantripsKnown,
+  sorcerer: sorcererCantripsKnown,
+};
+
+// Sorcery Points (Font of Magic, gained at Sorcerer level 2): the pool equals
+// your Sorcerer level, starting at level 2 ("You have 2 Sorcery Points, and
+// you gain more as you reach higher levels" — the SRD text only gives the
+// level-2 example, not the full table, but the underlying rule — points
+// equal character level once you have the feature — is the real, unchanged
+// 5e rule). Used to fuel Metamagic and to convert to/from spell slots.
+export function sorceryPointsMax(level: number): number {
+  return level >= 2 ? level : 0;
+}

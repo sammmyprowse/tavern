@@ -494,3 +494,59 @@ SQL for a meaningful test): Spell Save DC 13, Spell Attack +5, 2 level-1 slots,
 exactly. Verified slot expend/restore and Long Rest, persistence of cantrips/
 prepared spells across reload, and that the prepared-spell picker correctly
 excludes spells above the character's available slot level.
+
+## Class resources — Sorcerer spellcasting
+Third class-by-class pass. Reused every piece of Wizard's spellcasting
+infrastructure unchanged (`ClassOption.spellcastingAbility`, `fullCasterSlots`,
+`preparedSpellCount`, `spellSaveDC`/`spellAttackBonus`, `getSpellsForClass`,
+`setKnownCantrips`/`setPreparedSpells`) — only two things needed to be added,
+and both were confirmed from Sorcerer's own SRD text rather than assumed from
+Wizard's:
+
+- **2024 rules also moved Sorcerer onto the "prepared spells" model** (2014 had
+  Sorcerer use a separate "spells known" mechanic) — confirmed via Sorcerer's
+  own spellcasting text ("choose two level 1 Sorcerer spells" at level 1 with a
+  +1 CHA modifier example, consistent with `preparedSpellCount`'s
+  `level + abilityMod` formula). So `preparedSpellCount` itself needed zero
+  changes.
+- **`sorcererCantripsKnown(level)`** (`src/lib/character.ts`) — Sorcerer's own
+  progression is 4/5/6 at levels 1/4/10, NOT Wizard's 3/4/5. Named explicitly
+  per class, same reasoning as `wizardCantripsKnown`. Both are now registered
+  in **`CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number>`**,
+  which `character-sheet.ts` looks up generically by `cls.index` instead of
+  hardcoding `=== "wizard"` — Cleric's pass just needs to add its own entry.
+
+**Sorcery Points (Font of Magic, from Sorcerer level 2)** — new resource, not
+shared with any other class yet:
+- `sorceryPointsMax(level) = level >= 2 ? level : 0` (`character.ts`). The SRD
+  text only gives the level-2 example ("You have 2 Sorcery Points") rather than
+  a full table, but "points equal character level once you have the feature"
+  is the real, unchanged 5e rule.
+- Tracked as **play state**, not draft state — `PlayState.expendedSorceryPoints`
+  (`PlaySheet.tsx`), same treatment as spell slots and current HP: resets on
+  Long Rest, never persisted to Supabase. UI is a single bordered row (+/−
+  buttons, capped `sm:max-w-[200px]` since it's one pool, not per-level rows
+  like Spell Slots) right above Cantrips Known in the Spells section.
+
+**Metamagic options — disclosed gap, not built.** Searched the SRD's `feats`
+table and a dedicated-table search for Metamagic option data (Careful Spell,
+Twinned Spell, etc.) and found none — no structured data anywhere, only the
+Metamagic feature's own description text ("you gain two Metamagic options...
+from 'Metamagic Options' later in this class's description," referencing
+content the free SRD doesn't ship). Building an interactive picker would mean
+either fabricating option text from memory (same copyright issue as the PHB
+feats — see "Leveling (Phase 2)") or homebrewing without being asked first, so
+neither happened. The Metamagic feature still appears in the Features list via
+the existing Phase 0 infrastructure, showing its real SRD text as-is — the gap
+is disclosed through that existing UI, not hidden. Revisit if the user wants
+homebrew Metamagic options written, same as the backgrounds/feats gaps.
+
+Tested live with CHA 18 (16 base + Acolyte's +2 background bonus) at level 4:
+Spell Save DC 14, Spell Attack +6, 4/3 level-1/2 slots (`fullCasterSlots(4)`),
+5 cantrips known (`sorcererCantripsKnown(4)`), 8 prepared spells
+(`4 + 4 CHA mod`), Sorcery Points 4/4 (`sorceryPointsMax(4)`) — every number
+matched exactly. Verified Sorcery Points expend/restore, boundary clamping at
+0 and at max (buttons correctly disable), Long Rest resetting slots + Sorcery
+Points + HP together, and the cantrip picker's Save/Cancel flow persisting a
+real selection across the generic `setKnownCantrips` action (reused from
+Wizard with no Sorcerer-specific changes).

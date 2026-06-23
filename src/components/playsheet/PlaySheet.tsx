@@ -69,6 +69,9 @@ interface PlayState {
   // expendedSlots[i] = slots used at spell level i+1. Play state, not part of
   // the saved draft — resets every Long Rest the same way hit dice used does.
   expendedSlots: number[];
+  // Sorcery Points (Sorcerer only) — same play-state treatment as spell
+  // slots: resets on Long Rest, not part of the saved draft.
+  expendedSorceryPoints: number;
 }
 
 export default function PlaySheet({
@@ -128,6 +131,7 @@ export default function PlaySheet({
     equippedIndexes: allOwnedIndexes,
     rollMode: "normal",
     expendedSlots: [],
+    expendedSorceryPoints: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -345,6 +349,18 @@ export default function PlaySheet({
       deathSaveSuccesses: 0,
       deathSaveFailures: 0,
       expendedSlots: [],
+      expendedSorceryPoints: 0,
+    }));
+  }
+
+  function expendSorceryPoint() {
+    setPlay((prev) => ({ ...prev, expendedSorceryPoints: prev.expendedSorceryPoints + 1 }));
+  }
+
+  function restoreSorceryPoint() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedSorceryPoints: Math.max(0, prev.expendedSorceryPoints - 1),
     }));
   }
 
@@ -1263,6 +1279,33 @@ export default function PlaySheet({
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {sheet.sorceryPointsMax > 0 && (
+              <div className="mt-4">
+                <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Sorcery Points
+                </h3>
+                <div className="mt-2 flex items-center justify-between rounded-md border border-tavern-border px-3 py-2 sm:max-w-[200px]">
+                  <button
+                    onClick={restoreSorceryPoint}
+                    disabled={play.expendedSorceryPoints <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.sorceryPointsMax - play.expendedSorceryPoints}/{sheet.sorceryPointsMax}
+                  </span>
+                  <button
+                    onClick={expendSorceryPoint}
+                    disabled={play.expendedSorceryPoints >= sheet.sorceryPointsMax}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    &minus;
+                  </button>
                 </div>
               </div>
             )}

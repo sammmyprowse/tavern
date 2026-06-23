@@ -7,10 +7,11 @@ import {
   maxHp,
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
+  sorceryPointsMax,
   spellAttackBonus as computeSpellAttackBonus,
   spellSaveDC as computeSpellSaveDC,
   sneakAttackDice,
-  wizardCantripsKnown,
+  CANTRIPS_KNOWN_BY_CLASS,
   type AbilityKey,
   type CharacterDraft,
   type EquipmentItem,
@@ -76,6 +77,7 @@ export interface CharacterSheet {
   spellSlots: number[];
   cantripsKnownCount: number;
   preparedSpellsCount: number;
+  sorceryPointsMax: number;
 }
 
 export function buildCharacterSheet(
@@ -179,9 +181,15 @@ export function buildCharacterSheet(
     spellSaveDC: spellcastingAbility ? computeSpellSaveDC(proficiencyBonus, spellAbilityMod) : null,
     spellAttackBonus: spellcastingAbility ? computeSpellAttackBonus(proficiencyBonus, spellAbilityMod) : null,
     spellSlots: spellcastingAbility ? fullCasterSlots(draft.level) : [],
-    cantripsKnownCount: cls.index === "wizard" ? wizardCantripsKnown(draft.level) : 0,
+    // Every class with a cantrips-known progression also uses the prepared-
+    // spell formula in 2024 rules (confirmed for both Wizard and Sorcerer
+    // individually, not assumed) — one lookup covers both counts.
+    cantripsKnownCount: CANTRIPS_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
     preparedSpellsCount:
-      cls.index === "wizard" ? computePreparedSpellCount(draft.level, spellAbilityMod) : 0,
+      cls.index in CANTRIPS_KNOWN_BY_CLASS
+        ? computePreparedSpellCount(draft.level, spellAbilityMod)
+        : 0,
+    sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
   };
 }
 
