@@ -2,9 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ABILITY_ORDER, formatModifier, type CharacterDraft } from "@/lib/character";
+import {
+  ABILITY_ORDER,
+  formatModifier,
+  hpGainForLevelUp,
+  fixedAverageHpGain,
+  MAX_LEVEL,
+  type CharacterDraft,
+} from "@/lib/character";
 import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
+import { levelUpCharacter } from "@/app/characters/actions";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -12,6 +20,7 @@ import type {
   BackgroundOption,
   SkillInfo,
   EquipmentLookupItem,
+  ClassFeature,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
@@ -25,6 +34,7 @@ interface PlaySheetProps {
   backgrounds: BackgroundOption[];
   skills: SkillInfo[];
   equipment: EquipmentLookupItem[];
+  features: ClassFeature[];
   isOwner: boolean;
   isPublic: boolean;
 }
@@ -48,19 +58,28 @@ export default function PlaySheet({
   backgrounds,
   skills,
   equipment,
+  features,
   isOwner,
   isPublic,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
-  const sheet = buildCharacterSheet(draft, { species, subspecies, classes, backgrounds, skills });
+  // Shadows the `draft` prop so a successful level-up can update the sheet
+  // instantly without a server round trip — same instant-feedback feel as
+  // the rest of the play sheet's local state.
+  const [currentDraft, setCurrentDraft] = useState(draft);
+  const sheet = buildCharacterSheet(currentDraft, { species, subspecies, classes, backgrounds, skills });
+  const [levelingUp, setLevelingUp] = useState(false);
+  const [levelUpError, setLevelUpError] = useState<string | null>(null);
+  const [levelUpPending, setLevelUpPending] = useState(false);
+  const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
     .filter((i): i is string => Boolean(i));
 
   const defaultPlayState: PlayState = {
-    currentHp: sheet ? sheet.hitDie + sheet.modifiers.con : 1,
+    currentHp: sheet ? sheet.maxHpValue : 1,
     tempHp: 0,
     hitDiceUsed: 0,
     deathSaveSuccesses: 0,
@@ -110,9 +129,10 @@ export default function PlaySheet({
   const equippedSet = new Set(play.equippedIndexes);
   const ac = computeAC(sheet.ownedEquipment, equipmentByIndex, equippedSet, sheet.modifiers.dex);
   const weapons = resolveWeapons(sheet.ownedEquipment, equipmentByIndex, sheet.modifiers, sheet.proficiencyBonus);
-  const maxHp = sheet.hitDie + sheet.modifiers.con;
-  const totalHitDice = 1;
+  const maxHp = sheet.maxHpValue;
+  const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
+  const unlockedFeatures = features.filter((f) => f.level <= sheet.level);
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -226,6 +246,42 @@ export default function PlaySheet({
     }));
   }
 
+  async function handleLevelUp(mode: "roll" | "average") {
+    if (!sheet || sheet.level >= MAX_LEVEL) return;
+    setLevelUpPending(true);
+    setLevelUpError(null);
+
+    const dieResult = mode === "roll" ? rollFlatDie(sheet.hitDie) : fixedAverageHpGain(sheet.hitDie);
+    const gain = hpGainForLevelUp(sheet.hitDie, sheet.modifiers.con, dieResult);
+
+    const result = await levelUpCharacter(characterId, gain);
+    if (result.success && result.draft) {
+      pushLog({
+        label: `Level Up → ${result.draft.level}`,
+        detail:
+          mode === "roll"
+            ? `d${sheet.hitDie} ${dieResult} ${formatModifier(sheet.modifiers.con)}`
+            : `avg d${sheet.hitDie} (${dieResult}) ${formatModifier(sheet.modifiers.con)}`,
+        total: gain,
+      });
+      setCurrentDraft(result.draft);
+      setPlay((prev) => ({ ...prev, currentHp: prev.currentHp + gain }));
+      setLevelingUp(false);
+    } else {
+      setLevelUpError(result.error ?? "Couldn't level up.");
+    }
+    setLevelUpPending(false);
+  }
+
+  function toggleFeature(index: string) {
+    setExpandedFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
   function rollDeathSave() {
     const roll = rollFlatDie(20);
     pushLog({
@@ -266,7 +322,8 @@ export default function PlaySheet({
               {sheet.name || "Unnamed"}
             </h1>
             <p className="text-tavern-muted">
-              {sheet.subspeciesName ?? sheet.speciesName} {sheet.className} — {sheet.backgroundName}
+              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} {sheet.className} —{" "}
+              {sheet.backgroundName}
               {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
             </p>
           </div>
@@ -278,6 +335,57 @@ export default function PlaySheet({
             You&apos;re viewing someone else&apos;s character. Rolls and HP changes here are
             local to your browser only — they don&apos;t affect the owner&apos;s copy.
           </p>
+        )}
+
+        {isOwner && (
+          <div className="mt-4">
+            {sheet.level >= MAX_LEVEL ? (
+              <p className="text-xs tracking-wide text-tavern-muted uppercase">
+                Maximum level reached
+              </p>
+            ) : !levelingUp ? (
+              <button
+                onClick={() => setLevelingUp(true)}
+                className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+              >
+                Level Up to {sheet.level + 1}
+              </button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-tavern-gold/40 bg-tavern-card p-3">
+                <span className="text-xs text-tavern-muted">
+                  Hit points for level {sheet.level + 1} (d{sheet.hitDie}
+                  {formatModifier(sheet.modifiers.con)}):
+                </span>
+                <button
+                  onClick={() => handleLevelUp("roll")}
+                  disabled={levelUpPending}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                >
+                  Roll d{sheet.hitDie}
+                </button>
+                <button
+                  onClick={() => handleLevelUp("average")}
+                  disabled={levelUpPending}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light uppercase hover:border-tavern-gold-light disabled:opacity-50"
+                >
+                  Take Average ({fixedAverageHpGain(sheet.hitDie)})
+                </button>
+                <button
+                  onClick={() => {
+                    setLevelingUp(false);
+                    setLevelUpError(null);
+                  }}
+                  disabled={levelUpPending}
+                  className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {levelUpError && (
+              <p className="mt-1 text-xs text-tavern-oxblood-light">{levelUpError}</p>
+            )}
+          </div>
         )}
 
         {/* Stat chips */}
@@ -454,6 +562,38 @@ export default function PlaySheet({
             ))}
           </div>
         </div>
+
+        {/* Features */}
+        {unlockedFeatures.length > 0 && (
+          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Features
+            </h2>
+            <div className="mt-3 space-y-1">
+              {unlockedFeatures.map((feature) => {
+                const expanded = expandedFeatures.has(feature.index);
+                return (
+                  <div key={feature.index} className="rounded-md border border-tavern-border">
+                    <button
+                      onClick={() => toggleFeature(feature.index)}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                    >
+                      <span className="text-tavern-text">{feature.name}</span>
+                      <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                        Lvl {feature.level}
+                      </span>
+                    </button>
+                    {expanded && feature.description && (
+                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                        {feature.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Attacks */}
         {weapons.length > 0 && (

@@ -309,6 +309,34 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
   return map;
 }
 
+export interface ClassFeature {
+  index: string;
+  name: string;
+  level: number;
+  description: string | null;
+}
+
+export async function getFeaturesForClass(classIndex: string): Promise<ClassFeature[]> {
+  const { data } = await supabase
+    .from("features")
+    .select("index, name, level_index, data")
+    .eq("ruleset", "2024")
+    .eq("class_index", classIndex);
+
+  return (data ?? [])
+    .map((f) => {
+      const d = f.data as { description?: string };
+      const level = parseInt((f.level_index ?? "").replace(`${classIndex}-`, ""), 10);
+      return {
+        index: f.index,
+        name: f.name,
+        level: Number.isFinite(level) ? level : 1,
+        description: d.description ?? null,
+      };
+    })
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
+
 export async function getSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")

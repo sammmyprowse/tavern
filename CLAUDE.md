@@ -223,3 +223,63 @@ happens to land on the right set.** Audited every other `characters` query in th
 codebase for the same mistake (none had it) — re-run that audit if you add another
 permissive policy here. Caught by testing with two real separate accounts, not by
 reading the policy SQL — the bug was in application code, not in Postgres.
+
+## Leveling (Phase 0 of full 1-20 leveling — user-requested, in progress)
+Full roadmap (subclass, ASI/feats, spells, spell slots, class resources) is in
+project memory, not here — this section only covers what's actually shipped: core
+level tracking, HP-per-level, and feature unlocking.
+
+`CharacterDraft` (`src/lib/character.ts`) gained `level: number` and
+`hpRolls: number[]`. Characters are always CREATED at level 1 (the builder wizard
+never touches these fields — they just ride along at `EMPTY_DRAFT`'s defaults of
+`1`/`[]`); level only ever advances via the play sheet's Level Up control, never
+set directly. `hpRolls[0]` is the level-2 HP gain, `hpRolls[1]` is level-3, etc. —
+level 1 HP itself is always `hitDie + conMod`, computed fresh, never stored.
+`MAX_LEVEL = 20` gates both the Level Up button (hidden, "Maximum level reached"
+shown instead) and the server action (rejects if already at 20).
+
+`maxHp(hitDie, conMod, hpRolls)` replaced the old level-1-only `maxHpAtLevelOne`.
+`hpGainForLevelUp(hitDie, conMod, roll)` applies the standard 5e floor — HP gained
+per level beyond 1 is never less than 1, even for a Wizard/Sorcerer (d6) with a
+negative CON mod. `fixedAverageHpGain(hitDie)` (`Math.floor(hitDie/2)+1`) is the
+"take average" option; feeding ITS result into `hpGainForLevelUp` as the "roll"
+applies the same floor-of-1 protection to the average path too, rather than
+duplicating the floor logic at the call site.
+
+**Local draft shadow state, not router.refresh():** `PlaySheet.tsx` shadows the
+`draft` prop in `useState` (`currentDraft`) and derives `sheet` from that, not the
+prop directly. A successful level-up calls `setCurrentDraft(result.draft)` for an
+instant update — same instant-feedback pattern as the rest of the play sheet
+(HP/equip toggle), rather than a server round trip.
+
+`levelUpCharacter` (`src/app/characters/actions.ts`) takes an already-resolved
+`hpGain: number` — the roll (via the existing dice engine) or the average happens
+client-side same as every other dice roll on the sheet (e.g. Spend Hit Die); the
+action's only job is to persist `level + 1` and the new `hpRolls` entry to
+`characters.draft`, owner-filtered the same way `setCharacterPublic` is. Unlike
+HP/temp-HP/death-saves (ephemeral, localStorage-only), level-up is permanent
+progression and must hit Supabase.
+
+**Features-by-class** (`getFeaturesForClass` in `src/lib/srd.ts`): the `features`
+table has dedicated `class_index`/`level_index` columns (e.g. `level_index =
+"fighter-3"`) on top of the usual `ruleset`/`index`/`name`/`data` shape — level is
+parsed out of `level_index` by stripping the `"<classIndex>-"` prefix. 231 features
+across all 12 classes, already tagged with real unlock levels and full prose in
+`data.description` — no new content needed for this part. The play sheet's
+Features section filters to `level <= sheet.level` and lets each row expand/collapse
+its description independently (per-feature `Set<string>` of expanded indexes).
+
+**Stale-localStorage trap, will recur on every future `CharacterDraft` schema
+change:** `BuilderWizard.tsx` hydrates its draft from `localStorage` on mount. It
+used to do `setDraft(JSON.parse(saved))` — a straight replace, no merge. The first
+time this bit: adding `level`/`hpRolls` to `CharacterDraft` crashed the Review step
+(`Cannot read properties of undefined (reading 'reduce')` in `maxHp`) for anyone
+with an in-progress draft saved before that change, since the parsed object simply
+lacked the new keys. Fixed to `setDraft({ ...EMPTY_DRAFT, ...JSON.parse(saved) })`.
+**Any future field added to `CharacterDraft` needs this merge to already be in
+place to pick up the new default — it is, but don't replace it with a bare
+`JSON.parse` again.** `PlaySheet.tsx`'s own localStorage hydration (`PlayState`)
+already merged against `defaultPlayState` from the start, so it never had this bug.
+Caught by actually building a character through the wizard in a real browser, not
+by build/lint — both were clean the whole time since this was a runtime-only crash
+on stale client data, not a type error.

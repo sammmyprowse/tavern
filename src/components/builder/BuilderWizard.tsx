@@ -50,9 +50,11 @@ export default function BuilderWizard({
     if (saved) {
       try {
         // One-time hydration from localStorage on mount — kept behind the
-        // `loaded` gate below so SSR/client markup never mismatches.
+        // `loaded` gate below so SSR/client markup never mismatches. Merged
+        // over EMPTY_DRAFT so a draft saved before a schema change (e.g. the
+        // level/hpRolls fields) still gets valid defaults for the new keys.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setDraft(JSON.parse(saved));
+        setDraft({ ...EMPTY_DRAFT, ...JSON.parse(saved) });
       } catch {
         // ignore corrupt saved draft
       }

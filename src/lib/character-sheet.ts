@@ -3,6 +3,7 @@ import {
   abilityModifier,
   computeArmorClass,
   finalAbilityScores,
+  maxHp,
   proficiencyBonusForLevel,
   type AbilityKey,
   type CharacterDraft,
@@ -42,10 +43,13 @@ export interface ResolvedSave {
 
 export interface CharacterSheet {
   name: string;
+  level: number;
   speciesName: string;
   subspeciesName: string | null;
   className: string;
+  classIndex: string;
   hitDie: number;
+  maxHpValue: number;
   backgroundName: string;
   backgroundIsHomebrew: boolean;
   backgroundFeatName: string | null;
@@ -79,7 +83,8 @@ export function buildCharacterSheet(
     modifiers[ability] = abilityModifier(finalScores[ability]);
   }
 
-  const proficiencyBonus = proficiencyBonusForLevel(1);
+  const proficiencyBonus = proficiencyBonusForLevel(draft.level);
+  const maxHpValue = maxHp(cls.hitDie, modifiers.con, draft.hpRolls);
 
   const proficientSaves = new Set(cls.savingThrows.map((s) => s.index));
   const savingThrows: ResolvedSave[] = ABILITY_ORDER.map((ability) => {
@@ -124,10 +129,13 @@ export function buildCharacterSheet(
 
   return {
     name: draft.name,
+    level: draft.level,
     speciesName: species.name,
     subspeciesName: subspecies?.name ?? null,
     className: cls.name,
+    classIndex: cls.index,
     hitDie: cls.hitDie,
+    maxHpValue,
     backgroundName: background.name,
     backgroundIsHomebrew: background.isHomebrew,
     backgroundFeatName: background.feat?.name ?? null,

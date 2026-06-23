@@ -22,6 +22,12 @@ export interface CharacterDraft {
   baseAbilityScores: AbilityScores;
   backgroundIndex: string | null;
   backgroundAbilityBonus: AbilityBonusChoice | null;
+  // Leveling (Phase 0). Characters are always created at level 1; level only
+  // ever increases via the play sheet's Level Up action, never set directly.
+  level: number;
+  // HP gained at each level beyond 1 — hpRolls[0] is the level-2 gain, etc.
+  // Level 1 HP itself is always hitDie + conMod, computed fresh, not stored here.
+  hpRolls: number[];
 }
 
 export type DraftUpdate =
@@ -38,7 +44,11 @@ export const EMPTY_DRAFT: CharacterDraft = {
   baseAbilityScores: { str: null, dex: null, con: null, int: null, wis: null, cha: null },
   backgroundIndex: null,
   backgroundAbilityBonus: null,
+  level: 1,
+  hpRolls: [],
 };
+
+export const MAX_LEVEL = 20;
 
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -106,6 +116,18 @@ export function computeArmorClass(equipped: EquipmentItem[], dexMod: number): nu
   return ac;
 }
 
-export function maxHpAtLevelOne(hitDie: number, conMod: number): number {
-  return hitDie + conMod;
+export function maxHp(hitDie: number, conMod: number, hpRolls: number[]): number {
+  const level1Hp = hitDie + conMod;
+  const restHp = hpRolls.reduce((sum, roll) => sum + roll, 0);
+  return level1Hp + restHp;
+}
+
+// HP gained per level-up beyond 1 is never less than 1 (standard 5e rule), even
+// for a Sorcerer/Wizard (d6) with a negative or zero CON modifier.
+export function hpGainForLevelUp(hitDie: number, conMod: number, roll: number): number {
+  return Math.max(1, roll + conMod);
+}
+
+export function fixedAverageHpGain(hitDie: number): number {
+  return Math.floor(hitDie / 2) + 1;
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Link from "next/link";
-import { ABILITY_ORDER, formatModifier, maxHpAtLevelOne, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
+import { ABILITY_ORDER, formatModifier, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
 import { buildCharacterSheet, computeAC } from "@/lib/character-sheet";
 import type {
   SpeciesOption,
@@ -60,7 +60,7 @@ export default function ReviewStep({
   );
 
   const ac = sheet ? computeAC(resolvedEquipment, equipmentByIndex, allOwnedIndexes, sheet.modifiers.dex) : 10;
-  const hp = sheet ? maxHpAtLevelOne(sheet.hitDie, sheet.modifiers.con) : null;
+  const hp = sheet?.maxHpValue ?? null;
   const profBonus = sheet?.proficiencyBonus ?? 2;
 
   const chosenSkillIndexes = new Set(draft.skillChoices.map((s) => s.replace(/^skill-/, "")));
