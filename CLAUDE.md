@@ -283,3 +283,50 @@ already merged against `defaultPlayState` from the start, so it never had this b
 Caught by actually building a character through the wizard in a real browser, not
 by build/lint — both were clean the whole time since this was a runtime-only crash
 on stale client data, not a type error.
+
+## Leveling (Phase 1 of full 1-20 leveling) — subclass + Cleric/Druid Order choice
+`CharacterDraft` gained `subclassIndex: string | null` (set once level >= 3) and
+`orderChoice: string | null` (Cleric's Divine Order / Druid's Primal Order, a
+level-1 pick that's unrelated to subclass and only applies to those two classes).
+
+**Content-gap decision, asked of and answered by the user before building this:**
+the free SRD only has ONE subclass per class (Fighter→Champion, Cleric→Life
+Domain, etc.) where the real PHB has 3-4. Rather than auto-assigning it silently
+or homebrewing more options immediately, the user chose to ship a real picker UI
+now — populated with just the one SRD option, designed to take more options later
+— and revisit homebrewing additional subclasses as a separate future decision.
+**The "Choose your subclass" panel always shows even when there's only one
+option**, with an explicit "more options are coming later" note — don't collapse
+this back down to an auto-assign just because there's currently nothing to choose
+between.
+
+`getSubclassesForClass` (`src/lib/srd.ts`) reads the `subclasses` table. Unlike
+base class features, **subclass features are NOT in the shared `features` table**
+— they're embedded directly in each subclass row's own `data.features[]` array
+(name/level/description, levels 3/7/10/etc., no `index` field of their own).
+
+**Real duplicate-features bug, caught by browser testing, not build/lint:** for
+classes with only one SRD subclass, the source data also flattens some of that
+subclass's level-3 features into the *base* `features` table under the parent
+class (e.g. Cleric's `features` table already has rows for "Disciple of Life" and
+"Preserve Life" — the same names that also appear in `life-domain`'s embedded
+`features[]`). Merging both lists naively showed those features twice on the play
+sheet. Fixed by deduping the subclass feature list against base feature names
+before merging (`PlaySheet.tsx`) — generic by name, not hardcoded per class, since
+which features overlap isn't consistent and shouldn't be assumed for the other 11
+classes.
+
+`chooseSubclass`/`chooseOriginOrder` (`src/app/characters/actions.ts`) follow the
+same owner-gated persist-to-`draft` pattern as `levelUpCharacter`. All three now
+share a `loadOwnedDraft`/`saveDraft` pair extracted once a third near-identical
+action made the duplicated auth+fetch+ownership-filter preamble worth removing —
+add any future per-character mutation action through these rather than
+re-inlining the boilerplate.
+
+UI: both pickers are "Pending Choice" panels on the play sheet, independent of the
+Level Up control and of each other (`needsOrderChoice` / `needsSubclassChoice`),
+shown owner-only, instant-feedback via the same `currentDraft` shadow-state pattern
+Phase 0 established. Cleric/Druid's Order choice text is SRD prose split into two
+selectable options (verbatim, not paraphrased) since the SRD only stores it as one
+prose paragraph naming two sub-choices, not structured data — see `ORDER_CHOICES`
+in `src/lib/character.ts`.

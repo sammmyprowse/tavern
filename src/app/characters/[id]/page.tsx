@@ -8,6 +8,7 @@ import {
   getSkillsList,
   getEquipmentLookup,
   getFeaturesForClass,
+  getSubclassesForClass,
 } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
 import PlaySheet from "@/components/playsheet/PlaySheet";
@@ -54,7 +55,12 @@ export default async function CharacterPlaySheet({
 
   const isOwner = userData.user?.id === character.user_id;
   const draft = character.draft as unknown as CharacterDraft;
-  const features = draft.classIndex ? await getFeaturesForClass(draft.classIndex) : [];
+  const [features, subclassOptions] = draft.classIndex
+    ? await Promise.all([
+        getFeaturesForClass(draft.classIndex),
+        getSubclassesForClass(draft.classIndex),
+      ])
+    : [[], []];
 
   return (
     <PlaySheet
@@ -67,6 +73,7 @@ export default async function CharacterPlaySheet({
       skills={skills}
       equipment={Array.from(equipment.values())}
       features={features}
+      subclassOptions={subclassOptions}
       isOwner={isOwner}
       isPublic={character.is_public}
     />

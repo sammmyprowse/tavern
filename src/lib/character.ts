@@ -28,7 +28,53 @@ export interface CharacterDraft {
   // HP gained at each level beyond 1 — hpRolls[0] is the level-2 gain, etc.
   // Level 1 HP itself is always hitDie + conMod, computed fresh, not stored here.
   hpRolls: number[];
+  // Leveling (Phase 1). Set via the play sheet's subclass picker once level >= 3.
+  subclassIndex: string | null;
+  // Cleric's Divine Order / Druid's Primal Order pick (key into ORDER_CHOICES),
+  // unrelated to subclass — available at level 1, only for those two classes.
+  orderChoice: string | null;
 }
+
+export interface OrderChoiceOption {
+  key: string;
+  name: string;
+  description: string;
+}
+
+// Cleric/Druid each get a level-1 binary choice that isn't structured data
+// anywhere in the SRD tables — only as prose inside one `features` row
+// (cleric-divine-order / druid-primal-order). Text below is verbatim from
+// that SRD row, just split into selectable options instead of one paragraph.
+export const ORDER_CHOICES: Record<string, OrderChoiceOption[]> = {
+  cleric: [
+    {
+      key: "protector",
+      name: "Protector",
+      description:
+        "Trained for battle, you gain proficiency with Martial weapons and training with Heavy armor.",
+    },
+    {
+      key: "thaumaturge",
+      name: "Thaumaturge",
+      description:
+        "You know one extra cantrip from the Cleric spell list. In addition, your mystical connection to the divine gives you a bonus to your Intelligence (Arcana or Religion) checks. The bonus equals your Wisdom modifier (minimum of +1).",
+    },
+  ],
+  druid: [
+    {
+      key: "magician",
+      name: "Magician",
+      description:
+        "You know one extra cantrip from the Druid spell list. In addition, your mystical connection to nature gives you a bonus to your Intelligence (Arcana or Nature) checks. The bonus equals your Wisdom modifier (minimum bonus of +1).",
+    },
+    {
+      key: "warden",
+      name: "Warden",
+      description:
+        "Trained for battle, you gain proficiency with Martial weapons and training with Medium armor.",
+    },
+  ],
+};
 
 export type DraftUpdate =
   | Partial<CharacterDraft>
@@ -46,6 +92,8 @@ export const EMPTY_DRAFT: CharacterDraft = {
   backgroundAbilityBonus: null,
   level: 1,
   hpRolls: [],
+  subclassIndex: null,
+  orderChoice: null,
 };
 
 export const MAX_LEVEL = 20;

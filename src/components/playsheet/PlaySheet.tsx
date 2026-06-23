@@ -8,11 +8,12 @@ import {
   hpGainForLevelUp,
   fixedAverageHpGain,
   MAX_LEVEL,
+  ORDER_CHOICES,
   type CharacterDraft,
 } from "@/lib/character";
 import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
-import { levelUpCharacter } from "@/app/characters/actions";
+import { levelUpCharacter, chooseSubclass, chooseOriginOrder } from "@/app/characters/actions";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -21,6 +22,7 @@ import type {
   SkillInfo,
   EquipmentLookupItem,
   ClassFeature,
+  SubclassOption,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
@@ -35,6 +37,7 @@ interface PlaySheetProps {
   skills: SkillInfo[];
   equipment: EquipmentLookupItem[];
   features: ClassFeature[];
+  subclassOptions: SubclassOption[];
   isOwner: boolean;
   isPublic: boolean;
 }
@@ -59,6 +62,7 @@ export default function PlaySheet({
   skills,
   equipment,
   features,
+  subclassOptions,
   isOwner,
   isPublic,
 }: PlaySheetProps) {
@@ -73,6 +77,9 @@ export default function PlaySheet({
   const [levelUpError, setLevelUpError] = useState<string | null>(null);
   const [levelUpPending, setLevelUpPending] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
+  const [subclassPending, setSubclassPending] = useState(false);
+  const [orderPending, setOrderPending] = useState(false);
+  const [choiceError, setChoiceError] = useState<string | null>(null);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -132,7 +139,32 @@ export default function PlaySheet({
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
-  const unlockedFeatures = features.filter((f) => f.level <= sheet.level);
+
+  const orderOptions = ORDER_CHOICES[sheet.classIndex] ?? null;
+  const needsOrderChoice = !!orderOptions && !currentDraft.orderChoice;
+  const chosenOrder = orderOptions?.find((o) => o.key === currentDraft.orderChoice) ?? null;
+
+  const needsSubclassChoice =
+    sheet.level >= 3 && !currentDraft.subclassIndex && subclassOptions.length > 0;
+  const chosenSubclass = subclassOptions.find((s) => s.index === currentDraft.subclassIndex) ?? null;
+  // For classes with only one SRD subclass, the source data already flattens
+  // some subclass features into the base `features` table too (e.g. Cleric's
+  // "Disciple of Life") — dedupe by name so those don't show twice.
+  const baseFeatureNames = new Set(features.map((f) => f.name));
+  const subclassFeatures: ClassFeature[] = chosenSubclass
+    ? chosenSubclass.features
+        .filter((f) => !baseFeatureNames.has(f.name))
+        .map((f) => ({
+          index: `${chosenSubclass.index}-${f.name}`,
+          name: f.name,
+          level: f.level,
+          description: f.description,
+        }))
+    : [];
+
+  const unlockedFeatures = [...features, ...subclassFeatures]
+    .filter((f) => f.level <= sheet.level)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -273,6 +305,30 @@ export default function PlaySheet({
     setLevelUpPending(false);
   }
 
+  async function handleChooseSubclass(subclassIndex: string) {
+    setSubclassPending(true);
+    setChoiceError(null);
+    const result = await chooseSubclass(characterId, subclassIndex);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+    } else {
+      setChoiceError(result.error ?? "Couldn't choose subclass.");
+    }
+    setSubclassPending(false);
+  }
+
+  async function handleChooseOrder(choiceKey: string) {
+    setOrderPending(true);
+    setChoiceError(null);
+    const result = await chooseOriginOrder(characterId, choiceKey);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save choice.");
+    }
+    setOrderPending(false);
+  }
+
   function toggleFeature(index: string) {
     setExpandedFeatures((prev) => {
       const next = new Set(prev);
@@ -322,10 +378,16 @@ export default function PlaySheet({
               {sheet.name || "Unnamed"}
             </h1>
             <p className="text-tavern-muted">
-              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} {sheet.className} —{" "}
+              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} {sheet.className}
+              {chosenSubclass ? ` (${chosenSubclass.name})` : ""} —{" "}
               {sheet.backgroundName}
               {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
             </p>
+            {chosenOrder && (
+              <p className="text-xs text-tavern-muted">
+                {sheet.className} Order: {chosenOrder.name}
+              </p>
+            )}
           </div>
           {isOwner && <ShareControl characterId={characterId} initialIsPublic={isPublic} />}
         </div>
@@ -387,6 +449,55 @@ export default function PlaySheet({
             )}
           </div>
         )}
+
+        {isOwner && needsOrderChoice && orderOptions && (
+          <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+            <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+              Choose your {sheet.className} Order
+            </p>
+            <div className="mt-2 space-y-2">
+              {orderOptions.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => handleChooseOrder(opt.key)}
+                  disabled={orderPending}
+                  className="block w-full rounded-md border border-tavern-border p-3 text-left hover:border-tavern-gold-light disabled:opacity-50"
+                >
+                  <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
+                  <p className="mt-1 text-xs text-tavern-muted">{opt.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isOwner && needsSubclassChoice && (
+          <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+            <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+              Choose your subclass
+            </p>
+            {subclassOptions.length === 1 && (
+              <p className="mt-1 text-xs text-tavern-muted">
+                Only one subclass is in the free SRD right now — more options are coming later.
+              </p>
+            )}
+            <div className="mt-2 space-y-2">
+              {subclassOptions.map((opt) => (
+                <button
+                  key={opt.index}
+                  onClick={() => handleChooseSubclass(opt.index)}
+                  disabled={subclassPending}
+                  className="block w-full rounded-md border border-tavern-border p-3 text-left hover:border-tavern-gold-light disabled:opacity-50"
+                >
+                  <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
+                  {opt.summary && <p className="mt-1 text-xs text-tavern-muted">{opt.summary}</p>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {choiceError && <p className="mt-1 text-xs text-tavern-oxblood-light">{choiceError}</p>}
 
         {/* Stat chips */}
         <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">

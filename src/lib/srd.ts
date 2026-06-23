@@ -337,6 +337,48 @@ export async function getFeaturesForClass(classIndex: string): Promise<ClassFeat
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
+export interface SubclassFeature {
+  name: string;
+  level: number;
+  description: string;
+}
+
+export interface SubclassOption {
+  index: string;
+  name: string;
+  summary: string | null;
+  description: string | null;
+  features: SubclassFeature[];
+}
+
+// Unlike base class features, subclass features aren't in the shared
+// `features` table — they're embedded directly in the subclass's own
+// `data.features[]` array.
+export async function getSubclassesForClass(classIndex: string): Promise<SubclassOption[]> {
+  const { data } = await supabase
+    .from("subclasses")
+    .select("index, name, data")
+    .eq("ruleset", "2024")
+    .eq("class_index", classIndex);
+
+  return (data ?? [])
+    .map((s) => {
+      const d = s.data as {
+        summary?: string;
+        description?: string;
+        features?: { name: string; level: number; description: string }[];
+      };
+      return {
+        index: s.index,
+        name: s.name,
+        summary: d.summary ?? null,
+        description: d.description ?? null,
+        features: [...(d.features ?? [])].sort((a, b) => a.level - b.level),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function getSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")
