@@ -1984,3 +1984,63 @@ confirmed Delete on the My Characters list shows the same confirm bar,
 removes the row immediately without a page reload, and the row is
 actually gone from the database, not just hidden client-side. No console
 errors.
+
+## Section nav scroll-spy
+Hiding the native scrollbar made the nav "harder to use" per the user —
+fair, since the scrollbar was the only signal of "there's more here" and
+"where am I." Fix: scroll-spy. `SectionNav.tsx` now tracks an `activeId`
+via `IntersectionObserver`, watching all section `id` elements with
+`rootMargin: "-15% 0px -75% 0px"` — a thin detection band positioned
+15-25% down the viewport, so a section is "active" once it's scrolled
+up near the top (clear of the sticky nav itself) rather than the instant
+it first appears at the bottom of the screen. The active button gets a
+gold border/text instead of the default muted style, and a second effect
+calls `scrollIntoView({inline: "center", block: "nearest"})` on the
+active button so the nav strip auto-scrolls to keep it visible — without
+this, scroll-spy could highlight an item currently scrolled out of the
+strip's own view, which would defeat the point.
+
+Implementation note: IntersectionObserver's callback only reports
+entries whose state *changed* since the last callback, not every
+observed element — so naively using just the latest `entries` array to
+pick "the topmost intersecting section" would lose track of sections
+that are still intersecting but didn't change state this tick. Fixed by
+maintaining a running `Map` of currently-intersecting entries, updated
+incrementally (`set` on enter, `delete` on exit) each callback, then
+picking the smallest `boundingClientRect.top` from that full map, not
+just the latest entries.
+
+Also fixed a real (if non-visible) inefficiency caught while debugging:
+`PlaySheet.tsx` builds the `sections` array as a fresh literal on every
+render, so depending on the array *reference* in `SectionNav`'s
+`useEffect` would tear down and recreate the IntersectionObserver on
+every unrelated state change anywhere in that large component (a dice
+roll, an HP edit, anything). Fixed by depending on
+`sections.map(s => s.id).join(",")` instead — a stable string unless the
+actual set of sections changes (e.g. a level-up unlocks Spells).
+
+Debugging note for future reference: a temporary `console.log` inside
+the observer callback was the only way to settle two false alarms while
+testing this live. First false alarm: checking the active button via
+`button.className.includes("border-tavern-gold")` — every button
+matched, because the *inactive* style includes
+`hover:border-tavern-gold-light`, which contains "border-tavern-gold" as
+a literal substring. Fixed the check itself
+(`className.split(" ").includes("border-tavern-gold")`), not the
+component — there was no real bug. Second false alarm: scrolling to the
+Equipment section (near the very bottom of the page) and expecting its
+top to land at viewport y=0 — it can't, there isn't enough trailing page
+content below it to scroll that far, so it stops short and a different
+section legitimately still occupies the detection band. Both are listed
+here because they looked exactly like real bugs until checked carefully
+— same shape as the same-tick stale-closure and substring-match mistakes
+elsewhere in this file.
+
+Tested live: confirmed activeId starts on "Stats" on page load, updates
+correctly as different sections (Skills, Species Traits) are scrolled
+to the top, the nav strip auto-scrolls to keep the active pill visible
+(verified the button's bounding rect falls fully within the scroller's
+bounds, not just "looks right" in a screenshot), and confirmed the
+near-bottom Equipment/Attacks boundary case behaves correctly given the
+actual constraint (not enough page below Equipment to scroll it to the
+very top). No console errors.
