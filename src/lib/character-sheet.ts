@@ -1,22 +1,26 @@
 import {
   ABILITY_ORDER,
   abilityModifier,
+  actionSurgeMax,
   bardicInspirationDie,
   bardicInspirationMax,
   clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
   favoredEnemyMax,
+  FIGHTING_STYLE_KNOWN_BY_CLASS,
   finalAbilityScores,
   fullCasterSlots,
   halfCasterSlots,
   HALF_CASTER_CLASSES,
+  indomitableMax,
   layOnHandsMax,
   maxHp,
   metamagicKnownMax,
   paladinChannelDivinityMax,
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
+  secondWindMax,
   sorceryPointsMax,
   warlockPreparedSpellsMax,
   warlockSlots,
@@ -99,6 +103,10 @@ export interface CharacterSheet {
   wildShapeMax: number;
   layOnHandsMax: number;
   favoredEnemyMax: number;
+  fightingStyleKnownMax: number;
+  secondWindMax: number;
+  actionSurgeMax: number;
+  indomitableMax: number;
 }
 
 export function buildCharacterSheet(
@@ -234,6 +242,10 @@ export function buildCharacterSheet(
     layOnHandsMax: cls.index === "paladin" ? layOnHandsMax(draft.level) : 0,
     favoredEnemyMax: cls.index === "ranger" ? favoredEnemyMax(draft.level) : 0,
     wildShapeMax: cls.index === "druid" ? wildShapeMax(draft.level) : 0,
+    fightingStyleKnownMax: FIGHTING_STYLE_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
+    secondWindMax: cls.index === "fighter" ? secondWindMax(draft.level) : 0,
+    actionSurgeMax: cls.index === "fighter" ? actionSurgeMax(draft.level) : 0,
+    indomitableMax: cls.index === "fighter" ? indomitableMax(draft.level) : 0,
   };
 }
 
@@ -260,11 +272,12 @@ export function computeAC(
   equipmentLookup: Map<string, EquipmentLookupItem>,
   equippedIndexes: Set<string>,
   dexMod: number,
+  hasDefenseFightingStyle = false,
 ): number {
   const equipped = resolveEquippedItems(ownedEquipment, equipmentLookup, equippedIndexes).filter(
     (item) => item.armor_class,
   );
-  return computeArmorClass(equipped, dexMod);
+  return computeArmorClass(equipped, dexMod, hasDefenseFightingStyle);
 }
 
 export interface ResolvedWeapon {
@@ -280,11 +293,16 @@ export interface ResolvedWeapon {
 
 const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
 
+// hasArcheryFightingStyle adds the Archery Fighting Style feat's "+2 bonus
+// to attack rolls you make with Ranged weapons" — confirmed directly from
+// the feat's own SRD text. Defaults to false so every existing call site
+// keeps working unchanged.
 export function resolveWeapons(
   ownedEquipment: EquipmentBundleItem[],
   equipmentLookup: Map<string, EquipmentLookupItem>,
   modifiers: Record<AbilityKey, number>,
   proficiencyBonus: number,
+  hasArcheryFightingStyle = false,
 ): ResolvedWeapon[] {
   const weapons: ResolvedWeapon[] = [];
   for (const item of ownedEquipment) {
@@ -306,7 +324,7 @@ export function resolveWeapons(
       index: lookup.index,
       name: lookup.name,
       ability,
-      attackBonus: modifiers[ability] + proficiencyBonus,
+      attackBonus: modifiers[ability] + proficiencyBonus + (isRanged && hasArcheryFightingStyle ? 2 : 0),
       damageDice: lookup.damage.damageDice,
       damageBonus: modifiers[ability],
       damageType: lookup.damage.damageType,

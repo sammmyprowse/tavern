@@ -361,3 +361,27 @@ export async function setMetamagicChoices(
   revalidatePath(`/characters/${characterId}`);
   return { success: true, draft: nextDraft };
 }
+
+// Same freely-overwritable shape as setMetamagicChoices — Fighting Style is
+// also "replace one whenever you gain a [class] level," not a permanent
+// choice log.
+export async function setFightingStyleChoices(
+  characterId: string,
+  featIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(featIndexes) || featIndexes.length > 10) {
+    return { success: false, error: "Invalid Fighting Style selection." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, fightingStyleChoices: featIndexes };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}

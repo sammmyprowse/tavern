@@ -10,6 +10,7 @@ import {
   getFeaturesForClass,
   getSubclassesForClass,
   getGeneralFeatsList,
+  getFightingStyleFeats,
   getSpellsForClass,
 } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
@@ -33,6 +34,7 @@ export default async function CharacterPlaySheet({
     skills,
     equipment,
     generalFeats,
+    fightingStyleFeats,
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from("characters").select("id, user_id, name, draft, is_public").eq("id", id).maybeSingle(),
@@ -43,6 +45,7 @@ export default async function CharacterPlaySheet({
     getSkillsList(),
     getEquipmentLookup(),
     getGeneralFeatsList(),
+    getFightingStyleFeats(),
   ]);
 
   if (!character) {
@@ -88,6 +91,7 @@ export default async function CharacterPlaySheet({
       features={features}
       subclassOptions={subclassOptions}
       generalFeats={generalFeats}
+      fightingStyleFeats={fightingStyleFeats}
       classSpells={classSpells}
       isOwner={isOwner}
       isPublic={character.is_public}

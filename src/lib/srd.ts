@@ -455,6 +455,37 @@ export async function getGeneralFeatsList(): Promise<FeatOption[]> {
     });
 }
 
+// Fighting Style feats (Archery/Defense/Great Weapon Fighting/Two-Weapon
+// Fighting) are a real, separate feat category in the SRD data
+// (type='fighting-style', distinct from the homebrew general-feat pool
+// above) — granted to Fighter/Paladin/Ranger via FIGHTING_STYLE_KNOWN_BY_CLASS
+// in character.ts. Only 4 of the real PHB's ~9 styles are in the free SRD;
+// unlike backgrounds/general feats, that gap hasn't been homebrew-padded
+// (not requested), so this list is shorter than the official one — disclosed
+// in CLAUDE.md, not silently presented as complete.
+export async function getFightingStyleFeats(): Promise<FeatOption[]> {
+  const { data } = await supabase
+    .from("feats")
+    .select("index, name, data")
+    .eq("type", "fighting-style")
+    .eq("ruleset", "2024");
+
+  return (data ?? [])
+    .map((f) => {
+      const d = f.data as { description?: string };
+      return {
+        index: f.index,
+        name: f.name,
+        description: d.description ?? null,
+        isHomebrew: false,
+      };
+    })
+    .sort((a, b) => {
+      if (a.isHomebrew !== b.isHomebrew) return a.isHomebrew ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
 export async function getSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")

@@ -29,6 +29,7 @@ import {
   setKnownCantrips,
   setPreparedSpells,
   setMetamagicChoices,
+  setFightingStyleChoices,
 } from "@/app/characters/actions";
 import type {
   SpeciesOption,
@@ -57,6 +58,7 @@ interface PlaySheetProps {
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
+  fightingStyleFeats: FeatOption[];
   classSpells: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
@@ -99,6 +101,18 @@ interface PlayState {
   // expendedSlots (see useMagicalCunning below), so it's tracked as a
   // boolean "already used this Long Rest" flag instead.
   usedMagicalCunning: boolean;
+  // Second Wind (Fighter only). Short Rest regains 1, Long Rest regains all
+  // — same shape as Channel Divinity/Wild Shape.
+  expendedSecondWind: number;
+  // Action Surge (Fighter only, from level 2). Short OR Long Rest regains
+  // all uses (confirmed "finish a Short or Long Rest") — same shape as
+  // Warlock's Pact Magic slots, but its own counter since it's a distinct
+  // resource.
+  expendedActionSurge: number;
+  // Indomitable (Fighter only, from level 9). Long-Rest-only, no Short Rest
+  // component (confirmed by omission) — same shape as Lay on Hands/Favored
+  // Enemy.
+  expendedIndomitable: number;
 }
 
 export default function PlaySheet({
@@ -113,6 +127,7 @@ export default function PlaySheet({
   features,
   subclassOptions,
   generalFeats,
+  fightingStyleFeats,
   classSpells,
   isOwner,
   isPublic,
@@ -147,6 +162,9 @@ export default function PlaySheet({
   const [metamagicPickerOpen, setMetamagicPickerOpen] = useState(false);
   const [selectedMetamagic, setSelectedMetamagic] = useState<string[]>([]);
   const [metamagicPending, setMetamagicPending] = useState(false);
+  const [fightingStylePickerOpen, setFightingStylePickerOpen] = useState(false);
+  const [selectedFightingStyle, setSelectedFightingStyle] = useState<string[]>([]);
+  const [fightingStylePending, setFightingStylePending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -168,6 +186,9 @@ export default function PlaySheet({
     expendedLayOnHands: 0,
     expendedFavoredEnemy: 0,
     usedMagicalCunning: false,
+    expendedSecondWind: 0,
+    expendedActionSurge: 0,
+    expendedIndomitable: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -210,8 +231,22 @@ export default function PlaySheet({
   if (!loaded) return null;
 
   const equippedSet = new Set(play.equippedIndexes);
-  const ac = computeAC(sheet.ownedEquipment, equipmentByIndex, equippedSet, sheet.modifiers.dex);
-  const weapons = resolveWeapons(sheet.ownedEquipment, equipmentByIndex, sheet.modifiers, sheet.proficiencyBonus);
+  const hasDefenseFightingStyle = currentDraft.fightingStyleChoices.includes("defense");
+  const hasArcheryFightingStyle = currentDraft.fightingStyleChoices.includes("archery");
+  const ac = computeAC(
+    sheet.ownedEquipment,
+    equipmentByIndex,
+    equippedSet,
+    sheet.modifiers.dex,
+    hasDefenseFightingStyle,
+  );
+  const weapons = resolveWeapons(
+    sheet.ownedEquipment,
+    equipmentByIndex,
+    sheet.modifiers,
+    sheet.proficiencyBonus,
+    hasArcheryFightingStyle,
+  );
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
@@ -288,6 +323,8 @@ export default function PlaySheet({
     sheet.channelDivinityMax > 0 ||
     sheet.bardicInspirationMax > 0 ||
     sheet.wildShapeMax > 0 ||
+    sheet.secondWindMax > 0 ||
+    sheet.actionSurgeMax > 0 ||
     (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
@@ -307,6 +344,9 @@ export default function PlaySheet({
   const knownMetamagicDetails = currentDraft.metamagicChoices
     .map((key) => METAMAGIC_OPTIONS.find((m) => m.key === key))
     .filter((m): m is MetamagicOption => Boolean(m));
+  const knownFightingStyleDetails = currentDraft.fightingStyleChoices
+    .map((index) => fightingStyleFeats.find((f) => f.index === index))
+    .filter((f): f is FeatOption => Boolean(f));
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -456,17 +496,22 @@ export default function PlaySheet({
       expendedLayOnHands: 0,
       expendedFavoredEnemy: 0,
       usedMagicalCunning: false,
+      expendedSecondWind: 0,
+      expendedActionSurge: 0,
+      expendedIndomitable: 0,
     }));
   }
 
-  // Channel Divinity and Wild Shape each regain only 1 use on a Short Rest;
-  // Bardic Inspiration fully resets, but only from Bard level 5 on (Font of
-  // Inspiration) — below that level a Bard's Bardic Inspiration is
-  // Long-Rest-only, same as every other resource. HP and hit dice are
-  // untouched either way, matching the real rule that a Short Rest doesn't
-  // restore those. Spell slots are also untouched for every caster EXCEPT
-  // Warlock — Pact Magic's signature trait is that its slots fully recover
-  // on a Short Rest too, confirmed directly from the feature's own text.
+  // Channel Divinity, Wild Shape, and Second Wind each regain only 1 use on
+  // a Short Rest; Bardic Inspiration fully resets, but only from Bard level
+  // 5 on (Font of Inspiration) — below that level a Bard's Bardic
+  // Inspiration is Long-Rest-only, same as every other resource. HP and hit
+  // dice are untouched either way, matching the real rule that a Short Rest
+  // doesn't restore those. Spell slots are also untouched for every caster
+  // EXCEPT Warlock — Pact Magic's signature trait is that its slots fully
+  // recover on a Short Rest too, confirmed directly from the feature's own
+  // text. Action Surge fully resets on a Short Rest too (confirmed "finish a
+  // Short or Long Rest"), unlike Second Wind which only regains 1.
   function shortRest() {
     const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
     const warlockPactMagic = sheet?.classIndex === "warlock";
@@ -476,6 +521,8 @@ export default function PlaySheet({
       expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
       expendedWildShape: Math.max(0, prev.expendedWildShape - 1),
       expendedSlots: warlockPactMagic ? [] : prev.expendedSlots,
+      expendedSecondWind: Math.max(0, prev.expendedSecondWind - 1),
+      expendedActionSurge: 0,
     }));
   }
 
@@ -539,6 +586,48 @@ export default function PlaySheet({
 
   function restoreWildShape() {
     setPlay((prev) => ({ ...prev, expendedWildShape: Math.max(0, prev.expendedWildShape - 1) }));
+  }
+
+  // "As a Bonus Action, you can use it to regain Hit Points equal to 1d10
+  // plus your Fighter level." Unlike Channel Divinity's "Roll Divine Spark"
+  // button (which deliberately doesn't touch the charge counter, since
+  // Channel Divinity has more than one effect to choose from per charge),
+  // Second Wind has exactly one use for its charge — rolling, healing, and
+  // expending happen together in one click.
+  function useSecondWind() {
+    if (!sheet || play.expendedSecondWind >= sheet.secondWindMax) return;
+    const notation = `1d10${formatModifier(sheet.level)}`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Second Wind",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
+    setPlay((prev) => ({
+      ...prev,
+      expendedSecondWind: prev.expendedSecondWind + 1,
+      currentHp: Math.min(maxHp, prev.currentHp + result.total),
+    }));
+  }
+
+  function restoreSecondWind() {
+    setPlay((prev) => ({ ...prev, expendedSecondWind: Math.max(0, prev.expendedSecondWind - 1) }));
+  }
+
+  function expendActionSurge() {
+    setPlay((prev) => ({ ...prev, expendedActionSurge: prev.expendedActionSurge + 1 }));
+  }
+
+  function restoreActionSurge() {
+    setPlay((prev) => ({ ...prev, expendedActionSurge: Math.max(0, prev.expendedActionSurge - 1) }));
+  }
+
+  function expendIndomitable() {
+    setPlay((prev) => ({ ...prev, expendedIndomitable: prev.expendedIndomitable + 1 }));
+  }
+
+  function restoreIndomitable() {
+    setPlay((prev) => ({ ...prev, expendedIndomitable: Math.max(0, prev.expendedIndomitable - 1) }));
   }
 
   function rollDivineSpark() {
@@ -827,6 +916,33 @@ export default function PlaySheet({
       setChoiceError(result.error ?? "Couldn't save Metamagic options.");
     }
     setMetamagicPending(false);
+  }
+
+  function openFightingStylePicker() {
+    setSelectedFightingStyle(currentDraft.fightingStyleChoices);
+    setFightingStylePickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function toggleFightingStyleSelection(index: string, limit: number) {
+    setSelectedFightingStyle((prev) => {
+      if (prev.includes(index)) return prev.filter((s) => s !== index);
+      if (prev.length >= limit) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function saveFightingStyle() {
+    setFightingStylePending(true);
+    setChoiceError(null);
+    const result = await setFightingStyleChoices(characterId, selectedFightingStyle);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setFightingStylePickerOpen(false);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save Fighting Style.");
+    }
+    setFightingStylePending(false);
   }
 
   function toggleFeature(index: string) {
@@ -1540,6 +1656,108 @@ export default function PlaySheet({
             </div>
           )}
 
+          {sheet.secondWindMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Second Wind
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action to regain 1d10{formatModifier(sheet.level)} Hit Points. Regains 1 use
+                  on a Short Rest, all uses on a Long Rest.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={useSecondWind}
+                  disabled={play.expendedSecondWind >= sheet.secondWindMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Use Second Wind
+                </button>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreSecondWind}
+                    disabled={play.expendedSecondWind <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.secondWindMax - play.expendedSecondWind}/{sheet.secondWindMax}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sheet.actionSurgeMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Action Surge
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Take one additional action this turn (not the Magic action). Regains all uses on
+                  a Short or Long Rest
+                  {sheet.actionSurgeMax > 1 ? " — only once per turn even with 2 uses available." : "."}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={restoreActionSurge}
+                  disabled={play.expendedActionSurge <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.actionSurgeMax - play.expendedActionSurge}/{sheet.actionSurgeMax}
+                </span>
+                <button
+                  onClick={expendActionSurge}
+                  disabled={play.expendedActionSurge >= sheet.actionSurgeMax}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  &minus;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {sheet.indomitableMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Indomitable
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Reroll a failed saving throw, adding {formatModifier(sheet.level)} to the new
+                  roll. Regains all uses on a Long Rest only.
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={restoreIndomitable}
+                  disabled={play.expendedIndomitable <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.indomitableMax - play.expendedIndomitable}/{sheet.indomitableMax}
+                </span>
+                <button
+                  onClick={expendIndomitable}
+                  disabled={play.expendedIndomitable >= sheet.indomitableMax}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  &minus;
+                </button>
+              </div>
+            </div>
+          )}
+
           {isDying && (
             <div className="mt-4 rounded-lg border border-tavern-oxblood bg-tavern-oxblood/10 p-3">
               <div className="flex items-center justify-between">
@@ -1629,6 +1847,114 @@ export default function PlaySheet({
             ))}
           </div>
         </div>
+
+        {/* Fighting Style — not gated on spellcastingAbility, unlike Spells
+            below: Fighter/Paladin/Ranger all grant this regardless of
+            whether the class casts spells. */}
+        {sheet.fightingStyleKnownMax > 0 && (
+          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Fighting Style ({knownFightingStyleDetails.length}/{sheet.fightingStyleKnownMax})
+              </h2>
+              {isOwner && !fightingStylePickerOpen && (
+                <button
+                  onClick={openFightingStylePicker}
+                  className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-tavern-muted">
+              Only 4 of the real PHB&apos;s Fighting Styles (Archery, Defense, Great Weapon
+              Fighting, Two-Weapon Fighting) are in the free SRD. Archery and Defense apply
+              automatically above; the other two are situational and applied manually in play.
+            </p>
+
+            {!fightingStylePickerOpen ? (
+              <div className="mt-2 space-y-1">
+                {knownFightingStyleDetails.map((f) => {
+                  const key = `fighting-style-${f.index}`;
+                  const expanded = expandedFeatures.has(key);
+                  return (
+                    <div key={key} className="rounded-md border border-tavern-border">
+                      <button
+                        onClick={() => toggleFeature(key)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                      >
+                        <span className="text-tavern-text">{f.name}</span>
+                      </button>
+                      {expanded && f.description && (
+                        <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                          {f.description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                {knownFightingStyleDetails.length === 0 && (
+                  <p className="text-xs text-tavern-muted">No Fighting Style chosen yet.</p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                <p className="text-xs text-tavern-muted">
+                  Choose up to {sheet.fightingStyleKnownMax} ({selectedFightingStyle.length} selected).
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {fightingStyleFeats.map((f) => {
+                    const key = `picker-fighting-style-${f.index}`;
+                    const expanded = expandedFeatures.has(key);
+                    const selected = selectedFightingStyle.includes(f.index);
+                    return (
+                      <div
+                        key={f.index}
+                        className={`rounded-md border ${
+                          selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
+                        }`}
+                      >
+                        <button
+                          onClick={() => toggleFightingStyleSelection(f.index, sheet.fightingStyleKnownMax)}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                        >
+                          <span className="text-tavern-text">{f.name}</span>
+                        </button>
+                        <button
+                          onClick={() => toggleFeature(key)}
+                          className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
+                        >
+                          {expanded ? "Hide details" : "Show details"}
+                        </button>
+                        {expanded && (
+                          <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                            {f.description}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={saveFightingStyle}
+                    disabled={fightingStylePending}
+                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setFightingStylePickerOpen(false)}
+                    disabled={fightingStylePending}
+                    className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Spells */}
         {sheet.spellcastingAbility && (

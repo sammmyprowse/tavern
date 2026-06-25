@@ -54,6 +54,11 @@ export interface CharacterDraft {
   // here, especially since the option list itself is already homebrew (see
   // METAMAGIC_OPTIONS) rather than the official one.
   metamagicChoices: string[];
+  // Fighting Style (Fighter level 1+7, Paladin/Ranger level 2) — real SRD
+  // feats (type='fighting-style' in the feats table), freely overwritable
+  // like metamagicChoices since "Whenever you gain a [Class] level, you can
+  // replace the feat you chose with a different Fighting Style feat."
+  fightingStyleChoices: string[];
 }
 
 export interface ExpertiseMilestone {
@@ -179,6 +184,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   knownCantrips: [],
   preparedSpells: [],
   metamagicChoices: [],
+  fightingStyleChoices: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -235,7 +241,18 @@ export interface EquipmentItem {
   armor_class: ArmorClassData | null;
 }
 
-export function computeArmorClass(equipped: EquipmentItem[], dexMod: number): number {
+// hasDefenseFightingStyle adds the Defense Fighting Style feat's "+1 bonus
+// to Armor Class while wearing Light, Medium, or Heavy armor" — confirmed
+// directly from the feat's own SRD text. Only applies when actual body
+// armor is equipped (not just a shield, and not unarmored), matching
+// `bodyArmor` below exactly. Defaults to false so every existing call site
+// (ReviewStep's builder preview, which has no Fighting Style data yet)
+// keeps working unchanged.
+export function computeArmorClass(
+  equipped: EquipmentItem[],
+  dexMod: number,
+  hasDefenseFightingStyle = false,
+): number {
   const shield = equipped.find((item) => item.index === "shield");
   const bodyArmor = equipped.find(
     (item) => item.armor_class && item.index !== "shield",
@@ -249,7 +266,7 @@ export function computeArmorClass(equipped: EquipmentItem[], dexMod: number): nu
         ? Math.min(dexMod, max_bonus)
         : dexMod
       : 0;
-    ac = base + dexContribution;
+    ac = base + dexContribution + (hasDefenseFightingStyle ? 1 : 0);
   } else {
     ac = 10 + dexMod;
   }
@@ -671,4 +688,67 @@ export function warlockPreparedSpellsMax(level: number): number {
 // the caller doesn't need to re-derive it from the slot tables above.
 export function magicalCunningRegain(maxSlots: number): number {
   return Math.ceil(maxSlots / 2);
+}
+
+// Fighting Style (Fighter level 1, +1 more at level 7; Paladin/Ranger both
+// from level 2) — confirmed real SRD feats, type='fighting-style' in the
+// feats table (Archery/Defense/Great Weapon Fighting/Two-Weapon Fighting),
+// distinct from the homebrew general-feat pool. Maps each granting class to
+// its own known-count-by-level function, same generic-lookup pattern as
+// CANTRIPS_KNOWN_BY_CLASS/EXPERTISE_SCHEDULE so any future class that grants
+// Fighting Style plugs in for free.
+export function fighterFightingStylesKnown(level: number): number {
+  return level >= 7 ? 2 : level >= 1 ? 1 : 0;
+}
+
+export function paladinFightingStylesKnown(level: number): number {
+  return level >= 2 ? 1 : 0;
+}
+
+export function rangerFightingStylesKnown(level: number): number {
+  return level >= 2 ? 1 : 0;
+}
+
+export const FIGHTING_STYLE_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
+  fighter: fighterFightingStylesKnown,
+  paladin: paladinFightingStylesKnown,
+  ranger: rangerFightingStylesKnown,
+};
+
+// Second Wind (Fighter, from level 1): "As a Bonus Action, you can use it to
+// regain Hit Points equal to 1d10 plus your Fighter level. You can use this
+// feature twice. You regain one expended use when you finish a Short Rest,
+// and you regain all expended uses when you finish a Long Rest." Confirmed
+// base of 2; higher-level increases are referenced via "the Second Wind
+// column of the Fighter Features table" without giving those breakpoints in
+// prose, and (unlike Action Surge/Indomitable below) the 2014 `levels` table
+// has no corresponding field to cross-check against either — so this stays a
+// disclosed flat simplification, same treatment as clericChannelDivinityMax/
+// wildShapeMax/favoredEnemyMax.
+export function secondWindMax(level: number): number {
+  return level >= 1 ? 2 : 0;
+}
+
+// Action Surge (Fighter, from level 2): "Once you use this feature, you
+// can't do so again until you finish a Short or Long Rest. Starting at level
+// 17, you can use it twice before a rest but only once on a turn." Fully
+// confirmed schedule (1 from level 2, 2 from level 17) — cross-validated
+// against the 2014 `levels` table's class_specific.action_surges column,
+// which matches these exact breakpoints (0/1/2 at 1/2/17), unlike Second
+// Wind's missing column above.
+export function actionSurgeMax(level: number): number {
+  return level >= 17 ? 2 : level >= 2 ? 1 : 0;
+}
+
+// Indomitable (Fighter, from level 9): "you can reroll it with a bonus equal
+// to your Fighter level... you can't use this feature again until you finish
+// a Long Rest. You can use this feature twice before a Long Rest starting at
+// level 13 and three times... at level 17." Fully confirmed schedule (1/2/3
+// at 9/13/17) — cross-validated against the 2014 levels table's
+// class_specific.indomitable_uses column, exact match. Long-Rest-only, no
+// Short Rest component (confirmed by omission — the text only mentions Long
+// Rest, unlike Second Wind/Action Surge which both explicitly mention Short
+// Rest too).
+export function indomitableMax(level: number): number {
+  return level >= 17 ? 3 : level >= 13 ? 2 : level >= 9 ? 1 : 0;
 }

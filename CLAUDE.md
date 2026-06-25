@@ -1032,3 +1032,124 @@ Contact Patron, Fiendish Resilience), sorted by level.
 built** (Wizard/Sorcerer/Cleric/Bard/Druid full casters, Paladin/Ranger
 half-casters, Warlock's Pact Magic). Remaining: the three non-casters
 (Fighter, Barbarian, Monk), then homebrew species.
+
+## Class resources — Fighter (Fighting Style, Second Wind, Action Surge, Indomitable)
+Tenth class-by-class pass, first non-caster. No spellcasting at all (`classes`
+row confirms `spellcasting: null`), so this pass also surfaced the first
+resource that needed to live OUTSIDE the `{sheet.spellcastingAbility && (...)}`
+Spells card: Fighting Style.
+
+**Fighting Style turned out to be real, structured SRD content, not a gap** —
+a discovery worth flagging since the original Angrenor-sheet comparison (way
+back in Phase 0) had flagged "no Fighting Style" as a deferred simplification,
+left unaddressed ever since. The `feats` table has a `type` column distinct
+from `general` (used by the homebrew general-feat pool): `type='fighting-style'`
+covers Archery/Defense/Great Weapon Fighting/Two-Weapon Fighting, each with
+`prerequisites.feature_named: "Fighting Style"`. New SRD helper
+`getFightingStyleFeats()` (mirrors `getGeneralFeatsList()`, no homebrew
+flag needed — all 4 are real). Granted to **three** classes, not just Fighter
+— Fighter (1, +1 more at 7), Paladin (2), Ranger (2), all confirmed
+independently from each class's own `fighter-fighting-style`/
+`paladin-fighting-style`/`ranger-fighting-style` feature rows. Modeled via
+`FIGHTING_STYLE_KNOWN_BY_CLASS` (same generic per-class-function-map pattern
+as `CANTRIPS_KNOWN_BY_CLASS`/`EXPERTISE_SCHEDULE`), so Paladin/Ranger
+characters built in earlier passes get this UI retroactively for free, no
+backfill needed. `fightingStyleChoices: string[]` on `CharacterDraft` is
+freely overwritable (like `metamagicChoices`) since "Whenever you gain a
+[Class] level, you can replace the feat you chose." New picker UI placed as
+its OWN card (not inside Spells) right after Skills, gated only on
+`fightingStyleKnownMax > 0` — the first resource UI in this app that isn't
+nested inside a caster-only or single-class-only block.
+**Only 4 of the real PHB's ~9 Fighting Styles are in the free SRD** (no
+Blind Fighting/Dueling/Interception/Thrown Weapon Fighting/Unarmed Fighting)
+— same shape as the 4/16 backgrounds gap, disclosed in the UI and here, but
+NOT homebrew-padded (wasn't asked for this specific gap, unlike Metamagic).
+
+**Two of the four chosen styles are mechanically auto-applied, two are
+display-only** — deliberate split by how clean the formula is, same
+reasoning as Channel Divinity's Divine Spark (auto-rolled) vs Turn Undead
+(informational): **Defense** ("+1 bonus to AC while wearing armor") threads
+a new `hasDefenseFightingStyle` param through `computeArmorClass`/`computeAC`,
+applied only when actual body armor (not just a shield) is equipped — clean,
+unconditional, zero edge cases. **Archery** ("+2 bonus to attack rolls with
+Ranged weapons") threads `hasArcheryFightingStyle` through `resolveWeapons`,
+adding +2 only when the weapon's own pre-existing `isRanged` check (already
+computed for ability-mod selection) is true. **Great Weapon Fighting**
+(rerolling 1s/2s on two-handed/versatile melee damage dice) and **Two-Weapon
+Fighting** (adding ability mod to an off-hand Light-weapon attack) both need
+dice-engine/weapon-property concepts that don't exist yet (a "reroll low
+rolls" mode; tracking which attack is the off-hand one) — left display-only
+via the Fighting Style card's full real text, same scope-discipline as every
+other "too situational to auto-apply" deferral this session. Both new params
+default to `false` so the builder's `ReviewStep.tsx` call sites (which predate
+Fighting Style and have no such data yet) needed no changes.
+
+**Second Wind, Action Surge, and Indomitable** — three more level-gated
+counters, but with a genuinely different trust level per resource thanks to
+the 2014 `levels` table's `class_specific` object, which (unlike Channel
+Divinity's `levels` row) has dedicated `action_surges`/`indomitable_uses`/
+`extra_attacks` fields. **Action Surge and Indomitable get the real, complete
+schedule** (`actionSurgeMax`: 1 from level 2, 2 from level 17; `indomitableMax`:
+1/2/3 at 9/13/17) because the 2014 table's numbers cross-validate exactly
+against the 2024 prose's own breakpoints at every level (0→1 at level 2, 1→2
+at 17 for Action Surge; 0→1→2→3 at 9/13/17 for Indomitable) — multiple
+independent matches, not just a lucky single data point, so trusted the same
+way Warlock's Pact Magic slot table was. **Second Wind stays a disclosed
+flat simplification** (`secondWindMax = level >= 1 ? 2 : 0`) because the 2014
+table has NO corresponding field for it at all (2014 Second Wind wasn't a
+multi-charge resource), so there's nothing to cross-check the SRD prose's
+"the Second Wind column of the Fighter Features table" against — same
+honest gap as `clericChannelDivinityMax`/`wildShapeMax`/`favoredEnemyMax`.
+
+Second Wind's button (`useSecondWind`) is the first resource action that
+rolls dice AND heals AND expends a charge all in one click, rather than
+splitting "roll" and "track the charge" into two separate UI affordances like
+Channel Divinity's Divine Spark does — justified because Second Wind has
+exactly one use for its charge (heal yourself), unlike Channel Divinity's
+multiple effects sharing one pool, so there's no ambiguity to preserve by
+keeping them separate. Action Surge recovers on a Short OR Long Rest (third
+resource with this trait, after Warlock's Pact Magic) — `shortRest()` grew an
+unconditional `expendedActionSurge: 0` line (no class check needed, the
+`actionSurgeMax > 0` gate at the JSX level already scopes it to Fighter).
+Indomitable is Long-Rest-only, same shape as Lay on Hands/Favored Enemy — its
+reroll bonus (+Fighter level) is surfaced in the description text but not
+auto-applied to an actual save reroll (the player adds it manually using the
+existing per-ability Save buttons), consistent with not over-building a
+rarely-triggered, manually-resolved mechanic.
+
+**Deliberately deferred to informational-only (Features list, not
+interactive): Tactical Mind, Weapon Mastery, Tactical Shift, Studied Attacks,
+Survivor, Tactical Master, and the Extra-Attack-count features.** Tactical
+Mind (spend a Second Wind charge to boost a failed ability check, but only if
+boosting it doesn't help — "if the check still fails, this use isn't
+expended") needs the check's result known BEFORE deciding to spend the
+charge, a reactive sequencing this app doesn't model for any ability check
+anywhere. Weapon Mastery (choosing which 3+ weapon kinds you can use mastery
+properties with) is a system-wide 2024 mechanic that hasn't been gated by
+class in ANY prior pass — every equipped weapon's mastery property already
+displays unconditionally in Attacks, a pre-existing simplification, not new
+to Fighter. Extra Attack/Two Extra Attacks/Three Extra Attacks (attack
+2×/3×/4× per Attack action) need no new state — this sheet has never modeled
+per-turn action economy for any class; the player just clicks the existing
+Attack button the right number of times. The rest are passive/conditional
+riders with no clean resource shape. All real SRD content, fully visible via
+Features.
+
+Tested live with STR 20/CON 18 (post-ASI), DEX 14 at level 9, Champion
+subclass, Soldier background (which happens to include a Shortbow, letting
+Archery's bonus be verified against a real equipped ranged weapon): AC 16
+before any Fighting Style choice (Chain Mail, no Dex bonus), Second Wind
+"1d10+9" 2/2, Action Surge 1/1, Indomitable "+9" 1/1, Fighting Style (0/2).
+Choosing Defense + Great Weapon Fighting via the picker bumped AC to 17
+immediately (auto-applied, no save/reload needed); swapping Great Weapon
+Fighting for Archery bumped the equipped Shortbow's attack bonus from +6 to
++8. Verified Use Second Wind rolls 1d10+9 (logged "Second Wind 15" for one
+roll), heals current HP, and decrements the counter together; Short Rest
+regains exactly 1 Second Wind use and fully resets Action Surge while leaving
+Indomitable untouched; Long Rest resets all three plus HP. No console errors.
+Re-confirmed the established same-tick-stale-closure testing artifact applies
+to picker Save buttons too, not just number inputs: toggling two Fighting
+Style selections and clicking Save all in one `preview_eval` call silently
+saved the PRE-toggle selection (stale closure) — splitting toggle clicks and
+the Save click into separate tool calls fixed it immediately. Testing
+methodology note, not a product bug.
