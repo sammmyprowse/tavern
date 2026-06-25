@@ -4,6 +4,7 @@ import {
   actionSurgeMax,
   bardicInspirationDie,
   bardicInspirationMax,
+  brutalStrikeDice,
   clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
@@ -20,6 +21,8 @@ import {
   paladinChannelDivinityMax,
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
+  rageDamageBonus,
+  rageMax,
   secondWindMax,
   sorceryPointsMax,
   warlockPreparedSpellsMax,
@@ -107,6 +110,9 @@ export interface CharacterSheet {
   secondWindMax: number;
   actionSurgeMax: number;
   indomitableMax: number;
+  rageMax: number;
+  rageDamageBonus: number;
+  brutalStrikeDice: number;
 }
 
 export function buildCharacterSheet(
@@ -132,6 +138,22 @@ export function buildCharacterSheet(
   for (const ability of ABILITY_ORDER) {
     finalScores[ability] = rawScores[ability] ?? 10;
     modifiers[ability] = abilityModifier(finalScores[ability]);
+  }
+
+  // Primal Champion (Barbarian, level 20): "Your Strength and Constitution
+  // scores increase by 4, to a maximum of 25" — a real exception to the
+  // universal 20-cap finalAbilityScores() enforces for every other class
+  // and feat. Applied here, as an additive correction layered on top of the
+  // normal (20-capped) computation above, rather than threading a
+  // Barbarian-aware exception through finalAbilityScores itself — keeps
+  // that function's cap simple and correct for every other class. Must
+  // happen before maxHpValue/proficiencyBonus/savingThrows/skills below so
+  // they reflect the boosted scores.
+  if (cls.index === "barbarian" && draft.level >= 20) {
+    finalScores.str = Math.min(25, finalScores.str + 4);
+    finalScores.con = Math.min(25, finalScores.con + 4);
+    modifiers.str = abilityModifier(finalScores.str);
+    modifiers.con = abilityModifier(finalScores.con);
   }
 
   const proficiencyBonus = proficiencyBonusForLevel(draft.level);
@@ -246,6 +268,9 @@ export function buildCharacterSheet(
     secondWindMax: cls.index === "fighter" ? secondWindMax(draft.level) : 0,
     actionSurgeMax: cls.index === "fighter" ? actionSurgeMax(draft.level) : 0,
     indomitableMax: cls.index === "fighter" ? indomitableMax(draft.level) : 0,
+    rageMax: cls.index === "barbarian" ? rageMax(draft.level) : 0,
+    rageDamageBonus: cls.index === "barbarian" ? rageDamageBonus(draft.level) : 0,
+    brutalStrikeDice: cls.index === "barbarian" ? brutalStrikeDice(draft.level) : 0,
   };
 }
 
@@ -273,11 +298,12 @@ export function computeAC(
   equippedIndexes: Set<string>,
   dexMod: number,
   hasDefenseFightingStyle = false,
+  unarmoredDefenseBonus = 0,
 ): number {
   const equipped = resolveEquippedItems(ownedEquipment, equipmentLookup, equippedIndexes).filter(
     (item) => item.armor_class,
   );
-  return computeArmorClass(equipped, dexMod, hasDefenseFightingStyle);
+  return computeArmorClass(equipped, dexMod, hasDefenseFightingStyle, unarmoredDefenseBonus);
 }
 
 export interface ResolvedWeapon {
@@ -295,14 +321,20 @@ const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
 
 // hasArcheryFightingStyle adds the Archery Fighting Style feat's "+2 bonus
 // to attack rolls you make with Ranged weapons" — confirmed directly from
-// the feat's own SRD text. Defaults to false so every existing call site
-// keeps working unchanged.
+// the feat's own SRD text. rageDamageBonusWhileRaging adds Barbarian's Rage
+// Damage to Strength-based attacks only ("When you make an attack using
+// Strength... and deal damage to the target, you gain a bonus to the
+// damage") — the caller is responsible for only passing a nonzero value
+// while Rage is actually active (play state, not derived from level alone).
+// Both default to 0/false so every existing call site keeps working
+// unchanged.
 export function resolveWeapons(
   ownedEquipment: EquipmentBundleItem[],
   equipmentLookup: Map<string, EquipmentLookupItem>,
   modifiers: Record<AbilityKey, number>,
   proficiencyBonus: number,
   hasArcheryFightingStyle = false,
+  rageDamageBonusWhileRaging = 0,
 ): ResolvedWeapon[] {
   const weapons: ResolvedWeapon[] = [];
   for (const item of ownedEquipment) {
@@ -326,7 +358,7 @@ export function resolveWeapons(
       ability,
       attackBonus: modifiers[ability] + proficiencyBonus + (isRanged && hasArcheryFightingStyle ? 2 : 0),
       damageDice: lookup.damage.damageDice,
-      damageBonus: modifiers[ability],
+      damageBonus: modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0),
       damageType: lookup.damage.damageType,
       mastery: lookup.mastery,
     });

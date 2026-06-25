@@ -245,13 +245,21 @@ export interface EquipmentItem {
 // to Armor Class while wearing Light, Medium, or Heavy armor" — confirmed
 // directly from the feat's own SRD text. Only applies when actual body
 // armor is equipped (not just a shield, and not unarmored), matching
-// `bodyArmor` below exactly. Defaults to false so every existing call site
-// (ReviewStep's builder preview, which has no Fighting Style data yet)
-// keeps working unchanged.
+// `bodyArmor` below exactly. unarmoredDefenseBonus adds an extra ability
+// modifier to the UNARMORED base AC instead (Barbarian's Unarmored Defense:
+// "your base Armor Class equals 10 plus your Dexterity and Constitution
+// modifiers... You can use a Shield and still gain this benefit" —
+// confirmed directly; pass sheet.modifiers.con from the call site). Named
+// generically (an ability mod, not "conMod") since Monk's own Unarmored
+// Defense uses a different ability (WIS) for the same shape of bonus, once
+// that class's pass comes up. Both default to 0/false so every existing
+// call site (ReviewStep's builder preview, which has no class-resource data
+// yet) keeps working unchanged.
 export function computeArmorClass(
   equipped: EquipmentItem[],
   dexMod: number,
   hasDefenseFightingStyle = false,
+  unarmoredDefenseBonus = 0,
 ): number {
   const shield = equipped.find((item) => item.index === "shield");
   const bodyArmor = equipped.find(
@@ -268,7 +276,7 @@ export function computeArmorClass(
       : 0;
     ac = base + dexContribution + (hasDefenseFightingStyle ? 1 : 0);
   } else {
-    ac = 10 + dexMod;
+    ac = 10 + dexMod + unarmoredDefenseBonus;
   }
 
   if (shield?.armor_class) {
@@ -751,4 +759,52 @@ export function actionSurgeMax(level: number): number {
 // Rest too).
 export function indomitableMax(level: number): number {
   return level >= 17 ? 3 : level >= 13 ? 2 : level >= 9 ? 1 : 0;
+}
+
+// Rage (Barbarian, from level 1): "You can enter your Rage the number of
+// times shown for your Barbarian level in the Rages column of the Barbarian
+// Features table" — unlike every other class's resource so far, the 2024
+// prose gives NO concrete number anywhere, not even a level-1 example
+// (compare Channel Divinity's confirmed "twice," or Pact Magic's confirmed
+// level-5 worked example). The only number anywhere in this app's pipeline
+// is the 2014 `levels` table's rage_count column, which can't be
+// cross-validated against any 2024 text the way Action Surge/Indomitable's
+// columns were above. Used here as the best available signal — a small,
+// steadily-growing resource pool is a conservative, edition-stable shape
+// unlikely to have changed dramatically — rather than falling back to a
+// degenerate flat minimum that would make Rage barely functional past
+// level 1. ONE explicit override: the 2014 table's level-20 value (9999,
+// "unlimited Rage") is deliberately NOT carried over. 2024 demonstrably
+// redesigned the level-20 capstone into Primal Champion's flat +4 STR/CON
+// instead (a real, confirmed, very different mechanic — see the Primal
+// Champion handling in character-sheet.ts's buildCharacterSheet), so
+// assuming "unlimited Rage" still exists alongside that redesign would be
+// guessing further than the data supports. Level 20 instead continues
+// level 19's value rather than jumping to an assumed-dramatic capstone.
+const RAGE_MAX = [2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6];
+
+export function rageMax(level: number): number {
+  return RAGE_MAX[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Rage Damage bonus — same sourcing/confidence caveat as rageMax above (no
+// 2024 prose example anywhere, 2014 table used as best-available signal).
+// No level-20 capstone risk here, though — this column's progression
+// (+2/+3/+4) is untouched by the Primal Champion redesign, unlike rage_count.
+const RAGE_DAMAGE_BONUS = [2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4];
+
+export function rageDamageBonus(level: number): number {
+  return RAGE_DAMAGE_BONUS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Brutal Strike (Barbarian, from level 9): "the target takes an extra 1d10
+// damage of the same type dealt by the weapon" — confirmed directly.
+// Improved Brutal Strike (level 17): "The extra damage of your Brutal
+// Strike increases to 2d10" — confirmed directly. Deliberately distinct
+// from the 2014 table's brutal_critical_dice column, which is a different,
+// older mechanic (2014's "Brutal Critical" added extra weapon damage dice
+// only on a confirmed critical hit, not on every hit like 2024's Brutal
+// Strike) — not reused here even though the name is similar.
+export function brutalStrikeDice(level: number): number {
+  return level >= 17 ? 2 : level >= 9 ? 1 : 0;
 }

@@ -113,6 +113,19 @@ interface PlayState {
   // component (confirmed by omission) — same shape as Lay on Hands/Favored
   // Enemy.
   expendedIndomitable: number;
+  // Rage (Barbarian only). Short Rest regains 1, Long Rest regains all.
+  expendedRage: number;
+  // Whether Rage is CURRENTLY active right now — independent of
+  // expendedRage (a Barbarian can have unused Rage uses left without
+  // currently being enraged). Drives the Rage Damage bonus auto-applied to
+  // Strength-based weapon damage above. This app has no turn/round tracker,
+  // so duration/extension isn't modeled — the player toggles this off
+  // manually when they judge Rage has ended.
+  isRaging: boolean;
+  // Persistent Rage (Barbarian only, from level 15). Once-per-Long-Rest
+  // trigger that fully restores expendedRage — same boolean-flag shape as
+  // Warlock's usedMagicalCunning, not a counter.
+  usedPersistentRage: boolean;
 }
 
 export default function PlaySheet({
@@ -189,6 +202,9 @@ export default function PlaySheet({
     expendedSecondWind: 0,
     expendedActionSurge: 0,
     expendedIndomitable: 0,
+    expendedRage: 0,
+    isRaging: false,
+    usedPersistentRage: false,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -233,12 +249,21 @@ export default function PlaySheet({
   const equippedSet = new Set(play.equippedIndexes);
   const hasDefenseFightingStyle = currentDraft.fightingStyleChoices.includes("defense");
   const hasArcheryFightingStyle = currentDraft.fightingStyleChoices.includes("archery");
+  // Unarmored Defense (Barbarian, level 1, always present): "your base
+  // Armor Class equals 10 plus your Dexterity and Constitution modifiers."
+  // Only takes effect while unarmored — computeArmorClass's existing
+  // bodyArmor branch already gates that, so it's safe to pass unconditionally
+  // whenever the class is Barbarian.
+  const unarmoredDefenseBonus = sheet.classIndex === "barbarian" ? sheet.modifiers.con : 0;
+  const rageDamageBonusWhileRaging =
+    sheet.classIndex === "barbarian" && play.isRaging ? sheet.rageDamageBonus : 0;
   const ac = computeAC(
     sheet.ownedEquipment,
     equipmentByIndex,
     equippedSet,
     sheet.modifiers.dex,
     hasDefenseFightingStyle,
+    unarmoredDefenseBonus,
   );
   const weapons = resolveWeapons(
     sheet.ownedEquipment,
@@ -246,6 +271,7 @@ export default function PlaySheet({
     sheet.modifiers,
     sheet.proficiencyBonus,
     hasArcheryFightingStyle,
+    rageDamageBonusWhileRaging,
   );
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
@@ -325,6 +351,7 @@ export default function PlaySheet({
     sheet.wildShapeMax > 0 ||
     sheet.secondWindMax > 0 ||
     sheet.actionSurgeMax > 0 ||
+    sheet.rageMax > 0 ||
     (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
@@ -499,19 +526,22 @@ export default function PlaySheet({
       expendedSecondWind: 0,
       expendedActionSurge: 0,
       expendedIndomitable: 0,
+      expendedRage: 0,
+      isRaging: false,
+      usedPersistentRage: false,
     }));
   }
 
-  // Channel Divinity, Wild Shape, and Second Wind each regain only 1 use on
-  // a Short Rest; Bardic Inspiration fully resets, but only from Bard level
-  // 5 on (Font of Inspiration) — below that level a Bard's Bardic
+  // Channel Divinity, Wild Shape, Second Wind, and Rage each regain only 1
+  // use on a Short Rest; Bardic Inspiration fully resets, but only from Bard
+  // level 5 on (Font of Inspiration) — below that level a Bard's Bardic
   // Inspiration is Long-Rest-only, same as every other resource. HP and hit
   // dice are untouched either way, matching the real rule that a Short Rest
   // doesn't restore those. Spell slots are also untouched for every caster
   // EXCEPT Warlock — Pact Magic's signature trait is that its slots fully
   // recover on a Short Rest too, confirmed directly from the feature's own
   // text. Action Surge fully resets on a Short Rest too (confirmed "finish a
-  // Short or Long Rest"), unlike Second Wind which only regains 1.
+  // Short or Long Rest"), unlike Second Wind/Rage which only regain 1.
   function shortRest() {
     const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
     const warlockPactMagic = sheet?.classIndex === "warlock";
@@ -523,6 +553,7 @@ export default function PlaySheet({
       expendedSlots: warlockPactMagic ? [] : prev.expendedSlots,
       expendedSecondWind: Math.max(0, prev.expendedSecondWind - 1),
       expendedActionSurge: 0,
+      expendedRage: Math.max(0, prev.expendedRage - 1),
     }));
   }
 
@@ -628,6 +659,47 @@ export default function PlaySheet({
 
   function restoreIndomitable() {
     setPlay((prev) => ({ ...prev, expendedIndomitable: Math.max(0, prev.expendedIndomitable - 1) }));
+  }
+
+  // "You can enter it as a Bonus Action if you aren't wearing Heavy armor."
+  // Expends a use AND marks Rage active in one click — the active flag then
+  // drives the Rage Damage bonus auto-applied to Strength-based weapon
+  // damage (see rageDamageBonusWhileRaging above). No turn/round tracking
+  // exists in this app, so duration/extension isn't modeled — the player
+  // ends Rage manually via the separate End Rage button below.
+  function enterRage() {
+    if (!sheet || play.expendedRage >= sheet.rageMax) return;
+    setPlay((prev) => ({ ...prev, expendedRage: prev.expendedRage + 1, isRaging: true }));
+  }
+
+  function endRage() {
+    setPlay((prev) => ({ ...prev, isRaging: false }));
+  }
+
+  function restoreRage() {
+    setPlay((prev) => ({ ...prev, expendedRage: Math.max(0, prev.expendedRage - 1) }));
+  }
+
+  // "When you roll Initiative, you can regain all expended uses of Rage.
+  // After you regain uses of Rage in this way, you can't do so again until
+  // you finish a Long Rest." This app has no "roll Initiative" action to
+  // hook the trigger onto (Initiative is a static stat chip, not a rollable
+  // action), so it's modeled as a manually-triggered once-per-Long-Rest
+  // button instead — same boolean-flag shape as Warlock's Magical Cunning.
+  function usePersistentRage() {
+    if (play.usedPersistentRage) return;
+    setPlay((prev) => ({ ...prev, expendedRage: 0, usedPersistentRage: true }));
+  }
+
+  function rollBrutalStrike() {
+    if (!sheet?.brutalStrikeDice) return;
+    const notation = `${sheet.brutalStrikeDice}d10`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Brutal Strike",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
   }
 
   function rollDivineSpark() {
@@ -1758,6 +1830,61 @@ export default function PlaySheet({
             </div>
           )}
 
+          {sheet.rageMax > 0 && (
+            <div className="mt-4 rounded-md border border-tavern-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Rage{play.isRaging ? " (Active)" : ""}
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    Bonus Action to enter. While active: +{sheet.rageDamageBonus} damage on
+                    Strength attacks (auto-applied above), Resistance to Bludgeoning/Piercing/
+                    Slashing, Advantage on Strength checks and saves. Regains 1 use on a Short
+                    Rest, all uses on a Long Rest.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreRage}
+                    disabled={play.expendedRage <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.rageMax - play.expendedRage}/{sheet.rageMax}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  onClick={enterRage}
+                  disabled={play.isRaging || play.expendedRage >= sheet.rageMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Enter Rage
+                </button>
+                <button
+                  onClick={endRage}
+                  disabled={!play.isRaging}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  End Rage
+                </button>
+                {sheet.level >= 15 && (
+                  <button
+                    onClick={usePersistentRage}
+                    disabled={play.usedPersistentRage}
+                    className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    {play.usedPersistentRage ? "Persistent Rage Used" : "Persistent Rage (regain all)"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {isDying && (
             <div className="mt-4 rounded-lg border border-tavern-oxblood bg-tavern-oxblood/10 p-3">
               <div className="flex items-center justify-between">
@@ -2456,6 +2583,23 @@ export default function PlaySheet({
                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
                 >
                   Roll {sheet.sneakAttackDice}d6
+                </button>
+              </div>
+            )}
+            {sheet.brutalStrikeDice > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading font-bold text-tavern-text">Brutal Strike</div>
+                  <div className="text-xs text-tavern-muted">
+                    Forgo Reckless Attack&apos;s Advantage on one Strength attack to deal extra
+                    damage and trigger an effect (see Features for the options).
+                  </div>
+                </div>
+                <button
+                  onClick={rollBrutalStrike}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll {sheet.brutalStrikeDice}d10
                 </button>
               </div>
             )}

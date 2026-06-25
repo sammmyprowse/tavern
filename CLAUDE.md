@@ -1153,3 +1153,120 @@ Style selections and clicking Save all in one `preview_eval` call silently
 saved the PRE-toggle selection (stale closure) — splitting toggle clicks and
 the Save click into separate tool calls fixed it immediately. Testing
 methodology note, not a product bug.
+
+## Class resources — Barbarian (Rage, Unarmored Defense, Brutal Strike, Primal Champion)
+Eleventh class-by-class pass, second non-caster. The richest resource set of
+any class so far, and the first pass that needed a real exception to the
+universal ability-score cap.
+
+**Rage** (`rageMax`/`rageDamageBonus`) is a genuinely different confidence
+tier from every other resource this session — the 2024 prose gives literally
+no concrete number anywhere for either the use-count or the damage bonus
+(compare Channel Divinity's confirmed "twice," or Pact Magic's confirmed
+worked examples); it only ever says "as shown in the [X] column of the
+Barbarian Features table." The 2014 `levels` table's `rage_count`/
+`rage_damage_bonus` columns are the ONLY numbers anywhere in this app's
+pipeline, with no 2024 text to cross-validate them against the way Action
+Surge/Indomitable's columns were confirmed in the Fighter pass. Used as
+best-available signal anyway — Rage is too central to Barbarian's identity to
+leave at a degenerate flat fallback — but with one deliberate override:
+the table's level-20 `rage_count` value (9999, "unlimited Rage," a real
+2014 capstone) is NOT carried over, because 2024 demonstrably replaced that
+capstone with **Primal Champion** (+4 STR/CON, confirmed directly in prose)
+instead — assuming both redesigns coexist would be guessing past what the
+data supports. Level 20 continues level 19's value (6) instead. Rage Damage's
+column (+2/+3/+4 at 1/9/16) carries no such capstone-redesign risk and is
+used as-is.
+
+**Primal Champion (level 20): "Your Strength and Constitution scores
+increase by 4, to a maximum of 25."** The first real exception to
+`finalAbilityScores`' universal 20-cap. Rather than threading a
+Barbarian-aware branch through that shared function (used by every class),
+`buildCharacterSheet` applies it as an additive correction right after the
+normal capped computation, recomputing `modifiers.str`/`modifiers.con`
+immediately after — placed before `maxHpValue`/saves/skills so every
+downstream derived number (HP from CON, to-hit/damage from STR, STR/CON
+saves) correctly reflects the boost. Only reachable at the literal level
+cap, but a real, clean, well-defined rule worth getting right rather than
+silently capping at 20 forever for a level-20 Barbarian.
+
+**Unarmored Defense (level 1, always present): "your base Armor Class
+equals 10 plus your Dexterity and Constitution modifiers... You can use a
+Shield and still gain this benefit."** `computeArmorClass`/`computeAC` grew
+a generic `unarmoredDefenseBonus` parameter (an extra ability mod added to
+the unarmored 10+DEX base, not Barbarian-specific by name — Monk's own
+Unarmored Defense uses WIS for the same shape of bonus, once that class's
+pass comes up) rather than a Barbarian-specific branch. Only takes effect in
+the existing unarmored branch (no body armor equipped), so passing
+`sheet.modifiers.con` unconditionally whenever the class is Barbarian is
+safe — an armored Barbarian's AC is computed exactly like any other class's,
+correctly ignoring this bonus per the real rule ("while you aren't wearing
+any armor"). Barbarian's own starting-equipment option (Greataxe/Handaxes/
+Explorer's Pack, no armor at all) meant this was exercised live without
+needing to manually unequip anything.
+
+**Rage's damage bonus is mechanically auto-applied to Strength-based weapon
+damage — a new shape beyond Fighting Style's auto-apply (Defense/Archery),
+because it depends on PLAY STATE (is Rage currently active), not just a
+permanent choice.** New boolean `isRaging` in `PlayState`, independent of
+`expendedRage` (a Barbarian can have unused Rage left without currently
+being enraged). `resolveWeapons` grew a `rageDamageBonusWhileRaging`
+parameter, added to `damageBonus` only when `ability === "str"` (Rage's own
+text: "When you make an attack using Strength... you gain a bonus to the
+damage") — a DEX-based ranged attack from the same character correctly
+doesn't get it. This app has no turn/round tracker for any class, so
+Rage's real duration/extension rules ("lasts until the end of your next
+turn... extend for another round by...") aren't modeled — `isRaging` is a
+simple manual toggle (Enter Rage / End Rage buttons) the player flips
+themselves, same scope-discipline as not tracking Sneak Attack's "once per
+turn." **Enter Rage** combines expending a charge and activating the flag in
+one click (mirrors Second Wind's single-action design from the Fighter
+pass — Rage, like Second Wind, has exactly one meaningful use for its
+charge); **End Rage** clears the flag without refunding the charge (ending
+early doesn't un-spend it, per the real rules).
+
+**Brutal Strike** (level 9: 1d10 extra damage; level 17 "Improved": 2d10) —
+fully confirmed in prose, modeled as a `brutalStrikeDice(level)` schedule
+with a "Roll Xd10" button placed in the Attacks section next to Sneak
+Attack's identical-shaped button, not in the Rage card — it's a per-attack
+damage roll, not a rest-recovered pool. Deliberately distinct from the 2014
+table's `brutal_critical_dice` column, which is the OLD 2014 "Brutal
+Critical" mechanic (extra dice only on a confirmed critical hit) — a
+different trigger shape entirely, not reused.
+
+**Persistent Rage** (level 15+): "When you roll Initiative, you can regain
+all expended uses of Rage... can't do so again until you finish a Long
+Rest." This app has no "roll Initiative" action anywhere (Initiative is a
+static stat chip, not a button) to hook the real trigger onto, so it's
+modeled as a manually-triggered once-per-Long-Rest button instead — same
+boolean-flag shape as Warlock's Magical Cunning, gated `sheet.level >= 15`.
+
+**Deliberately deferred to informational-only (Features list, not
+interactive): Danger Sense, Reckless Attack, Primal Knowledge, Relentless
+Rage, Frenzy, Mindless Rage, Retaliation, Intimidating Presence, Indomitable
+Might.** Reckless Attack is a per-turn advantage/disadvantage toggle — this
+app already has a generic Roll Mode control (normal/advantage/disadvantage)
+in the dice log for exactly this kind of thing, so no Barbarian-specific
+state was added; the Features text reminds the player of the real tradeoff
+(enemies get Advantage on you too). Relentless Rage (reroll death via a
+DC-10-and-rising CON save when dropped to 0 while Raging) would need a
+second, Rage-aware death-save system layered on top of the existing plain
+Death Saves UI, which doesn't account for it at all — deferred rather than
+building a confusing parallel mechanic. Frenzy/Mindless Rage/Retaliation/
+Intimidating Presence are Berserker subclass features that either depend on
+Reckless Attack's untracked toggle or are purely passive/reactive. All real
+SRD content, fully visible via Features (subclass features merge in
+automatically, unchanged since Phase 1).
+
+Tested live with STR 20/CON 18 (post-ASI) at level 9, Path of the Berserker
+subclass, Goliath species (no armor in Barbarian's own starting-equipment
+option, so Unarmored Defense was exercised without manual unequipping): AC
+16 (10+2 DEX+4 CON), HP 88/88, Rage "+3 damage" 4/4, Brutal Strike "Roll
+1d10". Entering Rage bumped Greataxe (Strength-based) damage from +5 to +8
+live with no reload, while Shortbow (Dex-based) correctly stayed at +2,
+untouched. Ending Rage reverted the damage bonus without refunding the
+charge. Short Rest regained exactly 1 Rage use. No console errors. Did not
+re-test Primal Champion live (only reachable at level 20, and this pass's
+test character was level 9) — verified by code reading instead; flagged
+here as a disclosed gap in live coverage, consistent with always saying so
+when something wasn't actually run rather than implying full verification.
