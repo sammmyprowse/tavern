@@ -18,6 +18,8 @@ import {
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
   sorceryPointsMax,
+  warlockPreparedSpellsMax,
+  warlockSlots,
   wildShapeMax,
   spellAttackBonus as computeSpellAttackBonus,
   spellSaveDC as computeSpellSaveDC,
@@ -200,21 +202,24 @@ export function buildCharacterSheet(
     spellSaveDC: spellcastingAbility ? computeSpellSaveDC(proficiencyBonus, spellAbilityMod) : null,
     spellAttackBonus: spellcastingAbility ? computeSpellAttackBonus(proficiencyBonus, spellAbilityMod) : null,
     spellSlots: spellcastingAbility
-      ? HALF_CASTER_CLASSES.has(cls.index)
-        ? halfCasterSlots(draft.level)
-        : fullCasterSlots(draft.level)
+      ? cls.index === "warlock"
+        ? warlockSlots(draft.level)
+        : HALF_CASTER_CLASSES.has(cls.index)
+          ? halfCasterSlots(draft.level)
+          : fullCasterSlots(draft.level)
       : [],
     cantripsKnownCount: CANTRIPS_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
     // Gated on having a spellcasting ability at all, NOT on being in
     // CANTRIPS_KNOWN_BY_CLASS — Paladin proved those two aren't the same set
     // (it gets prepared spells but no cantrips at all). Every prepared caster
-    // confirmed so far (Wizard/Sorcerer/Cleric/Bard/Druid/Paladin) uses this
-    // same level+modifier formula. Revisit this gate once Warlock is built —
-    // Warlock uses a fixed known-spells list instead of prepared spells, so
-    // it'll need excluding here even though it has a spellcasting ability.
-    preparedSpellsCount: spellcastingAbility
-      ? computePreparedSpellCount(draft.level, spellAbilityMod)
-      : 0,
+    // confirmed so far (Wizard/Sorcerer/Cleric/Bard/Druid/Paladin) uses the
+    // generic level+modifier formula — Warlock is the one exception, with its
+    // own slower, level-only Prepared Spells table (see warlockPreparedSpellsMax).
+    preparedSpellsCount: cls.index === "warlock"
+      ? warlockPreparedSpellsMax(draft.level)
+      : spellcastingAbility
+        ? computePreparedSpellCount(draft.level, spellAbilityMod)
+        : 0,
     sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
     metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
     channelDivinityMax:

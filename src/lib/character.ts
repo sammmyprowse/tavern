@@ -428,12 +428,21 @@ export function druidCantripsKnown(level: number): number {
   return level >= 10 ? 4 : level >= 4 ? 3 : 2;
 }
 
+// Warlock's own cantrip-known progression ("you know two Warlock cantrips...
+// at Warlock levels 4 and 10, you learn another") — confirmed from Warlock's
+// own spellcasting text, same numbers as Bard/Druid but confirmed
+// independently rather than assumed.
+export function warlockCantripsKnown(level: number): number {
+  return level >= 10 ? 4 : level >= 4 ? 3 : 2;
+}
+
 export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
   wizard: wizardCantripsKnown,
   sorcerer: sorcererCantripsKnown,
   cleric: clericCantripsKnown,
   bard: bardCantripsKnown,
   druid: druidCantripsKnown,
+  warlock: warlockCantripsKnown,
 };
 
 // Sorcery Points (Font of Magic, gained at Sorcerer level 2): the pool equals
@@ -611,4 +620,55 @@ export function bardicInspirationMax(chaModifier: number): number {
 // table for the part that isn't checkable anywhere in this app's pipeline.
 export function wildShapeMax(level: number): number {
   return level >= 2 ? 2 : 0;
+}
+
+// Pact Magic (Warlock) slot count and slot level by character level — both
+// confirmed directly from the feature's own 2024 SRD text via two
+// independent worked examples: "when you're a level 5 Warlock, you have two
+// level 3 spell slots" (matches index 4 below: count 2, level 3) and "When
+// you reach level 6, for example, you learn a new Warlock spell, which can
+// be of levels 1–3" (confirms slot level is STILL 3 at level 6, and that the
+// Prepared Spells count increases by exactly 1 from level 5 to 6 — see
+// WARLOCK_PREPARED_SPELLS below, 6 -> 7). Despite living in the same
+// 2014-tagged `levels` table that's been stale/wrong about base values
+// elsewhere this session (Channel Divinity, Eldritch Invocations), these two
+// cross-checks against the 2024 prose's own worked examples are why this
+// table is trusted as real and complete rather than treated as a disclosed
+// flat-base-only simplification. All slots are always the same single
+// level, unlike every other caster's table — Pact Magic's signature trait.
+const WARLOCK_SLOT_COUNT = [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4];
+const WARLOCK_SLOT_LEVEL = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+
+// Padded to 9 columns (same shape as fullCasterSlots/halfCasterSlots) so the
+// UI's generic "iterate spellSlots, skip zero entries" rendering needs no
+// Warlock-specific branch — the array just happens to have only one nonzero
+// entry, at whatever level Pact Magic's slots currently sit at.
+export function warlockSlots(level: number): number[] {
+  const i = Math.max(1, Math.min(MAX_LEVEL, level)) - 1;
+  const slots = new Array(9).fill(0);
+  slots[WARLOCK_SLOT_LEVEL[i] - 1] = WARLOCK_SLOT_COUNT[i];
+  return slots;
+}
+
+// Pact Magic's Prepared Spells count — confirmed via the same two worked
+// examples as the slot table above (level 1 -> 2 spells from "choose two
+// level 1 Warlock spells"; level 5->6 shows a confirmed +1 step). NOT the
+// generic "level + ability modifier" formula every other 2024 prepared
+// caster uses (preparedSpellCount) — Warlock's own text gives a much
+// slower, level-only progression instead, consistent with having far fewer
+// slots to cast from.
+const WARLOCK_PREPARED_SPELLS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15];
+
+export function warlockPreparedSpellsMax(level: number): number {
+  return WARLOCK_PREPARED_SPELLS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Magical Cunning (Warlock, from level 2): "you can perform an esoteric rite
+// for 1 minute. At the end of it, you regain expended Pact Magic spell slots
+// but no more than a number equal to half your maximum (round up). Once you
+// use this feature, you can't do so again until you finish a Long Rest." —
+// confirmed directly. Takes the Warlock's current slot count (not level) so
+// the caller doesn't need to re-derive it from the slot tables above.
+export function magicalCunningRegain(maxSlots: number): number {
+  return Math.ceil(maxSlots / 2);
 }

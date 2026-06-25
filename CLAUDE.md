@@ -934,3 +934,101 @@ Druid, Paladin, Ranger) are now done with zero homebrew** — every number and
 mechanic for all four came straight from the SRD's own text. Remaining:
 Warlock (genuinely different Pact Magic system), then the three non-casters
 (Fighter, Barbarian, Monk).
+
+## Class resources — Warlock spellcasting (Pact Magic, Magical Cunning)
+Ninth class-by-class pass, and the first genuinely different spellcasting
+infrastructure of the project — few slots, but all pinned to one single high
+level, recovered on a Short *or* Long Rest instead of Long Rest only, plus a
+fixed Prepared Spells table that ignores ability modifier entirely.
+
+**Slot count, slot level, and Prepared Spells count are all modeled as real,
+complete, hardcoded-by-level tables — not a disclosed flat-base
+simplification** like Channel Divinity/Wild Shape/Favored Enemy. The
+difference: those three only ever had a confirmed *base*, with the SRD prose
+deferring everything past it to an uncheckable table. Pact Magic's prose
+gives two full worked examples that cross-validate both tables directly: "when
+you're a level 5 Warlock, you have two level 3 spell slots" (slot count 2,
+slot level 3 at level 5) and "When you reach level 6, for example, you learn a
+new Warlock spell, which can be of levels 1–3" (slot level is *still* 3 at
+level 6, confirming the level-5→6 boundary, and Prepared Spells count steps
+by exactly +1 across that same boundary). Both examples matched the 2014
+`levels` table's numbers exactly, despite that table being demonstrably stale
+elsewhere for this class (see Eldritch Invocations below) — so here, unlike
+elsewhere, it's trusted as the real, unchanged-since-2014 progression.
+`warlockSlots(level)` returns the same 9-wide padded shape as
+`fullCasterSlots`/`halfCasterSlots` (one nonzero entry, at whatever level
+Pact Magic currently sits), so the existing generic "iterate spellSlots, skip
+zeros" UI needed zero changes. `warlockPreparedSpellsMax(level)` is a flat
+lookup table, NOT the generic `preparedSpellCount` (level + ability mod)
+formula every other 2024 prepared caster uses — confirmed deliberately rather
+than assumed, since plugging in CHA mod would wildly overshoot the real,
+much-slower table.
+
+**Cantrips known** (`warlockCantripsKnown`): 2/3/4 at levels 1/4/10, confirmed
+from Warlock's own text — same numbers as Bard/Druid, registered into
+`CANTRIPS_KNOWN_BY_CLASS` the same way.
+
+**Pact Magic slots recover on a Short Rest, not just a Long Rest** — the
+feature's signature trait, confirmed directly ("You regain all expended Pact
+Magic spell slots when you finish a Short or Long Rest"). `shortRest()` grew
+a `warlockPactMagic` branch that clears `expendedSlots` entirely for this
+class only — every other caster's slots are untouched by Short Rest, unchanged
+behavior. `hasShortRestResource` grew a fourth clause checking
+`sheet.classIndex === "warlock" && sheet.spellSlots.some(n => n > 0)` directly
+(no new sheet field needed) so the Short Rest button appears for Warlock from
+level 1.
+
+**Magical Cunning** (level 2+): "perform an esoteric rite for 1 minute... you
+regain expended Pact Magic spell slots but no more than a number equal to
+half your maximum (round up). Once you use this feature, you can't do so
+again until you finish a Long Rest." Confirmed directly, fully modeled —
+`magicalCunningRegain(maxSlots) = Math.ceil(maxSlots / 2)`. Tracked as a
+boolean `usedMagicalCunning` play-state flag (not a counter — it's a single
+once-per-Long-Rest trigger), reset by `longRest()` only, never by
+`shortRest()`. Its button finds the one nonzero slot-level index in
+`spellSlots` and refunds `magicalCunningRegain(...)` against `expendedSlots`
+at that index, clamped to 0.
+
+**Deliberately deferred to informational-only (Features list, not
+interactive): Eldritch Invocations and Mystic Arcanum.** Eldritch
+Invocations' confirmed base is real (1 known at level 1, from "You gain one
+invocation of your choice") — but unlike Metamagic's fully-confirmed 2/4/6
+schedule, the SRD prose never gives invocation-count breakpoints past level 1,
+only "as shown in the Invocations column of the Warlock Features table." The
+2014 `levels` table's own invocations_known numbers can't be trusted here
+either — it shows the feature starting at level 2 (0 known at level 1), but
+2024 confirmed-moved it to level 1, so the whole 2014 column is offset and
+stale. Building a "known invocations" picker gated on a confirmed-wrong
+flat number (1, forever) would be more misleading than not building one at
+all — worse than Channel Divinity/Wild Shape's flat simplifications, which
+are at least *correctly* flat at their own confirmed base. The actual
+invocation options list (effects, prerequisites) also almost certainly isn't
+in this app's SRD data, the same gap Metamagic had — not homebrewed here
+given the count problem makes a picker actively wrong rather than just
+incomplete. Mystic Arcanum (level 11/13/15/17: one free casting per Long Rest
+of a specific 6th/7th/8th/9th-level spell, chosen once and retrainable) is
+real and fully confirmed in prose, but is a distinct spell-selection axis
+from Prepared Spells (different, higher spell levels than Pact Magic's own
+slots ever reach) and wasn't part of this pass's scope. Pact Boon doesn't
+exist as a separate 2024 feature at all (confirmed by its absence from the
+full Warlock features list — apparently folded into Eldritch Invocations
+choices), so there was nothing to build for it. All deferred features are
+real SRD content already fully visible via the existing Features list.
+
+Tested live with CHA 20, CON 18 (post-ASI) at level 11, Fiend Patron subclass:
+Spell Save DC 17, Spell Attack +9, Spell Slots "Level 5, 3/3" (`warlockSlots(11)`
+= 3 slots at slot level 5), Cantrips Known 0/4, Prepared Spells 0/11
+(`warlockPreparedSpellsMax(11)`), Magical Cunning "regain 2" — all matched
+exactly. Verified: expending slots via the generic stepper; Magical Cunning
+regaining exactly `ceil(3/2)=2` slots and then self-disabling ("Used") until
+next Long Rest; Short Rest fully restoring all expended Pact Magic slots
+while leaving `usedMagicalCunning` untouched; Long Rest resetting both. No
+console errors. Features list correctly merged Eldritch Invocations, Pact
+Magic, Magical Cunning, and Mystic Arcanum (base) alongside Fiend Patron
+subclass features (Dark One's Blessing, Fiend Spells, Dark One's Own Luck,
+Contact Patron, Fiendish Resilience), sorted by level.
+
+**With Warlock done, every spellcasting class in the free SRD is now fully
+built** (Wizard/Sorcerer/Cleric/Bard/Druid full casters, Paladin/Ranger
+half-casters, Warlock's Pact Magic). Remaining: the three non-casters
+(Fighter, Barbarian, Monk), then homebrew species.

@@ -12,6 +12,7 @@ import {
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
   METAMAGIC_OPTIONS,
+  magicalCunningRegain,
   type AbilityKey,
   type AbilityBonusChoice,
   type CharacterDraft,
@@ -93,6 +94,11 @@ interface PlayState {
   // Favored Enemy (Ranger only). Long-Rest-only recovery, same as Lay on
   // Hands — no Short Rest component.
   expendedFavoredEnemy: number;
+  // Magical Cunning (Warlock only, from level 2). Not a counter like the
+  // others — a single once-per-Long-Rest trigger that partially refunds
+  // expendedSlots (see useMagicalCunning below), so it's tracked as a
+  // boolean "already used this Long Rest" flag instead.
+  usedMagicalCunning: boolean;
 }
 
 export default function PlaySheet({
@@ -161,6 +167,7 @@ export default function PlaySheet({
     expendedWildShape: 0,
     expendedLayOnHands: 0,
     expendedFavoredEnemy: 0,
+    usedMagicalCunning: false,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -274,9 +281,14 @@ export default function PlaySheet({
   // class that adds a short-rest-recoverable resource (Bard always has
   // Bardic Inspiration from level 1, even though it's Long-Rest-only below
   // level 5 — the button itself stays visible, shortRest() just no-ops on it
-  // until Font of Inspiration).
+  // until Font of Inspiration). Warlock's clause checks spell slots directly
+  // rather than a dedicated sheet field — Pact Magic is the only spellcasting
+  // class whose slots recover on a Short Rest at all.
   const hasShortRestResource =
-    sheet.channelDivinityMax > 0 || sheet.bardicInspirationMax > 0 || sheet.wildShapeMax > 0;
+    sheet.channelDivinityMax > 0 ||
+    sheet.bardicInspirationMax > 0 ||
+    sheet.wildShapeMax > 0 ||
+    (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
   // Spells of a level you have no slots for yet aren't preparable.
@@ -443,23 +455,46 @@ export default function PlaySheet({
       expendedWildShape: 0,
       expendedLayOnHands: 0,
       expendedFavoredEnemy: 0,
+      usedMagicalCunning: false,
     }));
   }
 
   // Channel Divinity and Wild Shape each regain only 1 use on a Short Rest;
   // Bardic Inspiration fully resets, but only from Bard level 5 on (Font of
   // Inspiration) — below that level a Bard's Bardic Inspiration is
-  // Long-Rest-only, same as every other resource. HP, hit dice, and spell
-  // slots are untouched either way, matching the real rule that a Short Rest
-  // doesn't restore those.
+  // Long-Rest-only, same as every other resource. HP and hit dice are
+  // untouched either way, matching the real rule that a Short Rest doesn't
+  // restore those. Spell slots are also untouched for every caster EXCEPT
+  // Warlock — Pact Magic's signature trait is that its slots fully recover
+  // on a Short Rest too, confirmed directly from the feature's own text.
   function shortRest() {
     const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
+    const warlockPactMagic = sheet?.classIndex === "warlock";
     setPlay((prev) => ({
       ...prev,
       expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
       expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
       expendedWildShape: Math.max(0, prev.expendedWildShape - 1),
+      expendedSlots: warlockPactMagic ? [] : prev.expendedSlots,
     }));
+  }
+
+  // "You can perform an esoteric rite for 1 minute. At the end of it, you
+  // regain expended Pact Magic spell slots but no more than a number equal
+  // to half your maximum (round up). Once you use this feature, you can't do
+  // so again until you finish a Long Rest." Warlock's slots are always a
+  // single level, so there's exactly one nonzero entry in spellSlots to
+  // refund against.
+  function useMagicalCunning() {
+    if (!sheet || play.usedMagicalCunning) return;
+    const idx = sheet.spellSlots.findIndex((n) => n > 0);
+    if (idx < 0) return;
+    const regain = magicalCunningRegain(sheet.spellSlots[idx]);
+    setPlay((prev) => {
+      const next = [...prev.expendedSlots];
+      next[idx] = Math.max(0, (next[idx] ?? 0) - regain);
+      return { ...prev, expendedSlots: next, usedMagicalCunning: true };
+    });
   }
 
   function expendSorceryPoint() {
@@ -1625,6 +1660,12 @@ export default function PlaySheet({
                 <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
                   Spell Slots
                 </h3>
+                {sheet.classIndex === "warlock" && (
+                  <p className="text-xs text-tavern-muted">
+                    Pact Magic — all slots are the same level, and recover fully on a Short or
+                    Long Rest.
+                  </p>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {sheet.spellSlots.map((total, i) => {
                     if (total === 0) return null;
@@ -1659,6 +1700,29 @@ export default function PlaySheet({
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {sheet.classIndex === "warlock" && sheet.level >= 2 && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Magical Cunning
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    1-minute rite to regain {magicalCunningRegain(Math.max(0, ...sheet.spellSlots))}{" "}
+                    expended Pact Magic slot
+                    {magicalCunningRegain(Math.max(0, ...sheet.spellSlots)) === 1 ? "" : "s"}. Once
+                    per Long Rest.
+                  </div>
+                </div>
+                <button
+                  onClick={useMagicalCunning}
+                  disabled={play.usedMagicalCunning || !play.expendedSlots.some((n) => n > 0)}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  {play.usedMagicalCunning ? "Used" : "Use"}
+                </button>
               </div>
             )}
 
