@@ -251,15 +251,19 @@ export interface EquipmentItem {
 // modifiers... You can use a Shield and still gain this benefit" —
 // confirmed directly; pass sheet.modifiers.con from the call site). Named
 // generically (an ability mod, not "conMod") since Monk's own Unarmored
-// Defense uses a different ability (WIS) for the same shape of bonus, once
-// that class's pass comes up. Both default to 0/false so every existing
-// call site (ReviewStep's builder preview, which has no class-resource data
-// yet) keeps working unchanged.
+// Defense uses a different ability (WIS) for the same shape of bonus.
+// flatUnarmoredAC REPLACES the unarmored base entirely instead of adding to
+// it (homebrew Tortle's Natural Armor: "your base Armor Class is 17" — a
+// flat number, not 10+something) — a shield still stacks on top either way,
+// matching "You can still use a Shield." All new params default to
+// 0/false/null so every existing call site (ReviewStep's builder preview,
+// which has no class/species-resource data yet) keeps working unchanged.
 export function computeArmorClass(
   equipped: EquipmentItem[],
   dexMod: number,
   hasDefenseFightingStyle = false,
   unarmoredDefenseBonus = 0,
+  flatUnarmoredAC: number | null = null,
 ): number {
   const shield = equipped.find((item) => item.index === "shield");
   const bodyArmor = equipped.find(
@@ -275,6 +279,8 @@ export function computeArmorClass(
         : dexMod
       : 0;
     ac = base + dexContribution + (hasDefenseFightingStyle ? 1 : 0);
+  } else if (flatUnarmoredAC != null) {
+    ac = flatUnarmoredAC;
   } else {
     ac = 10 + dexMod + unarmoredDefenseBonus;
   }
@@ -866,4 +872,18 @@ export function unarmoredMovementBonus(level: number): number {
 // bardicInspirationMax, just a different ability.
 export function wholenessOfBodyMax(wisModifier: number): number {
   return Math.max(1, wisModifier);
+}
+
+// Species traits (Dragonborn's Breath Weapon, from level 1): "a creature
+// takes 1d10 [damage type] damage. On a successful save, a creature takes
+// half as much damage. This damage increases by 1d10 when you reach
+// character levels 5 (2d10), 11 (3d10), and 17 (4d10)." Confirmed directly
+// from the trait's own SRD text (same breakpoints for every Draconic
+// Ancestor subspecies — only the damage type differs, not the dice). Uses
+// = Proficiency Bonus and the save DC (8 + CON mod + Proficiency Bonus) are
+// both computed directly at the call site rather than as separate
+// functions here, since they're not new formulas — the same proficiency
+// bonus and DC-8-plus-mod-plus-prof shape used everywhere else in this app.
+export function breathWeaponDice(level: number): number {
+  return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
 }

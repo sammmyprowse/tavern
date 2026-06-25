@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ABILITY_ORDER, formatModifier, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
 import { buildCharacterSheet, computeAC } from "@/lib/character-sheet";
 import type {
@@ -37,15 +38,18 @@ export default function ReviewStep({
   onRestart,
   isSignedIn,
 }: ReviewStepProps) {
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const router = useRouter();
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
   async function handleSave() {
     setSaveState("saving");
     setSaveError(null);
     const result = await saveCharacter(draft);
-    if (result.success) {
-      setSaveState("saved");
+    if (result.success && result.characterId) {
+      // Straight to the new character's play sheet — no reason to make the
+      // player click through to My Characters and find it themselves.
+      router.push(`/characters/${result.characterId}`);
     } else {
       setSaveState("error");
       setSaveError(result.error ?? "Something went wrong.");
@@ -176,15 +180,6 @@ export default function ReviewStep({
             >
               {saveState === "saving" ? "Saving…" : "Save Character"}
             </button>
-            {saveState === "saved" && (
-              <span className="text-sm text-tavern-gold-light">
-                Saved! View it in{" "}
-                <Link href="/characters" className="underline hover:text-tavern-gold">
-                  My Characters
-                </Link>
-                .
-              </span>
-            )}
             {saveState === "error" && (
               <span className="text-sm text-tavern-oxblood-light">{saveError}</span>
             )}

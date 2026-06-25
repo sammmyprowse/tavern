@@ -1442,3 +1442,171 @@ header showed "Level 1 Fairy (Homebrew) — Sage". No console errors.
 all 12 classes' spellcasting/resources, plus homebrew species filling the
 free SRD's species gap. No further roadmap items are queued — see
 `project_tavern.md` for what's next if the user opens a new initiative.
+
+## Post-roadmap fixes — Save bug, builder explanations, species traits
+Four pieces of user feedback after the roadmap closed, fixed together.
+
+**1. Spell/Metamagic/Fighting-Style picker Save button silently no-opped —
+root cause was a stale dev server, not a code bug.** The local dev server
+had been running continuously since early in a very long session, through
+dozens of hot-reloads as `actions.ts`/`PlaySheet.tsx` were edited across the
+Warlock → Monk → homebrew-species passes. Next.js dev mode can let Server
+Action references go stale after that many edits — the button still fires,
+the action just silently fails. Restarting the dev server (`preview_stop` +
+`preview_start`) resolved it; re-tested Cantrips/Prepared Spells/Metamagic
+saves afterward, all persisted correctly. Lesson for long sessions: if a
+Server Action starts behaving like it's not firing at all (no error, no
+effect), restart the dev server before assuming a code regression.
+
+**2. Builder: "Choose Skills" and "Assign Ability Scores" now explain what
+each choice does**, not just name it. Both surface REAL SRD data that was
+already being fetched but not rendered — not new content. `SkillInfo`
+gained a `description` field (`getSkillsList()` already had the row's
+`data`, just wasn't selecting/extracting `data.description`) — every skill
+already has a real one-line SRD description (e.g. Acrobatics: "Stay on your
+feet in a tricky situation, or perform an acrobatic stunt."). `ClassStep.tsx`
+now shows each skill option's ability score + description; a general
+explainer paragraph above the grid covers what skill proficiency means
+mechanically. `AbilitiesStep.tsx` already had `AbilityScoreInfo.description`
+fetched (`getAbilityScoresList()`) but wasn't rendering it either — now
+shows the real short SRD description ("Physical might" for STR, etc.) plus
+two things the real description doesn't cover: a hand-written one-line
+combat-relevance note per ability (`ABILITY_COMBAT_NOTES` in
+`AbilitiesStep.tsx` — CON governs zero skills despite being the most
+important survival stat, so skills alone would undersell it; spellcasting
+ability per class confirmed independently while building each class's
+resources earlier in this project, not re-derived here) and the real
+governed-skills list (derived from `SkillInfo.abilityScore`, not
+hand-written). Both steps needed a new `skills` prop threaded through
+`BuilderWizard.tsx` (the data was already fetched at the page level and
+passed to `ReviewStep`, just not to these two).
+
+**3. Builder Save now redirects straight to the new character's play
+sheet.** `saveCharacter()` in `src/app/builder/actions.ts` now does
+`.select("id").single()` on the insert and returns `characterId`;
+`ReviewStep.tsx` calls `router.push(`/characters/${characterId}`)` on
+success instead of showing a static "Saved! View it in My Characters" link
+the player had to click through. Removed the now-dead `"saved"` state
+branch entirely rather than leaving unreachable code.
+
+**4. Species traits weren't shown ANYWHERE on the play sheet** — a
+pre-existing gap noticed once Dragonborn's Breath Weapon/Draconic Flight
+were flagged as missing. Two-part fix: a baseline "Species Traits" card
+(informational, same collapsible-list pattern as Features) for every
+species' base + chosen subspecies traits, PLUS full interactive treatment
+for the traits with a clean, resource-shaped mechanic — extended beyond just
+Dragonborn to Dwarf/Orc/Goliath for consistency once the pattern existed,
+and to the homebrew Tortle for an AC-correctness fix. See the dedicated
+"Species traits" section below for full details (sourcing, what's
+interactive vs informational-only, and what's deliberately deferred).
+
+## Species traits
+Every species/subspecies trait is now real SRD content surfaced on the play
+sheet, not just chosen during the builder. Two tiers, same split-by-shape
+reasoning used for class resources all session: traits with a clean,
+deterministic mechanic get full interactivity; everything else is
+informational-only via a new "Species Traits" card (same collapsible-list
+pattern as Features).
+
+**Plumbing that didn't exist before this pass:** `species`/`subspecies`
+tables only ever exposed `{index, name}` for each trait — the actual
+description text lives in a separate `traits` table, never looked up. New
+`getTraitDescriptions()` in `srd.ts` fetches the whole table once (~50 rows
+incl. homebrew) into a plain `Record<string, string>` — explicitly NOT a
+`Map`, since `Map` instances don't survive the Server Component -> Client
+Component props boundary (this surfaced as a real bug while building this:
+the prop silently became unusable on the client side until switched to a
+plain object). `PlaySheet.tsx` merges the chosen species' base traits +
+chosen subspecies' traits into one list (subspecies traits can carry their
+own `level`, e.g. Elven Lineage's level-3/5 spell unlocks; base species
+traits default to level 1), looks up each one's text via the new lookup,
+and renders it with the exact same `ClassFeature`-shaped collapsible-row
+JSX already used for class Features.
+
+**Dragonborn (the user's example) — fully interactive:**
+- **Breath Weapon**: dice scale 1d10 to 4d10 at levels 1/5/11/17 (confirmed
+  directly in the trait's own text), uses = Proficiency Bonus, Long-Rest-
+  only recovery, DEX save DC = 8+CON mod+Proficiency Bonus. The damage TYPE
+  is on the chosen Draconic Ancestor SUBSPECIES, not the base species —
+  confirmed independently per ancestor (`subspecies.data.damage_type`), not
+  assumed from the ancestor's color/name (e.g. Bronze and Blue are both
+  Lightning, not "Bronze gets a bronze-colored damage type"). `SubspeciesOption`
+  grew a `damageType` field for this. Roll+expend combined in one click
+  (`rollBreathWeapon`), same shape as Second Wind — the save itself isn't
+  applied (no target/enemy state to apply it to), just the damage roll and
+  the DC for the player to use manually.
+- **Draconic Flight** (level 5+): once-per-Long-Rest Bonus Action, Fly Speed
+  = Speed, no roll — a simple "mark used" toggle, same shape as Warlock's
+  Magical Cunning minus the resource refund.
+
+**Extended to other species once the patterns existed, for consistency —
+not separately requested, but cheap once Dragonborn's plumbing was built:**
+- **Dwarf — Stonecunning**: Bonus Action for Tremorsense, uses = Proficiency
+  Bonus, Long-Rest-only. No roll (Tremorsense itself isn't a numeric effect
+  this app tracks) — just a stepper.
+- **Orc — Adrenaline Rush**: Bonus Action Dash + flat Temporary Hit Points
+  equal to Proficiency Bonus, uses = Proficiency Bonus, recovers on a Short
+  OR Long Rest (confirmed "finish a Short or Long Rest" — the same trait
+  shape as Action Surge/Focus Points). No roll needed since the temp-HP
+  amount is flat and deterministic — grants it and expends a use together.
+- **Orc — Relentless Endurance**: "When you are reduced to 0 Hit Points but
+  not killed outright, you can drop to 1 instead... until you finish a Long
+  Rest." The only species trait that's automatic rather than a button —
+  `applyDamage()` checks `sheet.relentlessEnduranceAvailable` and intercepts
+  any damage that would drop current HP to 0, dropping it to 1 instead and
+  logging "Relentless Endurance" to the dice log. Applied unconditionally
+  rather than as a player choice (the real rule frames it as "you can," but
+  declining is never correct, so prompting would just be friction). Doesn't
+  model the "not killed outright" massive-damage/instant-death exception,
+  which this app doesn't track for any class.
+- **Goliath — Large Form** (level 5+): same once-per-Long-Rest toggle shape
+  as Draconic Flight, no roll.
+- **Homebrew Tortle — Natural Armor**: "your base Armor Class is 17" — a
+  FLAT REPLACEMENT of the unarmored base, not an additive bonus like every
+  other AC modifier built so far (Defense Fighting Style, Barbarian/Monk's
+  Unarmored Defense). `computeArmorClass`/`computeAC` grew a
+  `flatUnarmoredAC` parameter for this — only takes effect in the existing
+  unarmored branch, so a Tortle wearing actual body armor correctly uses
+  the armor's own AC instead (matching the real rule, "can't benefit from
+  wearing body armor"), confirmed live by equipping/unequipping Chain Mail
+  on a Tortle Fighter test character (16 while armored, 17 once unequipped).
+  This wasn't part of the user's ask but was a real correctness gap in
+  homebrew content already written — fixed alongside the rest rather than
+  left broken.
+
+**Deliberately deferred, explicitly NOT built in this pass — each is
+substantially bigger than anything above, closer to a full class-resource
+pass than a quick addition:**
+- **Goliath's Giant Ancestry** (choose 1 of 6 benefits at level 1, then
+  uses = Proficiency Bonus 1/Long Rest for whichever was chosen) needs a
+  whole new "ancestry choice" picker, similar in shape to Cleric/Druid's
+  Divine Order choice but for a species trait.
+- **Elf's Elven Lineage, Gnome's Gnomish Lineage, Tiefling's Fiendish
+  Legacy** — all three grant a cantrip at level 1 plus a scaling "always
+  prepared, cast once free per Long Rest" spell at character levels 3 and 5,
+  tied to whichever of 2-3 lineage options was chosen as a SUBSPECIES. This
+  is a genuinely different spell-tracking axis from each class's own
+  Prepared Spells list (a second, smaller "always prepared" list per
+  character, with its own free-cast-per-rest tracking) — real, well-defined
+  mechanics, just substantial enough to warrant treating as its own future
+  pass rather than bundling in. The lineage CHOICE itself already works
+  today via the existing generic subspecies picker (built for Draconic
+  Ancestor); only the bonus spellcasting is deferred.
+- **Halfling's Luck** (auto-reroll a natural 1 on any d20 test) would need
+  changing the CORE dice-roll handlers used by every check/save/attack
+  across every class, and showing both rolls in the log — not species-
+  specific scope creep, deferred the same way Indomitable's reroll
+  (Fighter) was left manual rather than automatic.
+
+Tested live: walked a Dragonborn (Draconic Ancestor: Red) through the
+ACTUAL builder end-to-end (not a hand-inserted character, to also exercise
+the lineage picker and the new skill/ability explanations along the way),
+confirmed Breath Weapon showed "Roll 1d10 Fire" with DC 12 at level 1 and
+correctly had no Draconic Flight button yet; hand-inserted a level-5 copy
+and confirmed Breath Weapon scaled to "Roll 2d10 Fire" / DC 13 / 3 uses and
+Draconic Flight appeared and toggled correctly. Separately tested Dwarf
+(Stonecunning 2/2 at level 3), Orc (Adrenaline Rush granting exactly 2 temp
+HP and expending a use; Relentless Endurance correctly dropping HP to 1
+instead of 0 on lethal damage, logged to the dice log), Goliath (Large Form
+appearing at level 5), and Tortle (AC 16 with Chain Mail equipped, 17 once
+unequipped). No console errors across any of the five test characters.

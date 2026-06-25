@@ -16,6 +16,11 @@ export interface SubspeciesOption {
   name: string;
   speciesIndex: string;
   traits: { index: string; name: string; level?: number }[];
+  // Draconic Ancestor subspecies only — the damage type Breath Weapon/
+  // Damage Resistance use (Acid/Cold/Fire/Lightning/Poison, per ancestor).
+  // null for every other subspecies (Gnomish/Elven Lineage, etc. don't have
+  // a single damage type).
+  damageType: { index: string; name: string } | null;
 }
 
 export interface SkillOptionRef {
@@ -89,6 +94,7 @@ export interface SkillInfo {
   index: string;
   name: string;
   abilityScore: string;
+  description: string;
 }
 
 function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
@@ -189,14 +195,38 @@ export async function getSubspeciesList(): Promise<SubspeciesOption[]> {
     .eq("ruleset", "2024");
 
   return (data ?? []).map((s) => {
-    const d = s.data as { traits?: { index: string; name: string; level?: number }[] };
+    const d = s.data as {
+      traits?: { index: string; name: string; level?: number }[];
+      damage_type?: { index: string; name: string };
+    };
     return {
       index: s.index,
       name: s.name,
       speciesIndex: s.species_index ?? "",
       traits: d.traits ?? [],
+      damageType: d.damage_type ?? null,
     };
   });
+}
+
+// Trait descriptions, keyed by index — looked up across BOTH species-level
+// traits (Darkvision, Fey Ancestry, etc.) and subspecies-level traits
+// (Breath Weapon, Elven Lineage, etc.), which is why this fetches the whole
+// `traits` table rather than going through species/subspecies. No ruleset
+// filter: trait TEXT itself isn't gated by ruleset the way species/
+// backgrounds/feats are — a homebrew species' traits live in this same
+// table (tagged ruleset='homebrew' on the trait row), and the lookup just
+// needs the description regardless of source. A plain object, not a Map —
+// Map instances don't survive the Server Component -> Client Component
+// props boundary (React's RSC serialization doesn't support them).
+export async function getTraitDescriptions(): Promise<Record<string, string>> {
+  const { data } = await supabase.from("traits").select("index, data");
+  const result: Record<string, string> = {};
+  for (const t of data ?? []) {
+    const d = t.data as { description?: string };
+    if (d.description) result[t.index] = d.description;
+  }
+  return result;
 }
 
 export async function getClassesList(): Promise<ClassOption[]> {
@@ -500,10 +530,18 @@ export async function getFightingStyleFeats(): Promise<FeatOption[]> {
 export async function getSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")
-    .select("index, name, ability_score")
+    .select("index, name, ability_score, data")
     .eq("ruleset", "2024");
 
   return (data ?? [])
-    .map((s) => ({ index: s.index, name: s.name, abilityScore: s.ability_score ?? "str" }))
+    .map((s) => {
+      const d = s.data as { description?: string };
+      return {
+        index: s.index,
+        name: s.name,
+        abilityScore: s.ability_score ?? "str",
+        description: d.description ?? "",
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }

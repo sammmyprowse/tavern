@@ -1,13 +1,15 @@
 import type { CharacterDraft, UpdateDraftFn } from "@/lib/character";
-import type { ClassOption } from "@/lib/srd";
+import type { ClassOption, SkillInfo } from "@/lib/srd";
 
 interface ClassStepProps {
   classes: ClassOption[];
+  skills: SkillInfo[];
   draft: CharacterDraft;
   onUpdate: UpdateDraftFn;
 }
 
-export default function ClassStep({ classes, draft, onUpdate }: ClassStepProps) {
+export default function ClassStep({ classes, skills, draft, onUpdate }: ClassStepProps) {
+  const skillsByIndex = new Map(skills.map((s) => [s.index, s]));
   const selected = classes.find((c) => c.index === draft.classIndex) ?? null;
 
   function selectClass(c: ClassOption) {
@@ -71,10 +73,17 @@ export default function ClassStep({ classes, draft, onUpdate }: ClassStepProps) 
               <h3 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
                 Choose {pc.choose} Skill{pc.choose > 1 ? "s" : ""}
               </h3>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <p className="mt-1 text-xs text-tavern-muted">
+                Proficiency in a skill adds your Proficiency Bonus to checks that use it — pick
+                whichever match how you plan to solve problems (talk your way through, sneak past,
+                fight, or puzzle it out).
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {pc.options.map((opt) => {
                   const isChosen = draft.skillChoices.includes(opt.index);
                   const isDisabled = !isChosen && draft.skillChoices.length >= pc.choose;
+                  const skillIndex = opt.index.replace(/^skill-/, "");
+                  const skill = skillsByIndex.get(skillIndex);
                   return (
                     <button
                       key={opt.index}
@@ -88,7 +97,17 @@ export default function ClassStep({ classes, draft, onUpdate }: ClassStepProps) 
                             : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
                       }`}
                     >
-                      {opt.name.replace(/^Skill: /, "")}
+                      <span className="font-heading font-bold text-tavern-text">
+                        {opt.name.replace(/^Skill: /, "")}
+                        {skill && (
+                          <span className="ml-1.5 text-[10px] tracking-wider text-tavern-muted uppercase">
+                            {skill.abilityScore.toUpperCase()}
+                          </span>
+                        )}
+                      </span>
+                      {skill?.description && (
+                        <p className="mt-0.5 text-xs text-tavern-muted">{skill.description}</p>
+                      )}
                     </button>
                   );
                 })}

@@ -7,6 +7,7 @@ import type { Json } from "@/lib/database.types";
 export interface SaveCharacterResult {
   success: boolean;
   error?: string;
+  characterId?: string;
 }
 
 export async function saveCharacter(draft: CharacterDraft): Promise<SaveCharacterResult> {
@@ -21,13 +22,17 @@ export async function saveCharacter(draft: CharacterDraft): Promise<SaveCharacte
     return { success: false, error: "Give your character a name first." };
   }
 
-  const { error } = await supabase.from("characters").insert({
-    user_id: userData.user.id,
-    name: draft.name.trim(),
-    draft: draft as unknown as Json,
-  });
+  const { data, error } = await supabase
+    .from("characters")
+    .insert({
+      user_id: userData.user.id,
+      name: draft.name.trim(),
+      draft: draft as unknown as Json,
+    })
+    .select("id")
+    .single();
 
   if (error) return { success: false, error: error.message };
 
-  return { success: true };
+  return { success: true, characterId: data.id };
 }

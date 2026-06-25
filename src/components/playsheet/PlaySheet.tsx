@@ -64,6 +64,7 @@ interface PlaySheetProps {
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
   fightingStyleFeats: FeatOption[];
+  traitDescriptions: Record<string, string>;
   classSpells: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
@@ -143,6 +144,18 @@ interface PlayState {
   // that fully restores expendedFocusPoints and heals — same boolean-flag
   // shape as usedMagicalCunning/usedPersistentRage.
   usedUncannyMetabolism: boolean;
+  // Species traits (Dragonborn/Dwarf/Orc/Goliath). Breath Weapon/Stonecunning
+  // regain all uses on a Long Rest only (confirmed); Adrenaline Rush regains
+  // on a Short OR Long Rest (confirmed "finish a Short or Long Rest").
+  expendedBreathWeapon: number;
+  usedDraconicFlight: boolean;
+  expendedStonecunning: number;
+  expendedAdrenalineRush: number;
+  usedLargeForm: boolean;
+  // Relentless Endurance (Orc): "drop to 1 Hit Point instead" the first
+  // time you'd be reduced to 0 each Long Rest — checked automatically by
+  // applyDamage below, not a button the player clicks.
+  usedRelentlessEndurance: boolean;
 }
 
 export default function PlaySheet({
@@ -158,6 +171,7 @@ export default function PlaySheet({
   subclassOptions,
   generalFeats,
   fightingStyleFeats,
+  traitDescriptions,
   classSpells,
   isOwner,
   isPublic,
@@ -225,6 +239,12 @@ export default function PlaySheet({
     expendedFocusPoints: 0,
     expendedWholenessOfBody: 0,
     usedUncannyMetabolism: false,
+    expendedBreathWeapon: 0,
+    usedDraconicFlight: false,
+    expendedStonecunning: 0,
+    expendedAdrenalineRush: 0,
+    usedLargeForm: false,
+    usedRelentlessEndurance: false,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -290,6 +310,7 @@ export default function PlaySheet({
     sheet.modifiers.dex,
     hasDefenseFightingStyle,
     unarmoredDefenseBonus,
+    sheet.naturalArmorAC,
   );
   // Monk's Unarmed Strike isn't equipment, so resolveWeapons (which only
   // resolves ownedEquipment) can't produce it — synthesized here and
@@ -389,6 +410,34 @@ export default function PlaySheet({
     .filter((f) => f.level <= sheet.level)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
+  // Species traits weren't shown anywhere on the play sheet at all before
+  // this pass — only the species NAME in the header line. Subspecies
+  // traits can carry their own `level` (Elven Lineage's level-3/5 spell
+  // unlocks); base species traits don't, so they default to level 1
+  // (always active). Same ClassFeature shape as unlockedFeatures so the
+  // JSX below reuses that exact collapsible-list pattern. Descriptions come
+  // from the traitDescriptions lookup (the traits table) since
+  // species/subspecies.traits only carry {index, name}.
+  const chosenSpeciesOption = species.find((s) => s.index === currentDraft.speciesIndex) ?? null;
+  const chosenSubspeciesOption =
+    subspecies.find((s) => s.index === currentDraft.subspeciesIndex) ?? null;
+  const speciesTraits: ClassFeature[] = [
+    ...(chosenSpeciesOption?.traits ?? []).map((t) => ({
+      index: `species-${t.index}`,
+      name: t.name,
+      level: 1,
+      description: traitDescriptions[t.index] ?? null,
+    })),
+    ...(chosenSubspeciesOption?.traits ?? []).map((t) => ({
+      index: `subspecies-${t.index}`,
+      name: t.name,
+      level: t.level ?? 1,
+      description: traitDescriptions[t.index] ?? null,
+    })),
+  ]
+    .filter((t) => t.level <= sheet.level)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
   const expertiseSchedule = EXPERTISE_SCHEDULE[sheet.classIndex] ?? [];
   const pendingExpertiseMilestone = expertiseSchedule.find((m) => {
     const priorCount = expertiseSchedule
@@ -415,6 +464,7 @@ export default function PlaySheet({
     sheet.actionSurgeMax > 0 ||
     sheet.rageMax > 0 ||
     sheet.focusPointsMax > 0 ||
+    sheet.adrenalineRushMax > 0 ||
     (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
@@ -501,16 +551,31 @@ export default function PlaySheet({
     });
   }
 
+  // Relentless Endurance (Orc): "When you are reduced to 0 Hit Points but
+  // not killed outright, you can drop to 1 Hit Point instead. Once you use
+  // this trait, you can't do so again until you finish a Long Rest."
+  // Applied automatically here rather than as a separate confirmation step
+  // — the real rule frames it as a choice, but declining it is never
+  // correct, so prompting for it would just be friction. Doesn't model the
+  // "not killed outright" massive-damage/instant-death exception, which
+  // this app doesn't track for any class.
   function applyDamage() {
     const amount = parseInt(damageInput, 10);
     if (!amount || amount < 0) return;
     setPlay((prev) => {
       const tempAbsorbed = Math.min(prev.tempHp, amount);
       const remaining = amount - tempAbsorbed;
+      const wouldDropToZero = prev.currentHp > 0 && prev.currentHp - remaining <= 0;
+      const triggersRelentlessEndurance =
+        sheet?.relentlessEnduranceAvailable && wouldDropToZero && !prev.usedRelentlessEndurance;
+      if (triggersRelentlessEndurance) {
+        pushLog({ label: "Relentless Endurance", detail: "Dropped to 1 HP instead of 0", total: 1 });
+      }
       return {
         ...prev,
         tempHp: prev.tempHp - tempAbsorbed,
-        currentHp: Math.max(0, prev.currentHp - remaining),
+        currentHp: triggersRelentlessEndurance ? 1 : Math.max(0, prev.currentHp - remaining),
+        usedRelentlessEndurance: triggersRelentlessEndurance ? true : prev.usedRelentlessEndurance,
       };
     });
     setDamageInput("");
@@ -595,6 +660,12 @@ export default function PlaySheet({
       expendedFocusPoints: 0,
       expendedWholenessOfBody: 0,
       usedUncannyMetabolism: false,
+      expendedBreathWeapon: 0,
+      usedDraconicFlight: false,
+      expendedStonecunning: 0,
+      expendedAdrenalineRush: 0,
+      usedLargeForm: false,
+      usedRelentlessEndurance: false,
     }));
   }
 
@@ -622,6 +693,7 @@ export default function PlaySheet({
       expendedActionSurge: 0,
       expendedRage: Math.max(0, prev.expendedRage - 1),
       expendedFocusPoints: 0,
+      expendedAdrenalineRush: 0,
     }));
   }
 
@@ -863,6 +935,81 @@ export default function PlaySheet({
       detail: `10d12 [${result.rolls.join(", ")}]`,
       total: result.total,
     });
+  }
+
+  // Breath Weapon (Dragonborn): "replace one of your attacks with an
+  // exhalation... Each creature... takes 1d10 [ancestry damage type]
+  // damage... You can use this Breath Weapon a number of times equal to
+  // your Proficiency Bonus." Rolls the damage dice (save DC shown in the
+  // description text, since applying the save itself needs a target this
+  // app doesn't track) and expends a use together, same single-action shape
+  // as Second Wind.
+  function rollBreathWeapon() {
+    if (!sheet || play.expendedBreathWeapon >= sheet.breathWeaponMax) return;
+    const notation = `${sheet.breathWeaponDice}d10`;
+    const result = rollDice(notation);
+    pushLog({
+      label: `Breath Weapon (${sheet.breathWeaponDamageType ?? "?"})`,
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
+    setPlay((prev) => ({ ...prev, expendedBreathWeapon: prev.expendedBreathWeapon + 1 }));
+  }
+
+  function restoreBreathWeapon() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedBreathWeapon: Math.max(0, prev.expendedBreathWeapon - 1),
+    }));
+  }
+
+  // Draconic Flight (Dragonborn, level 5+) / Large Form (Goliath, level
+  // 5+): both once-per-Long-Rest Bonus Action buffs with no roll involved
+  // — a simple "mark used" toggle, same shape as Warlock's Magical Cunning
+  // minus the resource refund.
+  function useDraconicFlight() {
+    if (play.usedDraconicFlight) return;
+    setPlay((prev) => ({ ...prev, usedDraconicFlight: true }));
+  }
+
+  function useLargeForm() {
+    if (play.usedLargeForm) return;
+    setPlay((prev) => ({ ...prev, usedLargeForm: true }));
+  }
+
+  // Stonecunning (Dwarf): "As a Bonus Action, you gain Tremorsense... You
+  // can use this Bonus Action a number of times equal to your Proficiency
+  // Bonus." No roll, just a stepper — Tremorsense itself isn't a numeric
+  // effect this app tracks.
+  function expendStonecunning() {
+    setPlay((prev) => ({ ...prev, expendedStonecunning: prev.expendedStonecunning + 1 }));
+  }
+
+  function restoreStonecunning() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedStonecunning: Math.max(0, prev.expendedStonecunning - 1),
+    }));
+  }
+
+  // Adrenaline Rush (Orc): "You can take the Dash action as a Bonus
+  // Action. When you do so, you gain a number of Temporary Hit Points
+  // equal to your Proficiency Bonus." The temp HP amount is flat and
+  // deterministic (no roll needed) — grants it and expends a use together.
+  function useAdrenalineRush() {
+    if (!sheet || play.expendedAdrenalineRush >= sheet.adrenalineRushMax) return;
+    setPlay((prev) => ({
+      ...prev,
+      expendedAdrenalineRush: prev.expendedAdrenalineRush + 1,
+      tempHp: Math.max(prev.tempHp, sheet.proficiencyBonus),
+    }));
+  }
+
+  function restoreAdrenalineRush() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedAdrenalineRush: Math.max(0, prev.expendedAdrenalineRush - 1),
+    }));
   }
 
   function rollDivineSpark() {
@@ -2134,6 +2281,152 @@ export default function PlaySheet({
             </div>
           )}
 
+          {sheet.breathWeaponMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Breath Weapon
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Replace one attack with a 15-ft Cone or 30-ft Line. DEX save DC{" "}
+                  {8 + sheet.modifiers.con + sheet.proficiencyBonus}, half damage on a success.
+                  Regains all uses on a Long Rest only.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={rollBreathWeapon}
+                  disabled={play.expendedBreathWeapon >= sheet.breathWeaponMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Roll {sheet.breathWeaponDice}d10 {sheet.breathWeaponDamageType ?? ""}
+                </button>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreBreathWeapon}
+                    disabled={play.expendedBreathWeapon <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.breathWeaponMax - play.expendedBreathWeapon}/{sheet.breathWeaponMax}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sheet.draconicFlightAvailable && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Draconic Flight
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action for a Fly Speed equal to your Speed for 10 minutes. Once per Long
+                  Rest.
+                </div>
+              </div>
+              <button
+                onClick={useDraconicFlight}
+                disabled={play.usedDraconicFlight}
+                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {play.usedDraconicFlight ? "Used" : "Use"}
+              </button>
+            </div>
+          )}
+
+          {sheet.stonecunningMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Stonecunning
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action for Tremorsense (60 ft, on/touching stone) for 10 minutes. Regains
+                  all uses on a Long Rest only.
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={restoreStonecunning}
+                  disabled={play.expendedStonecunning <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.stonecunningMax - play.expendedStonecunning}/{sheet.stonecunningMax}
+                </span>
+                <button
+                  onClick={expendStonecunning}
+                  disabled={play.expendedStonecunning >= sheet.stonecunningMax}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  &minus;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {sheet.adrenalineRushMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Adrenaline Rush
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Dash as a Bonus Action and gain {sheet.proficiencyBonus} Temporary Hit Points.
+                  Regains all uses on a Short or Long Rest.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={useAdrenalineRush}
+                  disabled={play.expendedAdrenalineRush >= sheet.adrenalineRushMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Use
+                </button>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreAdrenalineRush}
+                    disabled={play.expendedAdrenalineRush <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.adrenalineRushMax - play.expendedAdrenalineRush}/{sheet.adrenalineRushMax}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sheet.largeFormAvailable && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Large Form
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action to become Large for 10 minutes: Advantage on Strength checks, +10
+                  ft Speed. Once per Long Rest.
+                </div>
+              </div>
+              <button
+                onClick={useLargeForm}
+                disabled={play.usedLargeForm}
+                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {play.usedLargeForm ? "Used" : "Use"}
+              </button>
+            </div>
+          )}
+
           {isDying && (
             <div className="mt-4 rounded-lg border border-tavern-oxblood bg-tavern-oxblood/10 p-3">
               <div className="flex items-center justify-between">
@@ -2777,6 +3070,40 @@ export default function PlaySheet({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Species Traits */}
+        {speciesTraits.length > 0 && (
+          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Species Traits
+            </h2>
+            <div className="mt-3 space-y-1">
+              {speciesTraits.map((trait) => {
+                const expanded = expandedFeatures.has(trait.index);
+                return (
+                  <div key={trait.index} className="rounded-md border border-tavern-border">
+                    <button
+                      onClick={() => toggleFeature(trait.index)}
+                      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                    >
+                      <span className="text-tavern-text">{trait.name}</span>
+                      {trait.level > 1 && (
+                        <span className="text-xs tracking-wide text-tavern-muted uppercase">
+                          Lvl {trait.level}
+                        </span>
+                      )}
+                    </button>
+                    {expanded && trait.description && (
+                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                        {trait.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

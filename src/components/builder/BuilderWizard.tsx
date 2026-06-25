@@ -115,10 +115,15 @@ export default function BuilderWizard({
           />
         )}
         {step === "class" && (
-          <ClassStep classes={classes} draft={draft} onUpdate={updateDraft} />
+          <ClassStep classes={classes} skills={skills} draft={draft} onUpdate={updateDraft} />
         )}
         {step === "abilities" && (
-          <AbilitiesStep abilityScores={abilityScores} draft={draft} onUpdate={updateDraft} />
+          <AbilitiesStep
+            abilityScores={abilityScores}
+            skills={skills}
+            draft={draft}
+            onUpdate={updateDraft}
+          />
         )}
         {step === "background" && (
           <BackgroundStep backgrounds={backgrounds} draft={draft} onUpdate={updateDraft} />

@@ -1,13 +1,29 @@
 import { ABILITY_ORDER, STANDARD_ARRAY, abilityModifier, formatModifier, type AbilityKey, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
-import type { AbilityScoreInfo } from "@/lib/srd";
+import type { AbilityScoreInfo, SkillInfo } from "@/lib/srd";
 
 interface AbilitiesStepProps {
   abilityScores: AbilityScoreInfo[];
+  skills: SkillInfo[];
   draft: CharacterDraft;
   onUpdate: UpdateDraftFn;
 }
 
-export default function AbilitiesStep({ abilityScores, draft, onUpdate }: AbilitiesStepProps) {
+// What each ability governs beyond its skill list — skills alone undersell
+// CON (zero governed skills, despite being the most important survival
+// stat) and don't mention combat/spellcasting at all. Spellcasting ability
+// per class confirmed independently while building each class's resources
+// this project (Wizard=INT; Cleric/Druid/Ranger=WIS; Bard/Sorcerer/Warlock/
+// Paladin=CHA; Fighter/Barbarian/Monk/Rogue cast nothing).
+const ABILITY_COMBAT_NOTES: Record<AbilityKey, string> = {
+  str: "Melee attack and damage rolls, and how much you can carry.",
+  dex: "Armor Class, Initiative, and ranged attack rolls.",
+  con: "Hit Point maximum — the single biggest factor in staying alive.",
+  int: "Wizard spellcasting.",
+  wis: "Cleric, Druid, and Ranger spellcasting.",
+  cha: "Bard, Sorcerer, Warlock, and Paladin spellcasting.",
+};
+
+export default function AbilitiesStep({ abilityScores, skills, draft, onUpdate }: AbilitiesStepProps) {
   function availableValuesFor(ability: AbilityKey): number[] {
     const usedByOthers = ABILITY_ORDER.filter((a) => a !== ability)
       .map((a) => draft.baseAbilityScores[a])
@@ -31,11 +47,12 @@ export default function AbilitiesStep({ abilityScores, draft, onUpdate }: Abilit
         Assign the standard array — {STANDARD_ARRAY.join(", ")} — to your six abilities.
       </p>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {ABILITY_ORDER.map((ability) => {
           const info = abilityScores.find((a) => a.index === ability);
           const value = draft.baseAbilityScores[ability];
           const options = availableValuesFor(ability);
+          const governedSkills = skills.filter((s) => s.abilityScore === ability);
           return (
             <div
               key={ability}
@@ -45,6 +62,15 @@ export default function AbilitiesStep({ abilityScores, draft, onUpdate }: Abilit
                 {info?.name ?? ability.toUpperCase()}
               </div>
               <div className="mt-0.5 text-xs text-tavern-muted">{info?.fullName}</div>
+              {info?.description && (
+                <div className="mt-1 text-xs text-tavern-muted italic">{info.description}</div>
+              )}
+              <div className="mt-1 text-xs text-tavern-muted">{ABILITY_COMBAT_NOTES[ability]}</div>
+              {governedSkills.length > 0 && (
+                <div className="mt-1 text-xs text-tavern-muted">
+                  Skills: {governedSkills.map((s) => s.name).join(", ")}
+                </div>
+              )}
 
               <select
                 value={value ?? ""}

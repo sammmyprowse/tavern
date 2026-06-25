@@ -4,6 +4,7 @@ import {
   actionSurgeMax,
   bardicInspirationDie,
   bardicInspirationMax,
+  breathWeaponDice,
   brutalStrikeDice,
   clericChannelDivinityMax,
   computeArmorClass,
@@ -78,6 +79,7 @@ export interface CharacterSheet {
   name: string;
   level: number;
   speciesName: string;
+  speciesIndex: string;
   speciesIsHomebrew: boolean;
   subspeciesName: string | null;
   className: string;
@@ -123,6 +125,17 @@ export interface CharacterSheet {
   focusPointsMax: number;
   unarmoredMovementBonus: number;
   wholenessOfBodyMax: number;
+  // Species traits (Dragonborn/Dwarf/Orc/Goliath/homebrew Tortle) — see
+  // CLAUDE.md's "Species traits" section for sourcing/scope notes.
+  breathWeaponDice: number;
+  breathWeaponMax: number;
+  breathWeaponDamageType: string | null;
+  draconicFlightAvailable: boolean;
+  stonecunningMax: number;
+  adrenalineRushMax: number;
+  largeFormAvailable: boolean;
+  relentlessEnduranceAvailable: boolean;
+  naturalArmorAC: number | null;
 }
 
 export function buildCharacterSheet(
@@ -221,6 +234,7 @@ export function buildCharacterSheet(
     name: draft.name,
     level: draft.level,
     speciesName: species.name,
+    speciesIndex: species.index,
     speciesIsHomebrew: species.isHomebrew,
     subspeciesName: subspecies?.name ?? null,
     className: cls.name,
@@ -287,6 +301,22 @@ export function buildCharacterSheet(
     focusPointsMax: cls.index === "monk" ? focusPointsMax(draft.level) : 0,
     unarmoredMovementBonus: cls.index === "monk" ? unarmoredMovementBonus(draft.level) : 0,
     wholenessOfBodyMax: cls.index === "monk" ? wholenessOfBodyMax(modifiers.wis) : 0,
+    // Breath Weapon's dice/uses are on the BASE species (every Dragonborn
+    // has it), but the damage TYPE is on the chosen Draconic Ancestor
+    // subspecies — confirmed from each ancestor's own subspecies row
+    // (data.damage_type), not assumed from the ancestor's color/name.
+    breathWeaponDice: species.index === "dragonborn" ? breathWeaponDice(draft.level) : 0,
+    breathWeaponMax: species.index === "dragonborn" ? proficiencyBonus : 0,
+    breathWeaponDamageType: species.index === "dragonborn" ? subspecies?.damageType?.name ?? null : null,
+    draconicFlightAvailable: species.index === "dragonborn" && draft.level >= 5,
+    stonecunningMax: species.index === "dwarf" ? proficiencyBonus : 0,
+    adrenalineRushMax: species.index === "orc" ? proficiencyBonus : 0,
+    largeFormAvailable: species.index === "goliath" && draft.level >= 5,
+    relentlessEnduranceAvailable: species.index === "orc",
+    // Natural Armor (homebrew Tortle): "your base Armor Class is 17" — a
+    // flat override, not an additive bonus. null for every other species,
+    // matching computeArmorClass's flatUnarmoredAC param shape.
+    naturalArmorAC: species.index === "tortle" ? 17 : null,
   };
 }
 
@@ -315,11 +345,12 @@ export function computeAC(
   dexMod: number,
   hasDefenseFightingStyle = false,
   unarmoredDefenseBonus = 0,
+  flatUnarmoredAC: number | null = null,
 ): number {
   const equipped = resolveEquippedItems(ownedEquipment, equipmentLookup, equippedIndexes).filter(
     (item) => item.armor_class,
   );
-  return computeArmorClass(equipped, dexMod, hasDefenseFightingStyle, unarmoredDefenseBonus);
+  return computeArmorClass(equipped, dexMod, hasDefenseFightingStyle, unarmoredDefenseBonus, flatUnarmoredAC);
 }
 
 export interface ResolvedWeapon {
