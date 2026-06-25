@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ABILITY_ORDER, formatModifier, type CharacterDraft, type UpdateDraftFn } from "@/lib/character";
 import { buildCharacterSheet, computeAC } from "@/lib/character-sheet";
+import type { PersonalityAnswers } from "@/lib/personality";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -15,6 +16,7 @@ import { saveCharacter } from "@/app/builder/actions";
 
 interface ReviewStepProps {
   draft: CharacterDraft;
+  personality: PersonalityAnswers | null;
   onUpdate: UpdateDraftFn;
   species: SpeciesOption[];
   subspecies: SubspeciesOption[];
@@ -28,6 +30,7 @@ interface ReviewStepProps {
 
 export default function ReviewStep({
   draft,
+  personality,
   onUpdate,
   species,
   subspecies,
@@ -45,7 +48,7 @@ export default function ReviewStep({
   async function handleSave() {
     setSaveState("saving");
     setSaveError(null);
-    const result = await saveCharacter(draft);
+    const result = await saveCharacter(draft, personality);
     if (result.success && result.characterId) {
       // Straight to the new character's play sheet — no reason to make the
       // player click through to My Characters and find it themselves.
@@ -153,7 +156,7 @@ export default function ReviewStep({
             {sheet?.backgroundFeatName ? ` — ${sheet.backgroundFeatName}` : ""}
           </dd>
         </div>
-        <div className="flex flex-wrap justify-between gap-1">
+        <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Starting Equipment</dt>
           <dd className="text-right text-tavern-text">
             {resolvedEquipment.map((item, i) => (
@@ -162,6 +165,10 @@ export default function ReviewStep({
               </div>
             ))}
           </dd>
+        </div>
+        <div className="flex flex-wrap justify-between gap-1">
+          <dt className="text-tavern-gold-light">Personality &amp; Backstory</dt>
+          <dd className="text-tavern-text">{personality ? "Added" : "Skipped"}</dd>
         </div>
       </dl>
 

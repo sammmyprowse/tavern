@@ -52,8 +52,10 @@ import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
 import CharacterAvatar from "./CharacterAvatar";
 import CharacterBio from "./CharacterBio";
+import CharacterPersonality from "./CharacterPersonality";
 import DeleteCharacterButton from "./DeleteCharacterButton";
 import SectionNav from "./SectionNav";
+import type { PersonalityAnswers } from "@/lib/personality";
 
 interface PlaySheetProps {
   characterId: string;
@@ -74,6 +76,7 @@ interface PlaySheetProps {
   isPublic: boolean;
   avatarUrl: string | null;
   bio: string | null;
+  personality: PersonalityAnswers | null;
 }
 
 interface PlayState {
@@ -183,6 +186,7 @@ export default function PlaySheet({
   isPublic,
   avatarUrl,
   bio,
+  personality,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
@@ -1441,6 +1445,7 @@ export default function PlaySheet({
             ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
             ...(weapons.length > 0 ? [{ id: "attacks", label: "Attacks" }] : []),
             { id: "equipment", label: "Equipment" },
+            ...(personality || isOwner ? [{ id: "personality", label: "Personality" }] : []),
           ]}
         />
 
@@ -3324,6 +3329,13 @@ export default function PlaySheet({
               })}
           </div>
         </div>
+
+        <CharacterPersonality
+          characterId={characterId}
+          initialPersonality={personality}
+          isOwner={isOwner}
+          sheet={sheet}
+        />
 
         <p className="mt-6 text-xs text-tavern-muted">
           This is an early version of the play sheet — custom items, per-class resources

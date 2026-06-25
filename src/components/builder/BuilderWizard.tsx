@@ -6,8 +6,10 @@ import SpeciesStep from "./steps/SpeciesStep";
 import ClassStep from "./steps/ClassStep";
 import AbilitiesStep from "./steps/AbilitiesStep";
 import BackgroundStep from "./steps/BackgroundStep";
+import PersonalityStep from "./steps/PersonalityStep";
 import ReviewStep from "./steps/ReviewStep";
 import { EMPTY_DRAFT, type CharacterDraft, type DraftUpdate } from "@/lib/character";
+import type { PersonalityAnswers } from "@/lib/personality";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -19,6 +21,7 @@ import type {
 } from "@/lib/srd";
 
 const STORAGE_KEY = "tavern_character_draft";
+const PERSONALITY_STORAGE_KEY = "tavern_character_personality";
 
 interface BuilderWizardProps {
   isSignedIn: boolean;
@@ -42,6 +45,7 @@ export default function BuilderWizard({
   skills,
 }: BuilderWizardProps) {
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
+  const [personality, setPersonality] = useState<PersonalityAnswers | null>(null);
   const [step, setStep] = useState<StepId>("species");
   const [loaded, setLoaded] = useState(false);
 
@@ -59,6 +63,14 @@ export default function BuilderWizard({
         // ignore corrupt saved draft
       }
     }
+    const savedPersonality = localStorage.getItem(PERSONALITY_STORAGE_KEY);
+    if (savedPersonality) {
+      try {
+        setPersonality(JSON.parse(savedPersonality));
+      } catch {
+        // ignore corrupt saved personality
+      }
+    }
     setLoaded(true);
   }, []);
 
@@ -66,12 +78,23 @@ export default function BuilderWizard({
     if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
   }, [draft, loaded]);
 
+  useEffect(() => {
+    if (!loaded) return;
+    // Stored separately from the draft (its own key, kept out of
+    // CharacterDraft entirely) — personality is presentation flavor, never
+    // read by buildCharacterSheet, same separation as bio/avatar_url on the
+    // characters table.
+    if (personality) localStorage.setItem(PERSONALITY_STORAGE_KEY, JSON.stringify(personality));
+    else localStorage.removeItem(PERSONALITY_STORAGE_KEY);
+  }, [personality, loaded]);
+
   function updateDraft(update: DraftUpdate) {
     setDraft((prev) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
   }
 
   function restart() {
     setDraft(EMPTY_DRAFT);
+    setPersonality(null);
     setStep("species");
   }
 
@@ -87,6 +110,7 @@ export default function BuilderWizard({
       ),
     abilities: Object.values(draft.baseAbilityScores).every((v) => v !== null),
     background: Boolean(draft.backgroundIndex) && Boolean(draft.backgroundAbilityBonus),
+    personality: true,
     review: true,
   };
 
@@ -128,9 +152,13 @@ export default function BuilderWizard({
         {step === "background" && (
           <BackgroundStep backgrounds={backgrounds} draft={draft} onUpdate={updateDraft} />
         )}
+        {step === "personality" && (
+          <PersonalityStep personality={personality} onUpdate={setPersonality} />
+        )}
         {step === "review" && (
           <ReviewStep
             draft={draft}
+            personality={personality}
             onUpdate={updateDraft}
             species={species}
             subspecies={subspecies}

@@ -10,6 +10,7 @@ import {
   type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
+import type { PersonalityAnswers } from "@/lib/personality";
 import type { Json } from "@/lib/database.types";
 
 // Shared by every action below that mutates a single owned character's draft:
@@ -102,6 +103,34 @@ export async function setCharacterBio(characterId: string, bio: string): Promise
   const { error } = await supabase
     .from("characters")
     .update({ bio })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
+export interface SetPersonalityResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function setCharacterPersonality(
+  characterId: string,
+  personality: PersonalityAnswers | null,
+): Promise<SetPersonalityResult> {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ personality: personality as unknown as Json })
     .eq("id", characterId)
     .eq("user_id", userData.user.id);
 

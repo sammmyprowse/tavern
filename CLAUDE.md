@@ -1738,3 +1738,108 @@ would actually be present:
   "Lalala" character while signed in as the test account — got the
   existing "Character Not Found" page, no regression/leak).
 No console errors across any of the above.
+
+## Personality & Backstory questionnaire
+User's framing: "have like a personality/backstory part to the character
+maker... It should be displayed that it will not affect gameplay
+mechanics only storytelling/roleplaying... thinking about having a
+questionnaire of sorts that users go through to basically generate a
+prompt they can put into AI to build a bio and image... should also
+include the players stats too so if they say they are a master thief in
+their backstory but the stats say the opposite the AI should kind of say
+'They have delusions of being a master thief'." Co-designed the question
+set with the user in chat before writing any code — 9 questions, grouped
+into Personality (Positive/Negative/Heroic/Destructive Trait, Flaw),
+Backstory (Origin, Motivation, Bond), and Appearance — each a curated
+multiple-choice list (original flavor content, not SRD) plus "Write your
+own…" and "None", landing on "short multiple-choice list with free text
+option" after iterating past plain free-text and pure-curated alternatives.
+Negative Trait vs. Flaw is a deliberate, subtle split (passive personality
+quirk vs. active compulsion); Destructive Trait is framed as in-fiction
+social damage generally (grudges, distrust, manipulation), not narrowed to
+the species-prejudice example the user used to describe it. Appearance
+carries its own disclaimer ("won't add, remove, or change anything in
+your inventory") after the user specifically flagged that a clothing-style
+option could read as implying a real inventory item.
+
+Storage: a new nullable `personality jsonb` column on `characters` —
+deliberately NOT folded into `CharacterDraft`/`draft`, mirroring why
+bio/avatar_url live outside the draft too: this is presentation flavor
+`buildCharacterSheet` never reads, kept structurally separate so that
+guarantee doesn't depend on remembering not to read a field. During the
+builder it lives in `BuilderWizard.tsx`'s own `personality` state with its
+own localStorage key (`tavern_character_personality`, separate from the
+draft's key) and rides along in `saveCharacter(draft, personality)` at
+Review/Save time; after creation it's edited independently via
+`setCharacterPersonality(characterId, personality)` on the play sheet
+(same ownership-scoped-update shape as `setCharacterBio`).
+
+Gate screen first ("Bring Your Character to Life" / Let's Do It / Skip
+For Now) per the user's own suggestion — states up front that this only
+produces a copy-pasteable prompt for an external AI tool, not an in-app
+generation, and that it's pure flavor. "Skip For Now" leaves
+`personality` null; the step is always advanceable either way (no
+required answers — every question defaults to "None"). The question
+grid itself (`PersonalityQuestionnaire.tsx`) is a shared component reused
+identically by the builder's `PersonalityStep.tsx` and the play sheet's
+`CharacterPersonality.tsx` — same questions and interaction model, just
+different surrounding chrome (gate + Next button vs. an Edit/Save toggle
+on an existing character).
+
+`buildPersonalityPrompt(sheet, personality)` in `src/lib/personality.ts`
+assembles the actual prompt from the LIVE `CharacterSheet` (name, species,
+class/level, background, all 6 ability scores + modifiers, every
+proficient skill with its bonus) plus all 9 answers, plus an instructions
+block that explicitly tells the consuming AI to reconcile rather than
+ignore contradictions between claimed personality and actual stats/skills
+— directly implementing the "delusions of being a master thief" idea.
+Always rebuilt fresh from current props, never frozen at creation time,
+so it stays accurate after the character levels up. Surfaced on the play
+sheet via a "Copy AI Prompt" button (clipboard) plus an optional "Preview
+prompt" toggle that shows the exact text inline.
+
+Bug caught during live testing, not before: clicking "Write your own…"
+on a question still at its default ("None") did nothing visible — the
+first click committed the still-empty custom draft through the parent's
+`value || "None"` fallback, which collapsed `isCustomValue` back to false
+and hid the input before the player got a chance to type anything. Fixed
+by separating "is the committed value custom text" from "is the input
+open" into two different pieces of state (`editingCustom` local state,
+ORed with the derived `isCustomValue`) so opening the editor never
+implicitly commits anything — confirmed fixed by reproducing the original
+failure, then reloading and confirming the input now opens and stays open
+on the very first click, with typed text correctly committing afterward.
+
+Also hardened `copyPrompt()` with a `.catch()` after live testing
+surfaced (via Next.js's dev-mode "N Issues" overlay, not a normal
+console.error) that `navigator.clipboard.writeText()` can reject with
+`NotAllowedError` — confirmed via the dev server's own terminal log, not
+just the browser console — and the component had no failure feedback at
+all, identical to a pre-existing gap in `ShareControl.tsx`'s "Copy Share
+Link" (not touched — out of scope for this change). The specific
+rejection seen during testing was this remote browser-automation
+session's document never holding real focus (the same root cause an
+explicit `navigator.clipboard.readText()` call surfaced directly as an
+error), not a defect reachable by a real user clicking with a real mouse
+in a focused tab — but the missing `.catch()` was a real gap regardless of
+cause, so it's fixed now: failures show "Couldn't copy automatically —
+use Preview prompt and copy it manually" instead of silently doing
+nothing.
+
+Tested live end-to-end with a disposable account/character (Human
+Fighter, deleted after): full builder walkthrough through the gate
+screen, all 9 questions (mixing curated picks and a "Write your own"
+custom answer), Review showing "Personality & Backstory: Added", Save
+redirecting to the play sheet with all 9 answers rendering correctly,
+"Preview prompt" producing exactly the expected text (verified the
+master-thief-style scenario directly: a Negative Trait claiming a habit
+of taking things, with no Stealth/Sleight of Hand proficiency anywhere in
+the Trained Skills line — exactly the contradiction the feature exists to
+surface), Edit reopening pre-filled with the saved answers including the
+custom text, Cancel correctly discarding an in-progress change, "Remove
+entirely" correctly clearing the column back to null (confirmed via direct
+DB query, not just the UI), and "+ Add personality & backstory" correctly
+reopening the questionnaire from empty. Also reused a real, unmodified
+character (Dragonborn Paladin) purely to confirm RLS still blocks a
+non-owner, non-public view with no changes made to it. No console errors
+after the clipboard fix landed.

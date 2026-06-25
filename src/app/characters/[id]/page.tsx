@@ -15,6 +15,7 @@ import {
   getTraitDescriptions,
 } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
+import type { PersonalityAnswers } from "@/lib/personality";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
 export default async function CharacterPlaySheet({
@@ -41,7 +42,7 @@ export default async function CharacterPlaySheet({
     supabase.auth.getUser(),
     supabase
       .from("characters")
-      .select("id, user_id, name, draft, is_public, avatar_url, bio")
+      .select("id, user_id, name, draft, is_public, avatar_url, bio, personality")
       .eq("id", id)
       .maybeSingle(),
     getSpeciesList(),
@@ -105,6 +106,7 @@ export default async function CharacterPlaySheet({
       isPublic={character.is_public}
       avatarUrl={character.avatar_url}
       bio={character.bio}
+      personality={character.personality as unknown as PersonalityAnswers | null}
     />
   );
 }

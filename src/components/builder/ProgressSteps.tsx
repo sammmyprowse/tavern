@@ -1,10 +1,11 @@
-export type StepId = "species" | "class" | "abilities" | "background" | "review";
+export type StepId = "species" | "class" | "abilities" | "background" | "personality" | "review";
 
 export const STEPS: { id: StepId; label: string }[] = [
   { id: "species", label: "Species" },
   { id: "class", label: "Class" },
   { id: "abilities", label: "Abilities" },
   { id: "background", label: "Background" },
+  { id: "personality", label: "Personality" },
   { id: "review", label: "Review" },
 ];
 
