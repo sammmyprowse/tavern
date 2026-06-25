@@ -14,8 +14,11 @@ import {
   fullCasterSlots,
   halfCasterSlots,
   HALF_CASTER_CLASSES,
+  focusPointsMax,
   indomitableMax,
   layOnHandsMax,
+  LEVEL_20_ABILITY_BOOSTS,
+  martialArtsDie,
   maxHp,
   metamagicKnownMax,
   paladinChannelDivinityMax,
@@ -25,8 +28,10 @@ import {
   rageMax,
   secondWindMax,
   sorceryPointsMax,
+  unarmoredMovementBonus,
   warlockPreparedSpellsMax,
   warlockSlots,
+  wholenessOfBodyMax,
   wildShapeMax,
   spellAttackBonus as computeSpellAttackBonus,
   spellSaveDC as computeSpellSaveDC,
@@ -113,6 +118,10 @@ export interface CharacterSheet {
   rageMax: number;
   rageDamageBonus: number;
   brutalStrikeDice: number;
+  martialArtsDie: number;
+  focusPointsMax: number;
+  unarmoredMovementBonus: number;
+  wholenessOfBodyMax: number;
 }
 
 export function buildCharacterSheet(
@@ -140,20 +149,21 @@ export function buildCharacterSheet(
     modifiers[ability] = abilityModifier(finalScores[ability]);
   }
 
-  // Primal Champion (Barbarian, level 20): "Your Strength and Constitution
-  // scores increase by 4, to a maximum of 25" — a real exception to the
-  // universal 20-cap finalAbilityScores() enforces for every other class
-  // and feat. Applied here, as an additive correction layered on top of the
-  // normal (20-capped) computation above, rather than threading a
-  // Barbarian-aware exception through finalAbilityScores itself — keeps
-  // that function's cap simple and correct for every other class. Must
-  // happen before maxHpValue/proficiencyBonus/savingThrows/skills below so
-  // they reflect the boosted scores.
-  if (cls.index === "barbarian" && draft.level >= 20) {
-    finalScores.str = Math.min(25, finalScores.str + 4);
-    finalScores.con = Math.min(25, finalScores.con + 4);
-    modifiers.str = abilityModifier(finalScores.str);
-    modifiers.con = abilityModifier(finalScores.con);
+  // Level-20 capstone ability boosts (Primal Champion/Body and Mind): "Your
+  // [X] and [Y] scores increase by 4, to a maximum of 25" — a real exception
+  // to the universal 20-cap finalAbilityScores() enforces for every other
+  // class and feat. Applied here, as an additive correction layered on top
+  // of the normal (20-capped) computation above, rather than threading a
+  // per-class exception through finalAbilityScores itself — keeps that
+  // function's cap simple and correct for every other class. Must happen
+  // before maxHpValue/proficiencyBonus/savingThrows/skills below so they
+  // reflect the boosted scores.
+  const levelTwentyBoost = LEVEL_20_ABILITY_BOOSTS[cls.index];
+  if (levelTwentyBoost && draft.level >= 20) {
+    for (const ability of levelTwentyBoost) {
+      finalScores[ability] = Math.min(25, finalScores[ability] + 4);
+      modifiers[ability] = abilityModifier(finalScores[ability]);
+    }
   }
 
   const proficiencyBonus = proficiencyBonusForLevel(draft.level);
@@ -271,6 +281,10 @@ export function buildCharacterSheet(
     rageMax: cls.index === "barbarian" ? rageMax(draft.level) : 0,
     rageDamageBonus: cls.index === "barbarian" ? rageDamageBonus(draft.level) : 0,
     brutalStrikeDice: cls.index === "barbarian" ? brutalStrikeDice(draft.level) : 0,
+    martialArtsDie: cls.index === "monk" ? martialArtsDie(draft.level) : 0,
+    focusPointsMax: cls.index === "monk" ? focusPointsMax(draft.level) : 0,
+    unarmoredMovementBonus: cls.index === "monk" ? unarmoredMovementBonus(draft.level) : 0,
+    wholenessOfBodyMax: cls.index === "monk" ? wholenessOfBodyMax(modifiers.wis) : 0,
   };
 }
 
@@ -319,6 +333,16 @@ export interface ResolvedWeapon {
 
 const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
 
+// "Monk weapon" per Martial Arts' own text: "Simple Melee weapons" or
+// "Martial Melee weapons that have the Light property." Checked against the
+// equipment table's own category tags rather than a hand-maintained weapon
+// list, so it stays correct if the SRD data changes.
+function isMonkWeapon(lookup: EquipmentLookupItem): boolean {
+  const categories = lookup.categories ?? [];
+  if (categories.includes("simple-melee-weapons")) return true;
+  return categories.includes("martial-melee-weapons") && lookup.properties.some((p) => p.index === "light");
+}
+
 // hasArcheryFightingStyle adds the Archery Fighting Style feat's "+2 bonus
 // to attack rolls you make with Ranged weapons" — confirmed directly from
 // the feat's own SRD text. rageDamageBonusWhileRaging adds Barbarian's Rage
@@ -326,8 +350,17 @@ const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
 // Strength... and deal damage to the target, you gain a bonus to the
 // damage") — the caller is responsible for only passing a nonzero value
 // while Rage is actually active (play state, not derived from level alone).
-// Both default to 0/false so every existing call site keeps working
-// unchanged.
+// monkMartialArtsDie applies Monk's Dexterous Attacks (use DEX same as
+// Finesse weapons already do — picks whichever of DEX/STR is higher, a
+// reasonable reading of "can use" rather than "must use") and the Martial
+// Arts die ("roll your Martial Arts die in place of the normal damage") to
+// any equipped weapon that qualifies as a Monk weapon, taking the larger of
+// the weapon's own die and the Martial Arts die rather than always
+// overriding — a level-1 Monk wielding a Quarterstaff still benefits from
+// its bigger Versatile die. Doesn't synthesize an Unarmed Strike entry
+// itself (there's nothing equipped to resolve) — the caller adds that
+// separately. All new params default to 0/false/null so every existing
+// call site keeps working unchanged.
 export function resolveWeapons(
   ownedEquipment: EquipmentBundleItem[],
   equipmentLookup: Map<string, EquipmentLookupItem>,
@@ -335,6 +368,7 @@ export function resolveWeapons(
   proficiencyBonus: number,
   hasArcheryFightingStyle = false,
   rageDamageBonusWhileRaging = 0,
+  monkMartialArtsDie: number | null = null,
 ): ResolvedWeapon[] {
   const weapons: ResolvedWeapon[] = [];
   for (const item of ownedEquipment) {
@@ -344,20 +378,27 @@ export function resolveWeapons(
 
     const isFinesse = lookup.properties.some((p) => p.index === "finesse");
     const isRanged = (lookup.categories ?? []).some((c) => RANGED_CATEGORIES.includes(c));
+    const usesMartialArts = !isRanged && monkMartialArtsDie != null && isMonkWeapon(lookup);
     const ability: AbilityKey = isRanged
       ? "dex"
-      : isFinesse
+      : isFinesse || usesMartialArts
         ? modifiers.dex > modifiers.str
           ? "dex"
           : "str"
         : "str";
+
+    let damageDice = lookup.damage.damageDice;
+    if (usesMartialArts) {
+      const weaponDieSize = parseInt(damageDice.match(/d(\d+)/)?.[1] ?? "0", 10);
+      damageDice = `1d${Math.max(weaponDieSize, monkMartialArtsDie)}`;
+    }
 
     weapons.push({
       index: lookup.index,
       name: lookup.name,
       ability,
       attackBonus: modifiers[ability] + proficiencyBonus + (isRanged && hasArcheryFightingStyle ? 2 : 0),
-      damageDice: lookup.damage.damageDice,
+      damageDice,
       damageBonus: modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0),
       damageType: lookup.damage.damageType,
       mastery: lookup.mastery,

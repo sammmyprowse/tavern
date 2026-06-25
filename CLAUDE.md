@@ -1270,3 +1270,113 @@ re-test Primal Champion live (only reachable at level 20, and this pass's
 test character was level 9) — verified by code reading instead; flagged
 here as a disclosed gap in live coverage, consistent with always saying so
 when something wasn't actually run rather than implying full verification.
+
+## Class resources — Monk (Martial Arts, Focus Points, Unarmored Defense/Movement)
+Twelfth and final class-by-class pass, third non-caster. The pass that
+exposed a real structural gap: this app's Attacks section only ever resolved
+`ownedEquipment` — a Monk's entire combat identity (Unarmed Strike, the
+Martial Arts die replacing weapon damage, Dexterous Attacks) isn't equipment
+at all, so a Monk would have shown an incomplete or wrong Attacks list
+without new plumbing, not just a missing resource counter.
+
+**Martial Arts die, Focus Points (2024's renaming of Ki Points), and
+Unarmored Movement bonus are all the same lower-confidence tier as
+Barbarian's Rage tables** — the 2024 prose for each gives no concrete
+level-tied number anywhere (every reference to "your Martial Arts die" in
+OTHER features — Deflect Attacks, Heightened Focus, Wholeness of Body — uses
+it generically, never naming a size at a level), so the 2014 `levels`
+table's `martial_arts.dice_value`/`ki_points`/`unarmored_movement` columns
+are used as best-available signal, same reasoning as Rage. Focus Points
+specifically is lower-risk than Rage even without a direct example, though —
+its shape ("points equal to class level from level 2 on") is identical to
+Sorcery Points' own REAL, confirmed-in-prose formula, making it a
+conservative, edition-stable bet rather than a guess.
+
+**Unarmored Defense (10+DEX+WIS while unarmored) reuses the exact generic
+`unarmoredDefenseBonus` parameter built during the Barbarian pass** —
+confirmation that naming it generically (not `conBonus`) back then was the
+right call; Monk's pass needed zero changes to `computeArmorClass` itself,
+just a different ability modifier at the call site.
+
+**The real new work: equipped weapons and a synthesized Unarmed Strike both
+needed Monk-aware treatment that didn't exist for any other class.**
+`resolveWeapons` grew a `monkMartialArtsDie` parameter and a `isMonkWeapon()`
+check against the equipment table's own category tags (`simple-melee-weapons`,
+or `martial-melee-weapons` + the `light` property) — Martial Arts' own text:
+"Simple Melee weapons" or "Martial Melee weapons that have the Light
+property." For each qualifying equipped weapon, ability selection folds into
+the existing Finesse branch (Dexterous Attacks: pick the higher of DEX/STR,
+the same reading already applied to Finesse weapons rather than a forced
+DEX-always), and damage dice become `1d${Math.max(weaponDieSize,
+martialArtsDie)}` — taking the LARGER of the two rather than always
+overriding, so a low-level Monk wielding a Quarterstaff still benefits from
+its bigger Versatile die. The **synthetic Unarmed Strike entry** (no
+equipment backs it) is built directly in `PlaySheet.tsx` and prepended to
+the resolved weapons array — `resolveWeapons` stays equipment-only by
+design, so this composition happens at the call site instead. Always shown
+once a character is a Monk, without re-checking "not wearing armor/Shield"
+against currently-equipped gear — the same simplification level as not
+gating Barbarian's Rage on "not wearing Heavy armor" either.
+
+**Unarmored Movement's speed bonus is the first class-resource number to
+modify the static Speed stat chip** — computed inline in `PlaySheet.tsx`
+(`displaySpeed`) by checking whether ANY equipped item has an `armorClass`
+(covers both body armor and shields, matching "not wearing armor or
+wielding a Shield" exactly), unlike the Unarmed Strike simplification above:
+Speed is a pure display value with nothing else riding on it, so the extra
+correctness was cheap. Deliberately did NOT retrofit Barbarian's Fast
+Movement (+10 ft while not wearing HEAVY armor specifically) in this same
+pass — that needs an armor-WEIGHT-category check this app doesn't have
+plumbed yet, a different and larger lift than Monk's simpler "any
+armor/shield at all" check; flagged as a clean follow-up, not done
+speculatively.
+
+**Wholeness of Body** (level 6: roll Martial Arts die + WIS mod to heal,
+uses = WIS mod min 1, Long-Rest-only) is built fully interactive, same
+roll+heal+expend-in-one-click shape as Second Wind. **Uncanny Metabolism**
+(level 2+: once-per-Long-Rest, regain all Focus Points + heal Monk-level +
+Martial-Arts-die) hits the same "no roll-Initiative action exists in this
+app" gap as Barbarian's Persistent Rage — modeled the identical way, a
+manually-triggered button instead of a real Initiative-roll hook. **Deflect
+Attacks** (reduce incoming damage by 1d10+DEX+level) and **Quivering Palm**
+(level 17+: flat 10d12 Force damage) are roll-only convenience buttons in
+Attacks, mirroring Second Wind/Brutal Strike's pattern — the player applies
+Deflect Attacks' result manually against incoming damage, and Quivering
+Palm's 4-Focus-Point cost isn't auto-expended (its real trigger is a much
+earlier, separate "hit and start the vibrations" action this app doesn't
+sequence against a later "end them" action).
+
+**Deliberately deferred to informational-only (Features list, not
+interactive): Stunning Strike, Slow Fall, Evasion, Acrobatic Movement,
+Heightened Focus, Self-Restoration, Fleet Step, Deflect Energy, Disciplined
+Survivor, Perfect Focus, Superior Defense, Empowered Strikes.** Stunning
+Strike's Focus Point cost is covered by the generic Focus Points stepper
+(no dedicated button, same reasoning as Channel Divinity not getting a
+button per effect) — its actual stun EFFECT isn't tracked since this app
+has no monster/target state at all. Perfect Focus is a conditional
+alternate to Uncanny Metabolism ("when you roll Initiative and DON'T use
+Uncanny Metabolism") — deferred rather than building mutual-exclusivity
+logic between two already-approximated triggers. The rest are passive,
+situational, or reference mechanics (half-damage-on-save, fall damage) this
+app doesn't model for any class.
+
+Tested live with DEX 20/WIS 18 (post-ASI) at level 11, Warrior of the Open
+Hand subclass: AC 19 (10+5 DEX+4 WIS), Speed 50 (30 base + 20 Unarmored
+Movement, no armor/shield equipped), HP 70/70, Focus Points 11/11 (Save DC
+16), Wholeness of Body "1d8+4" 4/4, Deflect Attacks "Roll 1d10+16". Attacks
+correctly showed Unarmed Strike (1d8, DEX, synthesized) first, then equipped
+Spear upgraded from its base 1d6 to 1d8 (Martial Arts die winning) and
+switched to DEX-based, Dagger upgraded 1d4→1d8, and Shortbow correctly
+UNTOUCHED at 1d6 (ranged weapons don't qualify as Monk weapons). Quivering
+Palm's block correctly absent (level 11 < 17). Verified Wholeness of Body
+heals+decrements together; Uncanny Metabolism regains all Focus Points and
+heals together, then self-disables; Short Rest fully resets Focus Points
+while leaving Wholeness of Body and Uncanny Metabolism's flag untouched;
+Long Rest resets everything. No console errors.
+
+**All twelve playable classes in the free SRD are now fully built** —
+spellcasting (or its absence) and class resources, tested live, documented,
+shipped for Wizard/Sorcerer/Cleric/Bard/Druid/Paladin/Ranger/Warlock/
+Fighter/Barbarian/Monk plus Rogue (done earlier in the project). Remaining
+from the original roadmap: homebrew species (Fairy and others missing from
+the free SRD's 9), explicitly pre-authorized by the user.

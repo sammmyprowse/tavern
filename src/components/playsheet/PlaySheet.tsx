@@ -18,7 +18,12 @@ import {
   type CharacterDraft,
   type MetamagicOption,
 } from "@/lib/character";
-import { buildCharacterSheet, computeAC, resolveWeapons } from "@/lib/character-sheet";
+import {
+  buildCharacterSheet,
+  computeAC,
+  resolveWeapons,
+  type ResolvedWeapon,
+} from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
 import {
   levelUpCharacter,
@@ -126,6 +131,18 @@ interface PlayState {
   // trigger that fully restores expendedRage — same boolean-flag shape as
   // Warlock's usedMagicalCunning, not a counter.
   usedPersistentRage: boolean;
+  // Focus Points (Monk only). Regains all expended points on a Short OR
+  // Long Rest (confirmed "finish a Short or Long Rest... regain all your
+  // expended points") — full recovery either way, not a partial Short Rest
+  // regain like Channel Divinity/Wild Shape/Second Wind/Rage.
+  expendedFocusPoints: number;
+  // Wholeness of Body (Monk only, from level 6). Long-Rest-only, same shape
+  // as Lay on Hands/Favored Enemy.
+  expendedWholenessOfBody: number;
+  // Uncanny Metabolism (Monk only, from level 2). Once-per-Long-Rest trigger
+  // that fully restores expendedFocusPoints and heals — same boolean-flag
+  // shape as usedMagicalCunning/usedPersistentRage.
+  usedUncannyMetabolism: boolean;
 }
 
 export default function PlaySheet({
@@ -205,6 +222,9 @@ export default function PlaySheet({
     expendedRage: 0,
     isRaging: false,
     usedPersistentRage: false,
+    expendedFocusPoints: 0,
+    expendedWholenessOfBody: 0,
+    usedUncannyMetabolism: false,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -249,14 +269,20 @@ export default function PlaySheet({
   const equippedSet = new Set(play.equippedIndexes);
   const hasDefenseFightingStyle = currentDraft.fightingStyleChoices.includes("defense");
   const hasArcheryFightingStyle = currentDraft.fightingStyleChoices.includes("archery");
-  // Unarmored Defense (Barbarian, level 1, always present): "your base
-  // Armor Class equals 10 plus your Dexterity and Constitution modifiers."
-  // Only takes effect while unarmored — computeArmorClass's existing
-  // bodyArmor branch already gates that, so it's safe to pass unconditionally
-  // whenever the class is Barbarian.
-  const unarmoredDefenseBonus = sheet.classIndex === "barbarian" ? sheet.modifiers.con : 0;
+  // Unarmored Defense (Barbarian: 10+DEX+CON; Monk: 10+DEX+WIS — both "while
+  // you aren't wearing armor," Monk also excludes wielding a Shield, already
+  // handled by computeArmorClass's existing bodyArmor branch either way).
+  // Only takes effect while unarmored, so passing it unconditionally for
+  // either class is safe.
+  const unarmoredDefenseBonus =
+    sheet.classIndex === "barbarian"
+      ? sheet.modifiers.con
+      : sheet.classIndex === "monk"
+        ? sheet.modifiers.wis
+        : 0;
   const rageDamageBonusWhileRaging =
     sheet.classIndex === "barbarian" && play.isRaging ? sheet.rageDamageBonus : 0;
+  const monkMartialArtsDie = sheet.classIndex === "monk" ? sheet.martialArtsDie : null;
   const ac = computeAC(
     sheet.ownedEquipment,
     equipmentByIndex,
@@ -265,14 +291,50 @@ export default function PlaySheet({
     hasDefenseFightingStyle,
     unarmoredDefenseBonus,
   );
-  const weapons = resolveWeapons(
-    sheet.ownedEquipment,
-    equipmentByIndex,
-    sheet.modifiers,
-    sheet.proficiencyBonus,
-    hasArcheryFightingStyle,
-    rageDamageBonusWhileRaging,
-  );
+  // Monk's Unarmed Strike isn't equipment, so resolveWeapons (which only
+  // resolves ownedEquipment) can't produce it — synthesized here and
+  // prepended instead. Always available per Martial Arts' text ("while you
+  // are unarmed or wielding only Monk weapons and you aren't wearing armor
+  // or wielding a Shield"); this app doesn't re-check that condition against
+  // currently-equipped gear, the same simplification level as not gating
+  // Barbarian's Rage on "not wearing Heavy armor" either.
+  const monkUnarmedStrike: ResolvedWeapon | null = monkMartialArtsDie
+    ? {
+        index: "unarmed-strike",
+        name: "Unarmed Strike",
+        ability: "dex",
+        attackBonus: sheet.modifiers.dex + sheet.proficiencyBonus,
+        damageDice: `1d${monkMartialArtsDie}`,
+        damageBonus: sheet.modifiers.dex,
+        damageType: "Bludgeoning",
+        mastery: null,
+      }
+    : null;
+  const weapons = [
+    ...(monkUnarmedStrike ? [monkUnarmedStrike] : []),
+    ...resolveWeapons(
+      sheet.ownedEquipment,
+      equipmentByIndex,
+      sheet.modifiers,
+      sheet.proficiencyBonus,
+      hasArcheryFightingStyle,
+      rageDamageBonusWhileRaging,
+      monkMartialArtsDie,
+    ),
+  ];
+  // Unarmored Movement (Monk, from level 2): "+10 feet while you aren't
+  // wearing armor or wielding a Shield" — checked against currently
+  // equipped gear (unlike the Unarmed Strike simplification above) since
+  // Speed is purely a display value with no derived calculations riding on
+  // it, making the extra correctness cheap here.
+  const wearingArmorOrShield = sheet.ownedEquipment.some((item) => {
+    if (!item.index || !equippedSet.has(item.index)) return false;
+    return Boolean(equipmentByIndex.get(item.index)?.armorClass);
+  });
+  const displaySpeed =
+    sheet.classIndex === "monk" && sheet.speed != null && !wearingArmorOrShield
+      ? sheet.speed + sheet.unarmoredMovementBonus
+      : sheet.speed;
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
@@ -352,6 +414,7 @@ export default function PlaySheet({
     sheet.secondWindMax > 0 ||
     sheet.actionSurgeMax > 0 ||
     sheet.rageMax > 0 ||
+    sheet.focusPointsMax > 0 ||
     (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
@@ -529,6 +592,9 @@ export default function PlaySheet({
       expendedRage: 0,
       isRaging: false,
       usedPersistentRage: false,
+      expendedFocusPoints: 0,
+      expendedWholenessOfBody: 0,
+      usedUncannyMetabolism: false,
     }));
   }
 
@@ -540,8 +606,9 @@ export default function PlaySheet({
   // doesn't restore those. Spell slots are also untouched for every caster
   // EXCEPT Warlock — Pact Magic's signature trait is that its slots fully
   // recover on a Short Rest too, confirmed directly from the feature's own
-  // text. Action Surge fully resets on a Short Rest too (confirmed "finish a
-  // Short or Long Rest"), unlike Second Wind/Rage which only regain 1.
+  // text. Action Surge and Focus Points both fully reset on a Short Rest too
+  // (confirmed "finish a Short or Long Rest" for each), unlike Second
+  // Wind/Rage which only regain 1.
   function shortRest() {
     const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
     const warlockPactMagic = sheet?.classIndex === "warlock";
@@ -554,6 +621,7 @@ export default function PlaySheet({
       expendedSecondWind: Math.max(0, prev.expendedSecondWind - 1),
       expendedActionSurge: 0,
       expendedRage: Math.max(0, prev.expendedRage - 1),
+      expendedFocusPoints: 0,
     }));
   }
 
@@ -698,6 +766,101 @@ export default function PlaySheet({
     pushLog({
       label: "Brutal Strike",
       detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
+  }
+
+  function expendFocusPoint() {
+    setPlay((prev) => ({ ...prev, expendedFocusPoints: prev.expendedFocusPoints + 1 }));
+  }
+
+  function restoreFocusPoint() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedFocusPoints: Math.max(0, prev.expendedFocusPoints - 1),
+    }));
+  }
+
+  // "As a Bonus Action, you can roll your Martial Arts die. You regain a
+  // number of Hit Points equal to the number rolled plus your Wisdom
+  // modifier." Combines roll + heal + expend in one click, same reasoning as
+  // Second Wind — exactly one use for its own separate pool.
+  function useWholenessOfBody() {
+    if (!sheet || play.expendedWholenessOfBody >= sheet.wholenessOfBodyMax) return;
+    const notation = `1d${sheet.martialArtsDie}${formatModifier(sheet.modifiers.wis)}`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Wholeness of Body",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
+    setPlay((prev) => ({
+      ...prev,
+      expendedWholenessOfBody: prev.expendedWholenessOfBody + 1,
+      currentHp: Math.min(maxHp, prev.currentHp + result.total),
+    }));
+  }
+
+  function restoreWholenessOfBody() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedWholenessOfBody: Math.max(0, prev.expendedWholenessOfBody - 1),
+    }));
+  }
+
+  // "When you roll Initiative, you can regain all expended Focus Points.
+  // When you do so, roll your Martial Arts die, and regain a number of Hit
+  // Points equal to your Monk level plus the number rolled. Once you use
+  // this feature, you can't use it again until you finish a Long Rest."
+  // Same "no roll-Initiative action exists in this app" gap as Barbarian's
+  // Persistent Rage — modeled as a manually-triggered once-per-Long-Rest
+  // button instead.
+  function useUncannyMetabolism() {
+    if (!sheet || play.usedUncannyMetabolism) return;
+    const notation = `1d${sheet.martialArtsDie}`;
+    const result = rollDice(notation);
+    const healed = sheet.level + result.total;
+    pushLog({
+      label: "Uncanny Metabolism",
+      detail: `${sheet.level} + ${notation} [${result.rolls.join(", ")}]`,
+      total: healed,
+    });
+    setPlay((prev) => ({
+      ...prev,
+      expendedFocusPoints: 0,
+      usedUncannyMetabolism: true,
+      currentHp: Math.min(maxHp, prev.currentHp + healed),
+    }));
+  }
+
+  // "When an attack roll hits you... reduce the attack's total damage
+  // against you. The reduction equals 1d10 plus your Dexterity modifier and
+  // Monk level." A convenience roll, same shape as Second Wind/Divine
+  // Spark's roll buttons — the player applies the result manually against
+  // the incoming damage via the existing Hurt input, since reactions/damage
+  // sequencing aren't modeled here.
+  function rollDeflectAttacks() {
+    if (!sheet) return;
+    const notation = `1d10${formatModifier(sheet.modifiers.dex + sheet.level)}`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Deflect Attacks",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
+  }
+
+  // Quivering Palm (level 17+): "the target must make a Constitution saving
+  // throw, taking 10d12 Force damage on a failed save or half as much
+  // damage on a successful one." A flat, level-independent roll — doesn't
+  // auto-expend the 4 Focus Points it costs to set up (a separate, much
+  // earlier trigger this app doesn't sequence), same scope boundary as
+  // Stunning Strike's cost being left to the generic Focus Points stepper.
+  function rollQuiveringPalm() {
+    const result = rollDice("10d12");
+    pushLog({
+      label: "Quivering Palm",
+      detail: `10d12 [${result.rolls.join(", ")}]`,
       total: result.total,
     });
   }
@@ -1445,7 +1608,7 @@ export default function PlaySheet({
           {[
             ["AC", ac],
             ["Initiative", formatModifier(sheet.initiative)],
-            ["Speed", sheet.speed ?? "—"],
+            ["Speed", displaySpeed ?? "—"],
             ["Prof. Bonus", formatModifier(sheet.proficiencyBonus)],
             ["Passive Perc.", sheet.passivePerception],
             ["Hit Die", `d${sheet.hitDie}`],
@@ -1881,6 +2044,91 @@ export default function PlaySheet({
                     {play.usedPersistentRage ? "Persistent Rage Used" : "Persistent Rage (regain all)"}
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {sheet.focusPointsMax > 0 && (
+            <div className="mt-4 rounded-md border border-tavern-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Focus Points
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    Spend on Flurry of Blows, Patient Defense, Step of the Wind, Stunning Strike,
+                    and other Focus features — see Features below. Save DC{" "}
+                    {8 + sheet.modifiers.wis + sheet.proficiencyBonus}. Regains all uses on a
+                    Short or Long Rest.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreFocusPoint}
+                    disabled={play.expendedFocusPoints <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.focusPointsMax - play.expendedFocusPoints}/{sheet.focusPointsMax}
+                  </span>
+                  <button
+                    onClick={expendFocusPoint}
+                    disabled={play.expendedFocusPoints >= sheet.focusPointsMax}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    &minus;
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  onClick={useUncannyMetabolism}
+                  disabled={play.usedUncannyMetabolism}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  {play.usedUncannyMetabolism
+                    ? "Uncanny Metabolism Used"
+                    : `Uncanny Metabolism (regain all + heal 1d${sheet.martialArtsDie}+lvl)`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {sheet.wholenessOfBodyMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Wholeness of Body
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action to regain 1d{sheet.martialArtsDie}
+                  {formatModifier(sheet.modifiers.wis)} Hit Points. Regains all uses on a Long
+                  Rest only.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={useWholenessOfBody}
+                  disabled={play.expendedWholenessOfBody >= sheet.wholenessOfBodyMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Use
+                </button>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreWholenessOfBody}
+                    disabled={play.expendedWholenessOfBody <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.wholenessOfBodyMax - play.expendedWholenessOfBody}/
+                    {sheet.wholenessOfBodyMax}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -2600,6 +2848,40 @@ export default function PlaySheet({
                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
                 >
                   Roll {sheet.brutalStrikeDice}d10
+                </button>
+              </div>
+            )}
+            {sheet.classIndex === "monk" && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading font-bold text-tavern-text">Deflect Attacks</div>
+                  <div className="text-xs text-tavern-muted">
+                    Reaction to reduce an attack&apos;s damage against you. Apply the result
+                    manually against the incoming damage.
+                  </div>
+                </div>
+                <button
+                  onClick={rollDeflectAttacks}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll 1d10{formatModifier(sheet.modifiers.dex + sheet.level)}
+                </button>
+              </div>
+            )}
+            {sheet.classIndex === "monk" && sheet.level >= 17 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading font-bold text-tavern-text">Quivering Palm</div>
+                  <div className="text-xs text-tavern-muted">
+                    Costs 4 Focus Points to set up on a hit (spend via the Focus Points stepper
+                    above); ending it later forces a CON save vs your Save DC for this damage.
+                  </div>
+                </div>
+                <button
+                  onClick={rollQuiveringPalm}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll 10d12
                 </button>
               </div>
             )}

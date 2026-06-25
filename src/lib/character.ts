@@ -808,3 +808,62 @@ export function rageDamageBonus(level: number): number {
 export function brutalStrikeDice(level: number): number {
   return level >= 17 ? 2 : level >= 9 ? 1 : 0;
 }
+
+// Level-20 capstone ability score boosts (+4 to two abilities, capped at 25
+// instead of the universal 20) — Barbarian's Primal Champion ("Your
+// Strength and Constitution scores increase by 4, to a maximum of 25") and
+// Monk's Body and Mind ("Your Dexterity and Wisdom scores increase by 4, to
+// a maximum of 25"), both confirmed directly in prose. Mapped generically
+// (rather than two near-duplicate if-blocks in buildCharacterSheet) so any
+// later class with the same capstone shape plugs in for free.
+export const LEVEL_20_ABILITY_BOOSTS: Record<string, [AbilityKey, AbilityKey]> = {
+  barbarian: ["str", "con"],
+  monk: ["dex", "wis"],
+};
+
+// Martial Arts die size by level (Monk, from level 1) — d4/d6/d8/d10 at
+// 1/5/11/17. Same lower-confidence-tier sourcing as Barbarian's Rage tables:
+// the 2024 prose only ever says "as shown in the Martial Arts column of the
+// Monk Features table," giving no concrete level-tied example anywhere
+// (every OTHER feature that references "your Martial Arts die" — Deflect
+// Attacks, Heightened Focus — uses it generically without naming a size at
+// any level), so this is the 2014 table's value used as best-available
+// signal rather than an independently cross-validated real table. The
+// underlying shape (a die that steps up every several levels) is
+// conservative and edition-stable, the same reasoning applied to Rage.
+const MARTIAL_ARTS_DIE = [4, 4, 4, 4, 6, 6, 6, 6, 6, 6, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10];
+
+export function martialArtsDie(level: number): number {
+  return MARTIAL_ARTS_DIE[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Focus Points — 2024's renaming of 2014's Ki Points (Monk, from level 2):
+// equals Monk level. Same sourcing caveat as martialArtsDie above (no 2024
+// prose example; 2014 table's ki_points column used as best-available
+// signal), though this specific shape — points equal to class level from a
+// given level on — already has real confirmed precedent in this app
+// (Sorcery Points' own confirmed level-2 example uses the identical
+// formula), making it a lower-risk table to trust than Rage's.
+export function focusPointsMax(level: number): number {
+  return level >= 2 ? level : 0;
+}
+
+// Unarmored Movement bonus by level (Monk, from level 2): "+10 feet while
+// you aren't wearing armor or wielding a Shield... increases when you reach
+// certain Monk levels." Same sourcing caveat as the two tables above.
+const UNARMORED_MOVEMENT_BONUS = [
+  0, 10, 10, 10, 10, 15, 15, 15, 15, 20, 20, 20, 20, 25, 25, 25, 25, 30, 30, 30,
+];
+
+export function unarmoredMovementBonus(level: number): number {
+  return UNARMORED_MOVEMENT_BONUS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Wholeness of Body (Monk, from level 6): "roll your Martial Arts die. You
+// regain a number of Hit Points equal to the number rolled plus your Wisdom
+// modifier... a number of times equal to your Wisdom modifier (minimum of
+// once)." Confirmed directly — same ability-mod-keyed shape as
+// bardicInspirationMax, just a different ability.
+export function wholenessOfBodyMax(wisModifier: number): number {
+  return Math.max(1, wisModifier);
+}
