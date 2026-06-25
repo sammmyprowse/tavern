@@ -1906,3 +1906,16 @@ second edit and a full Save→reload→Preview-prompt round trip with the
 exact combined text appearing correctly in the generated prompt, and
 confirmed "Write your own" still works on a different question in the
 same session. No console errors.
+
+User asked whether the prompt could make the AI return the backstory
+and the portrait in one go, rather than needing a follow-up step. The
+old wording asked the AI to write "a vivid visual description suitable
+for an AI image generator" — phrasing that implies handing that
+description to a *separate* tool, not generating the image itself in
+the same reply. Reworded `buildPersonalityPrompt()` in two places: the
+opening line now says "Generate both a backstory and a portrait image
+... in this one response — don't ask any follow-up questions first,"
+and the instructions are now numbered, with #2 explicitly saying
+"actually create it with your image generation capability, don't just
+describe what it would look like." Verified live via Preview prompt
+that the new wording renders correctly.

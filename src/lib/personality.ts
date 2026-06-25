@@ -198,7 +198,10 @@ function trainedSkillsLine(sheet: CharacterSheet): string {
 export function buildPersonalityPrompt(sheet: CharacterSheet, personality: PersonalityAnswers): string {
   const lines: string[] = [];
 
-  lines.push("Generate a short backstory and a portrait description for this Dungeons & Dragons character.");
+  lines.push(
+    "Generate both a backstory and a portrait image for this Dungeons & Dragons character, " +
+      "in this one response — don't ask any follow-up questions first.",
+  );
   lines.push("");
   lines.push("CHARACTER SHEET (for grounding — reconcile against the personality section below)");
   lines.push(`Name: ${sheet.name}`);
@@ -215,17 +218,22 @@ export function buildPersonalityPrompt(sheet: CharacterSheet, personality: Perso
   }
   lines.push("");
   lines.push("INSTRUCTIONS");
+  lines.push("1. Write a short (2-4 paragraph) backstory in narrative prose.");
   lines.push(
-    "Write a short (2-4 paragraph) backstory in narrative prose, plus a separate, vivid visual " +
-      "description suitable for an AI image generator (physical appearance, pose, setting, mood).",
+    "2. Generate a portrait image of this character — actually create it with your image " +
+      "generation capability, don't just describe what it would look like. Base it on the " +
+      "species/class/background above plus the Appearance Details below (physical features, " +
+      "gear, pose, setting, mood).",
   );
   lines.push(
-    "If anything in the personality/backstory section conflicts with the character's actual stats " +
-      "or skills above (for example, a claimed skill they have no proficiency in), don't ignore it — " +
-      "work the contradiction into the story in a flavorful way: self-perception, exaggeration, a " +
-      "running joke, or an aspiration not yet earned.",
+    "3. If anything in the personality/backstory section conflicts with the character's actual " +
+      "stats or skills above (for example, a claimed skill they have no proficiency in), don't " +
+      "ignore it — work the contradiction into the story in a flavorful way: self-perception, " +
+      "exaggeration, a running joke, or an aspiration not yet earned.",
   );
-  lines.push('Categories marked "None" weren\'t given an answer — invent something fitting, or leave them out.');
+  lines.push(
+    '4. Categories marked "None" weren\'t given an answer — invent something fitting, or leave them out.',
+  );
 
   return lines.join("\n");
 }
