@@ -1610,3 +1610,33 @@ HP and expending a use; Relentless Endurance correctly dropping HP to 1
 instead of 0 on lethal damage, logged to the dice log), Goliath (Large Form
 appearing at level 5), and Tortle (AC 16 with Chain Mail equipped, 17 once
 unequipped). No console errors across any of the five test characters.
+
+## Dice Log — generic dice tray
+User feedback after the species traits pass: "the log part should have all
+the dice shown there too... meant to show the actual dice where the user
+can just tap the d20 for example to roll that." Every structured roll
+already logged its full dice breakdown (confirmed by reading every
+`pushLog` call site in `PlaySheet.tsx` before building anything — this
+wasn't a missing-data bug). What was actually missing: a way to roll a die
+on its own, untied to any specific check/attack/feature — a classic
+tap-a-die dice tray.
+
+Added a row of `d4`/`d6`/`d8`/`d10`/`d12`/`d20`/`d100` buttons to
+`DiceLog.tsx` itself, between the existing Roll Mode controls and the
+entries list. Only `d20` honors the current Roll Mode (Advantage/
+Disadvantage) — confirmed real 5e rule: that mechanic is specific to d20
+tests (checks/saves/attacks), not damage or other dice — rolling via the
+same `rollD20()` used everywhere else in this app and showing both dice
+when in Advantage/Disadvantage mode, exactly like every other d20 roll.
+Every other die is a single flat roll via `rollFlatDie()`. The component
+needed a new `onRoll: (entry: Omit<DiceLogEntry, "id">) => void` prop —
+`PlaySheet.tsx` passes its existing `pushLog` straight through, so
+`DiceLog` now owns the generic-roll logic while `PlaySheet` still owns
+every feature-specific roll, same division as before.
+
+Tested live: tapped d20 in Normal mode (logged "d20: 8", single roll);
+switched to Advantage and tapped d20 again (logged "d20: 12 [12, 4]" —
+correctly rolled both and kept the higher); tapped d6 while still in
+Advantage mode (logged "d6: 4", a single roll, confirming non-d20 dice
+correctly ignore Roll Mode). Screenshot-verified the button row's styling
+matches the existing dark-parchment aesthetic. No console errors.

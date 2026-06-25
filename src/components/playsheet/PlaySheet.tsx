@@ -3293,6 +3293,7 @@ export default function PlaySheet({
         rollMode={play.rollMode}
         onRollModeChange={(mode) => setPlay((prev) => ({ ...prev, rollMode: mode }))}
         onCritRoll={handleCritRoll}
+        onRoll={pushLog}
         onClear={() => setDiceLog([])}
       />
     </div>
