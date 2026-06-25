@@ -795,3 +795,83 @@ resetting it.
 
 **Both Bard and Druid needed zero homebrew** — every number and mechanic
 came straight from the SRD's own feature text.
+
+## Class resources — Paladin spellcasting (half-casters, Channel Divinity, Lay on Hands)
+Seventh class-by-class pass, first half-caster, and the first pass that
+required real refactoring rather than just additive changes — Paladin broke
+two assumptions every class so far had quietly shared.
+
+**New shared infrastructure: `halfCasterSlots(level)` / `HALF_CASTER_CLASSES`.**
+Paladin (and presumably Ranger) use a slower 9-table than the full-caster one,
+capping at 5th-level spells instead of 9th. Confirmed from the 2014 `levels`
+table's real per-level `spell_slots_level_N` data for Paladin specifically
+(not assumed from outside knowledge of the well-known real progression, even
+though the resulting table matches it). `character-sheet.ts` now picks
+`halfCasterSlots` vs `fullCasterSlots` via `HALF_CASTER_CLASSES.has(cls.index)`
+— a small per-class set, checked fresh for each class as its pass comes up
+(only `paladin` is in it right now; don't add `ranger` until that pass
+actually confirms it).
+
+**Broke assumption #1: "every caster with cantrips also has prepared spells,
+and vice versa."** Paladin has prepared spells but NO cantrips at all
+(confirmed — its spellcasting `info` array has no "Cantrips" entry, unlike
+every other caster checked so far). The old code gated `preparedSpellsCount`
+on `cls.index in CANTRIPS_KNOWN_BY_CLASS`, which would have wrongly hidden
+Paladin's prepared spells. Fixed by gating `preparedSpellsCount` on
+`spellcastingAbility !== null` instead — confirmed Paladin's prepared-spell
+count uses the same unified `level + ability modifier` formula via two
+internally-consistent prose examples ("choose two level 1 Paladin spells" at
+the level it first gets slots, "level 5 Paladin... six spells" — both
+consistent with the formula at different assumed CHA modifiers). Left a
+comment flagging that Warlock will need an explicit exclusion from this gate
+once that pass confirms Warlock uses fixed known spells instead.
+
+**Broke assumption #2: "Channel Divinity means Cleric's Channel Divinity."**
+Paladin has its own Channel Divinity feature — same name, different schedule,
+different base options (Divine Sense, not Divine Spark/Turn Undead). Renamed
+the Cleric-specific function `channelDivinityMax` → `clericChannelDivinityMax`
+and added `paladinChannelDivinityMax` alongside it; `character-sheet.ts`
+computes the single generic `channelDivinityMax` sheet field from whichever
+one matches `cls.index`. The PlaySheet UI block itself needed zero changes
+structurally — it was already generic — except its description text, which
+had hardcoded "Divine Spark or Turn Undead." Generalized to "Spend a use for
+one of this class's Channel Divinity effects — see Features below," and
+gated the "Roll Divine Spark" button on `sheet.divineSparkDice > 0`
+specifically (it was previously implicitly Cleric-only via
+`channelDivinityMax > 0`, which would have shown a dead button for Paladin).
+**Paladin's Channel Divinity schedule is fully confirmed, unlike Cleric's** —
+the feature text gives both breakpoints in prose ("You can use this class's
+Channel Divinity twice... You gain an additional use when you reach Paladin
+level 11"), so no disclosed-gap simplification was needed here at all: 2 from
+level 3, 3 from level 11.
+
+**Lay on Hands** (`layOnHandsMax(level) = 5 * level`, confirmed directly) is
+shaped differently from every other resource so far — a variable-amount HP
+pool (spend any amount to heal a creature for that much), not a fixed "uses"
+counter. Modeled with its own `expendedLayOnHands` play-state field and a
+Spend/Restore number-input pair mirroring the existing Hurt/Heal pattern
+(rather than the +/-1 steppers Sorcery Points etc. use), plus a flat "Cure
+Poison (5)" quick-action button for the rule's specific alternate use
+("expend 5 Hit Points from the pool... to remove the Poisoned condition").
+Long-Rest-only recovery, confirmed — no Short Rest component, unlike Channel
+Divinity which sits right next to it in the UI.
+
+Tested live with CHA 18, STR 20, CON 17 at level 11: Spell Save DC 16, Spell
+Attack +8, slots 4/3/3 (`halfCasterSlots(11)` — confirmed real half-caster
+table), prepared spells 0/15 (`11 + 4 CHA mod`), **no Cantrips Known section
+at all** (confirmed absent, not just empty), Channel Divinity 3/3
+(`paladinChannelDivinityMax(11)`), Lay on Hands 55/55 (`5 × 11`) — all
+matched exactly, Features list correctly merged Oath of Devotion's Sacred
+Weapon/Oath spells with base Paladin features including two separate
+resolved ASI picks (levels 4 and 8). Verified Lay on Hands Spend/Restore/Cure
+Poison; verified Channel Divinity expend/restore; verified Short Rest regains
+exactly 1 Channel Divinity charge while leaving Lay on Hands completely
+untouched; verified Long Rest fully resets both together. (One testing-only
+hiccup along the way: directly mutating a controlled number input's DOM
+value via a manual `dispatchEvent` didn't reliably notify React in this
+environment, even with the native-setter workaround — switching to the
+dedicated `preview_fill` tool resolved it immediately. Not a product bug,
+just a reminder to prefer `preview_fill` over manual DOM event dispatch for
+text/number inputs specifically; `.value = x` + `dispatchEvent('change')`
+continues to work fine for `<select>` elements as used elsewhere in this
+session.)

@@ -86,6 +86,10 @@ interface PlayState {
   // Wild Shape (Druid only). Same Short-Rest-regains-1/Long-Rest-regains-all
   // treatment as Channel Divinity, unconditionally from level 2 on.
   expendedWildShape: number;
+  // Lay on Hands (Paladin only). A variable-amount HP pool, not a fixed-size
+  // "uses" counter like the others — Long-Rest-only recovery, no Short Rest
+  // component (confirmed from the feature's own text).
+  expendedLayOnHands: number;
 }
 
 export default function PlaySheet({
@@ -152,6 +156,7 @@ export default function PlaySheet({
     expendedChannelDivinity: 0,
     expendedBardicInspiration: 0,
     expendedWildShape: 0,
+    expendedLayOnHands: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -159,6 +164,7 @@ export default function PlaySheet({
   const [loaded, setLoaded] = useState(false);
   const [damageInput, setDamageInput] = useState("");
   const [healInput, setHealInput] = useState("");
+  const [layOnHandsInput, setLayOnHandsInput] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -371,6 +377,42 @@ export default function PlaySheet({
     setHealInput("");
   }
 
+  // Spends a variable amount from the Lay on Hands pool — unlike the other
+  // resources' +/- 1 steppers, this pool is spent in arbitrary amounts (to
+  // heal a creature for that many Hit Points), so it mirrors the
+  // damage/heal number-input pattern instead.
+  function spendLayOnHands() {
+    if (!sheet) return;
+    const amount = parseInt(layOnHandsInput, 10);
+    if (!amount || amount < 0) return;
+    setPlay((prev) => ({
+      ...prev,
+      expendedLayOnHands: Math.min(sheet.layOnHandsMax, prev.expendedLayOnHands + amount),
+    }));
+    setLayOnHandsInput("");
+  }
+
+  function restoreLayOnHands() {
+    const amount = parseInt(layOnHandsInput, 10);
+    if (!amount || amount < 0) return;
+    setPlay((prev) => ({
+      ...prev,
+      expendedLayOnHands: Math.max(0, prev.expendedLayOnHands - amount),
+    }));
+    setLayOnHandsInput("");
+  }
+
+  // "you can also expend 5 Hit Points from the pool... to remove the
+  // Poisoned condition" — a flat-cost quick action alongside the
+  // variable-amount spend above.
+  function curePoisonWithLayOnHands() {
+    if (!sheet) return;
+    setPlay((prev) => ({
+      ...prev,
+      expendedLayOnHands: Math.min(sheet.layOnHandsMax, prev.expendedLayOnHands + 5),
+    }));
+  }
+
   function longRest() {
     setPlay((prev) => ({
       ...prev,
@@ -384,6 +426,7 @@ export default function PlaySheet({
       expendedChannelDivinity: 0,
       expendedBardicInspiration: 0,
       expendedWildShape: 0,
+      expendedLayOnHands: 0,
     }));
   }
 
@@ -1262,17 +1305,20 @@ export default function PlaySheet({
                   Channel Divinity
                 </div>
                 <div className="text-xs text-tavern-muted">
-                  Divine Spark or Turn Undead — see Features below for full effects. Regains 1 use
-                  on a Short Rest, all uses on a Long Rest.
+                  Spend a use for one of this class&apos;s Channel Divinity effects — see Features
+                  below for the full options. Regains 1 use on a Short Rest, all uses on a Long
+                  Rest.
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={rollDivineSpark}
-                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
-                >
-                  Roll Divine Spark
-                </button>
+                {sheet.divineSparkDice > 0 && (
+                  <button
+                    onClick={rollDivineSpark}
+                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                  >
+                    Roll Divine Spark
+                  </button>
+                )}
                 <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
                   <button
                     onClick={restoreChannelDivinity}
@@ -1292,6 +1338,53 @@ export default function PlaySheet({
                     &minus;
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {sheet.layOnHandsMax > 0 && (
+            <div className="mt-4 rounded-md border border-tavern-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Lay on Hands
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    Bonus Action to touch a creature and restore HP from the pool. Regains all on a
+                    Long Rest.
+                  </div>
+                </div>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.layOnHandsMax - play.expendedLayOnHands}/{sheet.layOnHandsMax}
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  type="number"
+                  value={layOnHandsInput}
+                  onChange={(e) => setLayOnHandsInput(e.target.value)}
+                  placeholder="Amount"
+                  className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-tavern-text"
+                />
+                <button
+                  onClick={spendLayOnHands}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-sm font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Spend
+                </button>
+                <button
+                  onClick={restoreLayOnHands}
+                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white hover:bg-emerald-600"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={curePoisonWithLayOnHands}
+                  disabled={sheet.layOnHandsMax - play.expendedLayOnHands < 5}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-sm font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Cure Poison (5)
+                </button>
               </div>
             </div>
           )}

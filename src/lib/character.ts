@@ -303,6 +303,46 @@ export function fullCasterSlots(level: number): number[] {
   return FULL_CASTER_SLOTS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
 }
 
+// Half-caster slot table (Paladin/Ranger) — slower than full casters, caps
+// at 5th-level spells instead of 9th. Confirmed from the 2014 levels table's
+// real per-level spell_slots_level_N data (the SRD's own prose only ever
+// references "the [Class] Features table," same as the full-caster table),
+// cross-checked against this app's own data for Paladin specifically rather
+// than assumed from outside knowledge of the well-known real progression.
+// Padded to 9 columns (trailing zeros) to match fullCasterSlots' shape so
+// the UI doesn't need to special-case the array length.
+const HALF_CASTER_SLOTS: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0],
+  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 0, 0, 0, 0],
+];
+
+export function halfCasterSlots(level: number): number[] {
+  return HALF_CASTER_SLOTS[Math.max(1, Math.min(MAX_LEVEL, level)) - 1];
+}
+
+// Classes that use the slower half-caster slot/spell progression instead of
+// the standard full-caster one. Checked per-class as each pass confirms it —
+// don't assume a class belongs here without checking its own SRD data first.
+export const HALF_CASTER_CLASSES = new Set(["paladin"]);
+
 // 2024 rules unified prepared-caster spell counts onto "character level +
 // spellcasting ability modifier" (minimum 1) for Wizard/Cleric/Druid,
 // replacing 2014's separate fixed tables per class. Cross-checked against the
@@ -490,8 +530,26 @@ export const METAMAGIC_OPTIONS: MetamagicOption[] = [
 // schedule (which the SRD text spelled out in full), this gap is a genuine
 // "couldn't confirm" rather than something to homebrew, since the real
 // numbers do exist, just not anywhere checkable in this app's data pipeline.
-export function channelDivinityMax(level: number): number {
+// Named per-class (not just `channelDivinityMax`) once Paladin needed its own
+// Channel Divinity schedule too — same feature name, different numbers.
+export function clericChannelDivinityMax(level: number): number {
   return level >= 2 ? 2 : 0;
+}
+
+// Paladin's own Channel Divinity schedule — fully confirmed in prose, unlike
+// Cleric's: "You can use this class's Channel Divinity twice... You gain an
+// additional use when you reach Paladin level 11." Base of 2 starts at level
+// 3 (when Paladin gets the feature at all), not level 2 like Cleric.
+export function paladinChannelDivinityMax(level: number): number {
+  return level >= 11 ? 3 : level >= 3 ? 2 : 0;
+}
+
+// Lay on Hands (Paladin, from level 1): "you have a pool of healing power...
+// you can restore a total number of Hit Points equal to five times your
+// Paladin level" — confirmed directly, a single clean formula rather than a
+// per-level table.
+export function layOnHandsMax(level: number): number {
+  return 5 * level;
 }
 
 // Divine Spark (one of Channel Divinity's two base effects): "Roll 1d8 and

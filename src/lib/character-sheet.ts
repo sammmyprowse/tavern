@@ -3,13 +3,17 @@ import {
   abilityModifier,
   bardicInspirationDie,
   bardicInspirationMax,
-  channelDivinityMax,
+  clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
   finalAbilityScores,
   fullCasterSlots,
+  halfCasterSlots,
+  HALF_CASTER_CLASSES,
+  layOnHandsMax,
   maxHp,
   metamagicKnownMax,
+  paladinChannelDivinityMax,
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
   sorceryPointsMax,
@@ -90,6 +94,7 @@ export interface CharacterSheet {
   bardicInspirationMax: number;
   bardicInspirationDie: number;
   wildShapeMax: number;
+  layOnHandsMax: number;
 }
 
 export function buildCharacterSheet(
@@ -192,21 +197,34 @@ export function buildCharacterSheet(
     spellcastingAbility,
     spellSaveDC: spellcastingAbility ? computeSpellSaveDC(proficiencyBonus, spellAbilityMod) : null,
     spellAttackBonus: spellcastingAbility ? computeSpellAttackBonus(proficiencyBonus, spellAbilityMod) : null,
-    spellSlots: spellcastingAbility ? fullCasterSlots(draft.level) : [],
-    // Every class with a cantrips-known progression also uses the prepared-
-    // spell formula in 2024 rules (confirmed for both Wizard and Sorcerer
-    // individually, not assumed) — one lookup covers both counts.
+    spellSlots: spellcastingAbility
+      ? HALF_CASTER_CLASSES.has(cls.index)
+        ? halfCasterSlots(draft.level)
+        : fullCasterSlots(draft.level)
+      : [],
     cantripsKnownCount: CANTRIPS_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
-    preparedSpellsCount:
-      cls.index in CANTRIPS_KNOWN_BY_CLASS
-        ? computePreparedSpellCount(draft.level, spellAbilityMod)
-        : 0,
+    // Gated on having a spellcasting ability at all, NOT on being in
+    // CANTRIPS_KNOWN_BY_CLASS — Paladin proved those two aren't the same set
+    // (it gets prepared spells but no cantrips at all). Every prepared caster
+    // confirmed so far (Wizard/Sorcerer/Cleric/Bard/Druid/Paladin) uses this
+    // same level+modifier formula. Revisit this gate once Warlock is built —
+    // Warlock uses a fixed known-spells list instead of prepared spells, so
+    // it'll need excluding here even though it has a spellcasting ability.
+    preparedSpellsCount: spellcastingAbility
+      ? computePreparedSpellCount(draft.level, spellAbilityMod)
+      : 0,
     sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
     metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
-    channelDivinityMax: cls.index === "cleric" ? channelDivinityMax(draft.level) : 0,
+    channelDivinityMax:
+      cls.index === "cleric"
+        ? clericChannelDivinityMax(draft.level)
+        : cls.index === "paladin"
+          ? paladinChannelDivinityMax(draft.level)
+          : 0,
     divineSparkDice: cls.index === "cleric" ? divineSparkDice(draft.level) : 0,
     bardicInspirationMax: cls.index === "bard" ? bardicInspirationMax(modifiers.cha) : 0,
     bardicInspirationDie: cls.index === "bard" ? bardicInspirationDie(draft.level) : 0,
+    layOnHandsMax: cls.index === "paladin" ? layOnHandsMax(draft.level) : 0,
     wildShapeMax: cls.index === "druid" ? wildShapeMax(draft.level) : 0,
   };
 }
