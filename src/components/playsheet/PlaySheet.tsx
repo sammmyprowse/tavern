@@ -79,6 +79,10 @@ interface PlayState {
   // the app's first Short-Rest-recovered resource — Long Rest still resets it
   // fully, but shortRest() now also exists to regain just 1 charge.
   expendedChannelDivinity: number;
+  // Bardic Inspiration (Bard only). Long Rest always fully resets it; Short
+  // Rest also fully resets it from level 5 on (Font of Inspiration) — below
+  // that, Short Rest does nothing to it, same as every other class resource.
+  expendedBardicInspiration: number;
 }
 
 export default function PlaySheet({
@@ -143,6 +147,7 @@ export default function PlaySheet({
     expendedSlots: [],
     expendedSorceryPoints: 0,
     expendedChannelDivinity: 0,
+    expendedBardicInspiration: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -250,6 +255,13 @@ export default function PlaySheet({
   const expertiseEligibleSkills = sheet.skills.filter(
     (s) => s.proficient && !currentDraft.expertiseChoices.includes(s.index),
   );
+
+  // Drives the Short Rest button's visibility. Grows by one OR clause per
+  // class that adds a short-rest-recoverable resource (Bard always has
+  // Bardic Inspiration from level 1, even though it's Long-Rest-only below
+  // level 5 — the button itself stays visible, shortRest() just no-ops on it
+  // until Font of Inspiration).
+  const hasShortRestResource = sheet.channelDivinityMax > 0 || sheet.bardicInspirationMax > 0;
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
   // Spells of a level you have no slots for yet aren't preparable.
@@ -365,16 +377,21 @@ export default function PlaySheet({
       expendedSlots: [],
       expendedSorceryPoints: 0,
       expendedChannelDivinity: 0,
+      expendedBardicInspiration: 0,
     }));
   }
 
-  // Regains only 1 Channel Divinity charge — HP, hit dice, spell slots, and
-  // Sorcery Points are untouched, matching the real rule that a Short Rest
-  // doesn't restore those. The app's first Short-Rest-recovered resource.
+  // Channel Divinity regains only 1 use on a Short Rest; Bardic Inspiration
+  // fully resets, but only from Bard level 5 on (Font of Inspiration) — below
+  // that level a Bard's Bardic Inspiration is Long-Rest-only, same as every
+  // other resource. HP, hit dice, and spell slots are untouched either way,
+  // matching the real rule that a Short Rest doesn't restore those.
   function shortRest() {
+    const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
     setPlay((prev) => ({
       ...prev,
       expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
+      expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
     }));
   }
 
@@ -386,6 +403,20 @@ export default function PlaySheet({
     setPlay((prev) => ({
       ...prev,
       expendedSorceryPoints: Math.max(0, prev.expendedSorceryPoints - 1),
+    }));
+  }
+
+  function expendBardicInspiration() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedBardicInspiration: prev.expendedBardicInspiration + 1,
+    }));
+  }
+
+  function restoreBardicInspiration() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedBardicInspiration: Math.max(0, prev.expendedBardicInspiration - 1),
     }));
   }
 
@@ -1191,7 +1222,7 @@ export default function PlaySheet({
             >
               Long Rest
             </button>
-            {sheet.channelDivinityMax > 0 && (
+            {hasShortRestResource && (
               <button
                 onClick={shortRest}
                 className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold-light"
@@ -1245,6 +1276,40 @@ export default function PlaySheet({
                     &minus;
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {sheet.bardicInspirationMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Bardic Inspiration (d{sheet.bardicInspirationDie})
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Confer a die as a Bonus Action — see Features below for the full effect. Regains
+                  all uses on a Long Rest{sheet.level >= 5 ? " or Short Rest" : ""}.
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={restoreBardicInspiration}
+                  disabled={play.expendedBardicInspiration <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.bardicInspirationMax - play.expendedBardicInspiration}/
+                  {sheet.bardicInspirationMax}
+                </span>
+                <button
+                  onClick={expendBardicInspiration}
+                  disabled={play.expendedBardicInspiration >= sheet.bardicInspirationMax}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  &minus;
+                </button>
               </div>
             </div>
           )}

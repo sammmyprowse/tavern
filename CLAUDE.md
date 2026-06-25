@@ -676,6 +676,75 @@ live-browser verification focused entirely on the actually-new code (Channel
 Divinity, Short Rest, Divine Spark, Cleric's own cantrip/prepared numbers).
 
 **All four classes in the user's stated priority order (Rogue → Wizard →
-Sorcerer → Cleric) now have their full spellcasting/resources kit.** See
-project memory for the next candidates if the user wants to keep going
-class-by-class beyond the original four.
+Sorcerer → Cleric) now have their full spellcasting/resources kit.** User then
+asked to continue through the rest: Bard, Druid, Paladin, Ranger, Warlock,
+Fighter, Barbarian, Monk — tackled in an order that reuses existing infra
+most cheaply first (full casters → half-casters → Warlock's unique Pact Magic
+→ the three non-casters), continuing piece by piece without re-confirming
+between each class, same as the original four.
+
+## Class resources — Bard spellcasting (Bardic Inspiration)
+Fifth class-by-class pass, first of the "keep going" extension. Entirely
+real SRD content, no homebrew — reused the Wizard/Sorcerer/Cleric
+spellcasting infra unchanged (CHA, same unified prepared-spell formula) plus
+just a new `bardCantripsKnown` entry (2/3/4 at levels 1/4/10 — confirmed from
+Bard's own text, starts at 2 unlike every other class so far).
+
+**Bard's Expertise schedule (2 at level 2, +2 at level 9) needed zero new
+code** — `EXPERTISE_SCHEDULE` was already `Record<string, ExpertiseMilestone[]>`
+keyed by class index specifically so a second class could extend it later
+(see the comment on `EXPERTISE_SCHEDULE` in `character.ts`, written during
+the Rogue pass). Adding `bard: [{level:2,count:2},{level:9,count:2}]` was the
+entire change; the Expertise picker UI, pending-choice gating, and skill
+bonus doubling all already worked correctly the first time, confirmed live.
+
+**Bardic Inspiration** (`character.ts`):
+- `bardicInspirationDie(level)`: 6/8/10/12 at levels 1/5/10/15 — confirmed
+  verbatim from the feature's own SRD text, the same clean milestone shape as
+  Sneak Attack's and Divine Spark's dice.
+- `bardicInspirationMax(chaModifier)`: `max(1, chaModifier)` — confirmed from
+  "a number of times equal to your Charisma modifier (minimum of once)."
+  **Different shape from every other resource-max function so far** (Sorcery
+  Points, Channel Divinity) — those are level-only; this one genuinely needs
+  the final CHA modifier as an input, so `character-sheet.ts` passes
+  `modifiers.cha` rather than `draft.level`.
+- No "roll" button — like Spell Save DC and Turn Undead, the die is rolled by
+  whoever RECEIVES the inspiration, not the Bard, so there's nothing for the
+  Bard's own play sheet to roll.
+
+**Bardic Inspiration's recovery rule changes at level 5 (Font of
+Inspiration)**: Long-Rest-only below level 5, Short-OR-Long-Rest from level 5
+on. This made `shortRest()` (added during the Cleric pass for Channel
+Divinity) genuinely class-and-level-aware rather than a flat decrement:
+
+```ts
+function shortRest() {
+  const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
+  setPlay((prev) => ({
+    ...prev,
+    expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
+    expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
+  }));
+}
+```
+
+Also generalized the Short Rest button's visibility from a Cleric-only check
+into a `hasShortRestResource` derived boolean
+(`sheet.channelDivinityMax > 0 || sheet.bardicInspirationMax > 0`) — the
+comment on it already flags that Warlock's Pact Magic will need a third OR
+clause when that pass comes up. The button itself stays visible for a Bard
+from level 1 (since Bardic Inspiration exists from level 1), even though
+`shortRest()` only changes anything from level 5 on — confirmed this
+specific behavior live rather than assuming it.
+
+Tested live with CHA 20 (capped) at level 5: Spell Save DC 16, Spell Attack
++8, slots 4/3/2 (`fullCasterSlots(5)`), 3 cantrips known, 10 prepared spells,
+Bardic Inspiration 5/5 at a d8 die, Expertise pending-choice at level 2 — all
+matched exactly, Features list correctly merged College of Lore's Bonus
+Proficiencies/Cutting Words with base Bard features. Verified expend/restore
++ boundary clamping for Bardic Inspiration; verified Short Rest fully resets
+it at level 5 (CHA mod dropped to +4 after removing the test ASI pick, die
+correctly still d8); then dropped the same character to level 3 via SQL and
+confirmed the die became d6, the "or Short Rest" wording disappeared, and a
+Short Rest at that level correctly left an expended Bardic Inspiration count
+untouched while Long Rest still fully reset it.

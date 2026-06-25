@@ -1,6 +1,8 @@
 import {
   ABILITY_ORDER,
   abilityModifier,
+  bardicInspirationDie,
+  bardicInspirationMax,
   channelDivinityMax,
   computeArmorClass,
   divineSparkDice,
@@ -84,6 +86,8 @@ export interface CharacterSheet {
   metamagicKnownMax: number;
   channelDivinityMax: number;
   divineSparkDice: number;
+  bardicInspirationMax: number;
+  bardicInspirationDie: number;
 }
 
 export function buildCharacterSheet(
@@ -199,6 +203,8 @@ export function buildCharacterSheet(
     metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
     channelDivinityMax: cls.index === "cleric" ? channelDivinityMax(draft.level) : 0,
     divineSparkDice: cls.index === "cleric" ? divineSparkDice(draft.level) : 0,
+    bardicInspirationMax: cls.index === "bard" ? bardicInspirationMax(modifiers.cha) : 0,
+    bardicInspirationDie: cls.index === "bard" ? bardicInspirationDie(draft.level) : 0,
   };
 }
 

@@ -71,6 +71,14 @@ export const EXPERTISE_SCHEDULE: Record<string, ExpertiseMilestone[]> = {
     { level: 1, count: 2 },
     { level: 6, count: 2 },
   ],
+  // Bard's own Expertise text ("gain Expertise in two of your skill
+  // proficiencies... At Bard level 9, you gain Expertise in two more") —
+  // different milestone levels from Rogue's, confirmed from Bard's own SRD
+  // feature text rather than assumed.
+  bard: [
+    { level: 2, count: 2 },
+    { level: 9, count: 2 },
+  ],
 };
 
 // Sneak Attack's damage text ("the extra damage increases as you gain Rogue
@@ -343,10 +351,18 @@ export function clericCantripsKnown(level: number): number {
   return level >= 10 ? 5 : level >= 4 ? 4 : 3;
 }
 
+// Bard's own cantrip-known progression ("you know two cantrips... When you
+// reach Bard levels 4 and 10, you learn another cantrip") — confirmed from
+// Bard's own spellcasting text. Starts at 2, NOT 3 or 4 like the others.
+export function bardCantripsKnown(level: number): number {
+  return level >= 10 ? 4 : level >= 4 ? 3 : 2;
+}
+
 export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
   wizard: wizardCantripsKnown,
   sorcerer: sorcererCantripsKnown,
   cleric: clericCantripsKnown,
+  bard: bardCantripsKnown,
 };
 
 // Sorcery Points (Font of Magic, gained at Sorcerer level 2): the pool equals
@@ -476,4 +492,20 @@ export function channelDivinityMax(level: number): number {
 // the same way Sneak Attack's is.
 export function divineSparkDice(level: number): number {
   return level >= 18 ? 4 : level >= 13 ? 3 : level >= 7 ? 2 : 1;
+}
+
+// Bardic Inspiration's die size — "the die becomes a d8 at level 5, a d10 at
+// level 10, and a d12 at level 15" — confirmed directly from the Bardic
+// Inspiration feature's own SRD text.
+export function bardicInspirationDie(level: number): number {
+  return level >= 15 ? 12 : level >= 10 ? 10 : level >= 5 ? 8 : 6;
+}
+
+// Bardic Inspiration's use count is keyed by ability modifier, not level —
+// "a number of times equal to your Charisma modifier (minimum of once)" —
+// confirmed directly from the feature's own SRD text. Unlike every other
+// resource-max function so far (level-only), this one genuinely needs the
+// final CHA modifier as input.
+export function bardicInspirationMax(chaModifier: number): number {
+  return Math.max(1, chaModifier);
 }
