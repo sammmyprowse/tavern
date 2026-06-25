@@ -83,6 +83,9 @@ interface PlayState {
   // Rest also fully resets it from level 5 on (Font of Inspiration) — below
   // that, Short Rest does nothing to it, same as every other class resource.
   expendedBardicInspiration: number;
+  // Wild Shape (Druid only). Same Short-Rest-regains-1/Long-Rest-regains-all
+  // treatment as Channel Divinity, unconditionally from level 2 on.
+  expendedWildShape: number;
 }
 
 export default function PlaySheet({
@@ -148,6 +151,7 @@ export default function PlaySheet({
     expendedSorceryPoints: 0,
     expendedChannelDivinity: 0,
     expendedBardicInspiration: 0,
+    expendedWildShape: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -261,7 +265,8 @@ export default function PlaySheet({
   // Bardic Inspiration from level 1, even though it's Long-Rest-only below
   // level 5 — the button itself stays visible, shortRest() just no-ops on it
   // until Font of Inspiration).
-  const hasShortRestResource = sheet.channelDivinityMax > 0 || sheet.bardicInspirationMax > 0;
+  const hasShortRestResource =
+    sheet.channelDivinityMax > 0 || sheet.bardicInspirationMax > 0 || sheet.wildShapeMax > 0;
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
   // Spells of a level you have no slots for yet aren't preparable.
@@ -378,20 +383,23 @@ export default function PlaySheet({
       expendedSorceryPoints: 0,
       expendedChannelDivinity: 0,
       expendedBardicInspiration: 0,
+      expendedWildShape: 0,
     }));
   }
 
-  // Channel Divinity regains only 1 use on a Short Rest; Bardic Inspiration
-  // fully resets, but only from Bard level 5 on (Font of Inspiration) — below
-  // that level a Bard's Bardic Inspiration is Long-Rest-only, same as every
-  // other resource. HP, hit dice, and spell slots are untouched either way,
-  // matching the real rule that a Short Rest doesn't restore those.
+  // Channel Divinity and Wild Shape each regain only 1 use on a Short Rest;
+  // Bardic Inspiration fully resets, but only from Bard level 5 on (Font of
+  // Inspiration) — below that level a Bard's Bardic Inspiration is
+  // Long-Rest-only, same as every other resource. HP, hit dice, and spell
+  // slots are untouched either way, matching the real rule that a Short Rest
+  // doesn't restore those.
   function shortRest() {
     const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
     setPlay((prev) => ({
       ...prev,
       expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
       expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
+      expendedWildShape: Math.max(0, prev.expendedWildShape - 1),
     }));
   }
 
@@ -429,6 +437,14 @@ export default function PlaySheet({
       ...prev,
       expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
     }));
+  }
+
+  function expendWildShape() {
+    setPlay((prev) => ({ ...prev, expendedWildShape: prev.expendedWildShape + 1 }));
+  }
+
+  function restoreWildShape() {
+    setPlay((prev) => ({ ...prev, expendedWildShape: Math.max(0, prev.expendedWildShape - 1) }));
   }
 
   function rollDivineSpark() {
@@ -1306,6 +1322,39 @@ export default function PlaySheet({
                 <button
                   onClick={expendBardicInspiration}
                   disabled={play.expendedBardicInspiration >= sheet.bardicInspirationMax}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  &minus;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {sheet.wildShapeMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Wild Shape
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action to transform — see Features below for known forms and the full
+                  effect. Regains 1 use on a Short Rest, all uses on a Long Rest.
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={restoreWildShape}
+                  disabled={play.expendedWildShape <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+                <span className="font-heading font-bold text-tavern-text">
+                  {sheet.wildShapeMax - play.expendedWildShape}/{sheet.wildShapeMax}
+                </span>
+                <button
+                  onClick={expendWildShape}
+                  disabled={play.expendedWildShape >= sheet.wildShapeMax}
                   className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
                 >
                   &minus;

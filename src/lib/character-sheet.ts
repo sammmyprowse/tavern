@@ -13,6 +13,7 @@ import {
   preparedSpellCount as computePreparedSpellCount,
   proficiencyBonusForLevel,
   sorceryPointsMax,
+  wildShapeMax,
   spellAttackBonus as computeSpellAttackBonus,
   spellSaveDC as computeSpellSaveDC,
   sneakAttackDice,
@@ -88,6 +89,7 @@ export interface CharacterSheet {
   divineSparkDice: number;
   bardicInspirationMax: number;
   bardicInspirationDie: number;
+  wildShapeMax: number;
 }
 
 export function buildCharacterSheet(
@@ -205,6 +207,7 @@ export function buildCharacterSheet(
     divineSparkDice: cls.index === "cleric" ? divineSparkDice(draft.level) : 0,
     bardicInspirationMax: cls.index === "bard" ? bardicInspirationMax(modifiers.cha) : 0,
     bardicInspirationDie: cls.index === "bard" ? bardicInspirationDie(draft.level) : 0,
+    wildShapeMax: cls.index === "druid" ? wildShapeMax(draft.level) : 0,
   };
 }
 

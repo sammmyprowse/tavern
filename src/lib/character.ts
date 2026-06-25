@@ -358,11 +358,20 @@ export function bardCantripsKnown(level: number): number {
   return level >= 10 ? 4 : level >= 4 ? 3 : 2;
 }
 
+// Druid's own cantrip-known progression ("you know two cantrips... When you
+// reach Druid levels 4 and 10, you learn another cantrip") — confirmed from
+// Druid's own spellcasting text, same numbers as Bard's but confirmed
+// independently rather than assumed.
+export function druidCantripsKnown(level: number): number {
+  return level >= 10 ? 4 : level >= 4 ? 3 : 2;
+}
+
 export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
   wizard: wizardCantripsKnown,
   sorcerer: sorcererCantripsKnown,
   cleric: clericCantripsKnown,
   bard: bardCantripsKnown,
+  druid: druidCantripsKnown,
 };
 
 // Sorcery Points (Font of Magic, gained at Sorcerer level 2): the pool equals
@@ -508,4 +517,18 @@ export function bardicInspirationDie(level: number): number {
 // final CHA modifier as input.
 export function bardicInspirationMax(chaModifier: number): number {
   return Math.max(1, chaModifier);
+}
+
+// Wild Shape (Druid, from level 2): the feature's own SRD text confirms the
+// base directly ("You can use Wild Shape twice... You regain one expended
+// use when you finish a Short Rest, and you regain all expended uses when
+// you finish a Long Rest") — the same Short/Long Rest split as Channel
+// Divinity. Higher-level increases are referenced via "the Wild Shape column
+// of the Druid Features table" without giving those breakpoints in prose —
+// the table the feature text DOES give in full ("Beast Shapes": known forms
+// and max CR by level) is a different axis entirely, not the use count. Same
+// disclosed simplification as channelDivinityMax: flat base, not a guessed
+// table for the part that isn't checkable anywhere in this app's pipeline.
+export function wildShapeMax(level: number): number {
+  return level >= 2 ? 2 : 0;
 }

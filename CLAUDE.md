@@ -748,3 +748,50 @@ correctly still d8); then dropped the same character to level 3 via SQL and
 confirmed the die became d6, the "or Short Rest" wording disappeared, and a
 Short Rest at that level correctly left an expended Bardic Inspiration count
 untouched while Long Rest still fully reset it.
+
+## Class resources — Druid spellcasting (Wild Shape)
+Sixth class-by-class pass, cheapest one yet. Spellcasting infra reused
+unchanged (WIS, same unified prepared-spell formula) plus a new
+`druidCantripsKnown` (2/3/4 at 1/4/10 — confirmed from Druid's own text,
+same numbers as Bard's but confirmed independently). Druid's Primal Order
+(Magician/Warden) was already built during Phase 1's `ORDER_CHOICES` — zero
+work needed there, it was already correct.
+
+**Wild Shape is the same shape as Channel Divinity, confirmed base + disclosed
+flat simplification for higher levels.** The feature's own SRD text gives the
+base directly ("You can use Wild Shape twice... You regain one expended use
+when you finish a Short Rest, and you regain all expended uses when you
+finish a Long Rest") — same Short/Long Rest split as Cleric's Channel
+Divinity. Higher-level increases are referenced via "the Wild Shape column of
+the Druid Features table," not given in prose. The feature text DOES give a
+different table in full ("Beast Shapes": known forms and max CR by level —
+4 forms/CR ¼ at level 2, 6 forms/CR ½ at level 4, 8 forms/CR 1 + Fly Speed at
+level 8), but that's a different axis (which beasts you can become) from the
+"how many times per rest" axis this app tracks as a resource pool. So
+`wildShapeMax(level)` is a flat 2 from level 2 up, same disclosed-gap
+reasoning as `channelDivinityMax`.
+
+**Deliberately not modeled: actually becoming a specific beast.** Wild Shape
+swaps the character's AC/HP/attacks/skills for a chosen monster's stat block
+— a genuinely different, much larger feature (a beast-stat-block picker tied
+into the `monsters` table, temporarily overriding half the sheet) than a
+resource-pool counter. Out of scope for this pass; the real Known
+Forms/Max CR table is already fully visible via the existing Features list
+(the Wild Shape feature's own description), so nothing is hidden, it's just
+not interactive yet.
+
+No new UI pattern needed — the block is a direct copy of Channel Divinity's
+(counter + Short Rest +1 / Long Rest all), and `hasShortRestResource` gained
+its third OR clause exactly as predicted when it was written during the Bard
+pass.
+
+Tested live with WIS 18 at level 4: Spell Save DC 14, Spell Attack +6, slots
+4/3 (`fullCasterSlots(4)`), 3 cantrips known, 8 prepared spells, Wild Shape
+2/2 — all matched exactly; subclass and feat pending-choices both appeared
+correctly (subclass first becomes available at level 3, same generic
+infrastructure as every other class). Verified Wild Shape expend/restore +
+boundary clamping, Short Rest regaining exactly 1, and Long Rest fully
+resetting it.
+
+**Both Bard and Druid needed zero homebrew** — every number and mechanic
+came straight from the SRD's own feature text.
