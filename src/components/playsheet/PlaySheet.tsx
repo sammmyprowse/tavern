@@ -75,6 +75,10 @@ interface PlayState {
   // Sorcery Points (Sorcerer only) — same play-state treatment as spell
   // slots: resets on Long Rest, not part of the saved draft.
   expendedSorceryPoints: number;
+  // Channel Divinity (Cleric only). Same play-state treatment, but it's also
+  // the app's first Short-Rest-recovered resource — Long Rest still resets it
+  // fully, but shortRest() now also exists to regain just 1 charge.
+  expendedChannelDivinity: number;
 }
 
 export default function PlaySheet({
@@ -138,6 +142,7 @@ export default function PlaySheet({
     rollMode: "normal",
     expendedSlots: [],
     expendedSorceryPoints: 0,
+    expendedChannelDivinity: 0,
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -359,6 +364,17 @@ export default function PlaySheet({
       deathSaveFailures: 0,
       expendedSlots: [],
       expendedSorceryPoints: 0,
+      expendedChannelDivinity: 0,
+    }));
+  }
+
+  // Regains only 1 Channel Divinity charge — HP, hit dice, spell slots, and
+  // Sorcery Points are untouched, matching the real rule that a Short Rest
+  // doesn't restore those. The app's first Short-Rest-recovered resource.
+  function shortRest() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
     }));
   }
 
@@ -371,6 +387,28 @@ export default function PlaySheet({
       ...prev,
       expendedSorceryPoints: Math.max(0, prev.expendedSorceryPoints - 1),
     }));
+  }
+
+  function expendChannelDivinity() {
+    setPlay((prev) => ({ ...prev, expendedChannelDivinity: prev.expendedChannelDivinity + 1 }));
+  }
+
+  function restoreChannelDivinity() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
+    }));
+  }
+
+  function rollDivineSpark() {
+    if (!sheet?.divineSparkDice) return;
+    const notation = `${sheet.divineSparkDice}d8${formatModifier(sheet.modifiers.wis)}`;
+    const result = rollDice(notation);
+    pushLog({
+      label: "Divine Spark",
+      detail: `${notation} [${result.rolls.join(", ")}]`,
+      total: result.total,
+    });
   }
 
   function expendSpellSlot(levelIndex: number) {
@@ -1153,6 +1191,14 @@ export default function PlaySheet({
             >
               Long Rest
             </button>
+            {sheet.channelDivinityMax > 0 && (
+              <button
+                onClick={shortRest}
+                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold-light"
+              >
+                Short Rest
+              </button>
+            )}
             <button
               onClick={spendHitDie}
               disabled={play.hitDiceUsed >= totalHitDice}
@@ -1161,6 +1207,47 @@ export default function PlaySheet({
               Spend Hit Die ({totalHitDice - play.hitDiceUsed} left)
             </button>
           </div>
+
+          {sheet.channelDivinityMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Channel Divinity
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Divine Spark or Turn Undead — see Features below for full effects. Regains 1 use
+                  on a Short Rest, all uses on a Long Rest.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={rollDivineSpark}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll Divine Spark
+                </button>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreChannelDivinity}
+                    disabled={play.expendedChannelDivinity <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.channelDivinityMax - play.expendedChannelDivinity}/{sheet.channelDivinityMax}
+                  </span>
+                  <button
+                    onClick={expendChannelDivinity}
+                    disabled={play.expendedChannelDivinity >= sheet.channelDivinityMax}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    &minus;
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {isDying && (
             <div className="mt-4 rounded-lg border border-tavern-oxblood bg-tavern-oxblood/10 p-3">

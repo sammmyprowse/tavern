@@ -1,7 +1,9 @@
 import {
   ABILITY_ORDER,
   abilityModifier,
+  channelDivinityMax,
   computeArmorClass,
+  divineSparkDice,
   finalAbilityScores,
   fullCasterSlots,
   maxHp,
@@ -80,6 +82,8 @@ export interface CharacterSheet {
   preparedSpellsCount: number;
   sorceryPointsMax: number;
   metamagicKnownMax: number;
+  channelDivinityMax: number;
+  divineSparkDice: number;
 }
 
 export function buildCharacterSheet(
@@ -193,6 +197,8 @@ export function buildCharacterSheet(
         : 0,
     sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
     metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
+    channelDivinityMax: cls.index === "cleric" ? channelDivinityMax(draft.level) : 0,
+    divineSparkDice: cls.index === "cleric" ? divineSparkDice(draft.level) : 0,
   };
 }
 

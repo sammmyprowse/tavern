@@ -335,9 +335,18 @@ export function sorcererCantripsKnown(level: number): number {
 // Sorcerer spells" at level 1 with a +1 CHA mod example, consistent with
 // preparedSpellCount's level+modifier formula), so preparedSpellCount itself
 // needs no per-class variant — only cantrips known differs per class.
+// Cleric's own cantrip-known progression ("you know three Cleric cantrips...
+// When you reach Cleric levels 4 and 10, you learn another cantrip") —
+// confirmed from Cleric's own spellcasting text, NOT assumed from Wizard's,
+// even though the resulting numbers happen to match (3/4/5 at 1/4/10).
+export function clericCantripsKnown(level: number): number {
+  return level >= 10 ? 5 : level >= 4 ? 4 : 3;
+}
+
 export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> = {
   wizard: wizardCantripsKnown,
   sorcerer: sorcererCantripsKnown,
+  cleric: clericCantripsKnown,
 };
 
 // Sorcery Points (Font of Magic, gained at Sorcerer level 2): the pool equals
@@ -442,3 +451,29 @@ export const METAMAGIC_OPTIONS: MetamagicOption[] = [
       "When you cast a spell that has a material component costing no gold and not consumed by the spell, you can spend 1 Sorcery Point to ignore that material component, conjuring the magic from yourself instead.",
   },
 ];
+
+// Channel Divinity (Cleric, from level 2): the feature's own 2024 SRD text
+// confirms the BASE directly ("You can use this class's Channel Divinity
+// twice"), but only references higher-level increases via "the Channel
+// Divinity column of the Cleric Features table" without giving those
+// breakpoints in prose — and the only structured table this app has (the
+// `levels` table) is 2014-only data with a different base (1, not 2), so it
+// can't be trusted for 2024's higher breakpoints either. Modeling only the
+// confirmed base (flat 2 from level 2 up) rather than guessing at the real
+// table's higher-level increases — a Cleric above roughly level 10 will see
+// fewer charges here than the real rules eventually grant. Unlike Metamagic's
+// schedule (which the SRD text spelled out in full), this gap is a genuine
+// "couldn't confirm" rather than something to homebrew, since the real
+// numbers do exist, just not anywhere checkable in this app's data pipeline.
+export function channelDivinityMax(level: number): number {
+  return level >= 2 ? 2 : 0;
+}
+
+// Divine Spark (one of Channel Divinity's two base effects): "Roll 1d8 and
+// add your Wisdom modifier... You roll an additional d8 when you reach Cleric
+// levels 7 (2d8), 13 (3d8), and 18 (4d8)" — confirmed directly from the
+// Channel Divinity feature's own SRD text, a clean scaling-dice progression
+// the same way Sneak Attack's is.
+export function divineSparkDice(level: number): number {
+  return level >= 18 ? 4 : level >= 13 ? 3 : level >= 7 ? 2 : 1;
+}

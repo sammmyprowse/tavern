@@ -594,3 +594,88 @@ pre-selected against a new "/6" cap, selected 4 more to reach 6, a 7th was
 rejected, and the save persisted across a real page reload both times. "Show
 details" expansion and the homebrew-disclosure paragraph both rendered
 correctly.
+
+## Class resources — Cleric spellcasting (Channel Divinity)
+Fourth and last class-by-class pass. Reused the same spellcasting
+infrastructure as Wizard/Sorcerer with zero changes beyond a new
+`clericCantripsKnown` entry in `CANTRIPS_KNOWN_BY_CLASS` (3/4/5 at levels
+1/4/10 — confirmed from Cleric's own SRD text, NOT assumed from Wizard's,
+even though the numbers happen to match). WIS, full-list prep via the same
+unified `level + ability modifier` formula — confirmed from Cleric's own
+"choose four level 1 spells" example, same as Wizard/Sorcerer.
+
+**Channel Divinity is the best-grounded class resource in the app so far —
+almost entirely real SRD content, not homebrew.** Unlike Metamagic (where the
+SRD only ships the schedule, not the option text), the Cleric's
+`cleric-channel-divinity` feature row gives the FULL real mechanics for both
+of its base effects directly:
+- **Divine Spark**: 1d8 + WIS mod, either heals or forces a CON save for
+  Necrotic/Radiant damage (half on success). Scales to 2d8/3d8/4d8 at Cleric
+  levels 7/13/18 — confirmed verbatim from the feature text, the same kind of
+  clean milestone progression as Sneak Attack's dice. Modeled as
+  `divineSparkDice(level)` in `character.ts`, with a "Roll Divine Spark"
+  button (mirrors Sneak Attack's roll button) using the dice engine's
+  embedded-modifier notation (`rollDice("2d8+5")` — `rollDice` already parses
+  a trailing `+N`/`-N`, no new dice-engine code needed).
+- **Turn Undead**: Frightens + Incapacitates Undead on a failed WIS save, no
+  roll on the Cleric's own part — no button needed, same reasoning as why
+  Spell Save DC doesn't get a "roll" button either.
+- Both effects' full text, plus the Life Domain subclass's own Channel
+  Divinity option (**Preserve Life**, healing = 5× Cleric level split among
+  Bloodied creatures), already flow through the existing Features-list
+  infrastructure automatically — zero new code needed there, since they're
+  real rows in the `features` table the same as every other class feature.
+
+**The charges-per-rest pool, `channelDivinityMax(level)`, is a disclosed
+simplification, not the full real table.** The feature text confirms the
+base directly ("You can use this class's Channel Divinity twice," from level
+2), but only references higher-level increases via "the Channel Divinity
+column of the Cleric Features table" without giving those breakpoints in
+prose — and the `levels` table (this app's only other structured-data source
+for this kind of thing) is 2014 data with a different, lower base (1 use, not
+2), so it can't be trusted for 2024's higher breakpoints either. Modeled as a
+flat 2 from level 2 up rather than guessing at numbers that aren't checkable
+anywhere in this app's data pipeline — a Cleric above roughly level 10 will
+see fewer charges here than the real rules eventually grant. This is the
+opposite situation from Metamagic: there the schedule was confirmed and the
+option list wasn't, so the option list got homebrewed; here the option
+effects are fully confirmed and the higher-level schedule isn't, so the
+schedule stays conservative instead of being filled in from outside
+knowledge or guessed at.
+
+**Channel Divinity is also the app's first Short-Rest-recovered resource.**
+Every other tracked resource (HP, hit dice, spell slots, Sorcery Points) only
+resets on a Long Rest. Channel Divinity regains 1 use on a Short Rest and all
+uses on a Long Rest, so a new `shortRest()` handler was added in
+`PlaySheet.tsx` alongside the existing `longRest()` — it touches only
+`expendedChannelDivinity`, leaving HP/hit dice/spell slots untouched, which is
+the real rule (Short Rest doesn't auto-heal or restore spell slots). The
+"Short Rest" button sits next to "Long Rest" in the HP/resources card, gated
+on `sheet.channelDivinityMax > 0` for now since Channel Divinity is the only
+short-rest resource modeled — generalize the gating if a future class (e.g.
+Warlock's Pact Magic) adds a second one.
+
+Tested live with WIS 20 (capped; 16 base + background + an ASI pick) and CON
+16 at level 7: Spell Save DC 16, Spell Attack +8, slots 4/3/3/1
+(`fullCasterSlots(7)`), 4 cantrips known, 12 prepared spells (`7 + 5 WIS
+mod`), Channel Divinity 2/2, Divine Spark rolling `2d8+5` — every number
+matched exactly, and the Features list correctly merged Life Domain's
+subclass features (Disciple of Life, Preserve Life, Blessed Healer, Blessed
+Strikes) with the base Cleric features with no duplicates. Verified Short
+Rest regains exactly 1 Channel Divinity charge while leaving a damaged HP
+total and an expended spell slot untouched; verified Long Rest still resets
+HP, slots, and Channel Divinity together. Bumped to level 18 via SQL and
+confirmed Divine Spark scaled to `4d8+5` while Channel Divinity's max
+correctly stayed at the disclosed flat 2 (expected, not a bug).
+
+This was built directly from a hand-inserted `characters` row (matching the
+exact shape `EMPTY_DRAFT` produces) rather than re-walking the builder wizard
+UI — the wizard pathway itself wasn't touched in this pass and was already
+proven generic/class-agnostic during the Rogue/Wizard/Sorcerer passes, so the
+live-browser verification focused entirely on the actually-new code (Channel
+Divinity, Short Rest, Divine Spark, Cleric's own cantrip/prepared numbers).
+
+**All four classes in the user's stated priority order (Rogue → Wizard →
+Sorcerer → Cleric) now have their full spellcasting/resources kit.** See
+project memory for the next candidates if the user wants to keep going
+class-by-class beyond the original four.
