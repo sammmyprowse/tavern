@@ -6,6 +6,7 @@ import {
   clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
+  favoredEnemyMax,
   finalAbilityScores,
   fullCasterSlots,
   halfCasterSlots,
@@ -95,6 +96,7 @@ export interface CharacterSheet {
   bardicInspirationDie: number;
   wildShapeMax: number;
   layOnHandsMax: number;
+  favoredEnemyMax: number;
 }
 
 export function buildCharacterSheet(
@@ -225,6 +227,7 @@ export function buildCharacterSheet(
     bardicInspirationMax: cls.index === "bard" ? bardicInspirationMax(modifiers.cha) : 0,
     bardicInspirationDie: cls.index === "bard" ? bardicInspirationDie(draft.level) : 0,
     layOnHandsMax: cls.index === "paladin" ? layOnHandsMax(draft.level) : 0,
+    favoredEnemyMax: cls.index === "ranger" ? favoredEnemyMax(draft.level) : 0,
     wildShapeMax: cls.index === "druid" ? wildShapeMax(draft.level) : 0,
   };
 }

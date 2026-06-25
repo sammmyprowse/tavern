@@ -79,6 +79,15 @@ export const EXPERTISE_SCHEDULE: Record<string, ExpertiseMilestone[]> = {
     { level: 2, count: 2 },
     { level: 9, count: 2 },
   ],
+  // Ranger's Expertise is split across two separate features: Deft Explorer
+  // grants Expertise in one skill at level 2 ("Choose one of your skill
+  // proficiencies... You gain Expertise in that skill"), and the standalone
+  // "Expertise" feature grants two more at level 9 — confirmed from each
+  // feature's own SRD text.
+  ranger: [
+    { level: 2, count: 1 },
+    { level: 9, count: 2 },
+  ],
 };
 
 // Sneak Attack's damage text ("the extra damage increases as you gain Rogue
@@ -341,7 +350,20 @@ export function halfCasterSlots(level: number): number[] {
 // Classes that use the slower half-caster slot/spell progression instead of
 // the standard full-caster one. Checked per-class as each pass confirms it —
 // don't assume a class belongs here without checking its own SRD data first.
-export const HALF_CASTER_CLASSES = new Set(["paladin"]);
+// Ranger's own 2014-levels data confirms the exact same table as Paladin's.
+export const HALF_CASTER_CLASSES = new Set(["paladin", "ranger"]);
+
+// Favored Enemy (Ranger, from level 1): "You always have the Hunter's Mark
+// spell prepared. You can cast it twice without expending a spell slot...
+// you regain all expended uses of this ability when you finish a Long Rest."
+// Higher-level increases are referenced via "the Favored Enemy column of the
+// Ranger Features table" without giving those breakpoints in prose — same
+// disclosed simplification as channelDivinityMax/wildShapeMax: flat
+// confirmed base, not a guessed table for the part that isn't checkable
+// anywhere in this app's data pipeline.
+export function favoredEnemyMax(level: number): number {
+  return level >= 1 ? 2 : 0;
+}
 
 // 2024 rules unified prepared-caster spell counts onto "character level +
 // spellcasting ability modifier" (minimum 1) for Wizard/Cleric/Druid,

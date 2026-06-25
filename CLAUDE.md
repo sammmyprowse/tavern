@@ -875,3 +875,62 @@ just a reminder to prefer `preview_fill` over manual DOM event dispatch for
 text/number inputs specifically; `.value = x` + `dispatchEvent('change')`
 continues to work fine for `<select>` elements as used elsewhere in this
 session.)
+
+## Class resources — Ranger spellcasting (half-caster, Favored Enemy)
+Eighth class-by-class pass, second half-caster — cheap once Paladin's pass
+had already built the half-caster infrastructure. `HALF_CASTER_CLASSES` grew
+a second entry (`ranger`), confirmed independently from Ranger's own 2014
+levels data rather than assumed from sharing an archetype with Paladin — the
+table turned out identical, but that was verified, not presumed. Same
+"prepared spells but no cantrips at all" shape as Paladin (confirmed from
+Ranger's own spellcasting `info` array, which also has no Cantrips entry) —
+already handled correctly by the `spellcastingAbility !== null` gate fixed
+during the Paladin pass, zero new code needed for that part.
+
+**Ranger's Expertise schedule is split across two separate features** — Deft
+Explorer grants Expertise in one skill at level 2, and a standalone
+"Expertise" feature grants two more at level 9. Confirmed from each
+feature's own text independently (don't assume Deft Explorer's "Expertise"
+sub-clause and the later same-named feature share a count). Added as
+`EXPERTISE_SCHEDULE.ranger: [{level:2,count:1},{level:9,count:2}]` — zero new
+code beyond the schedule entry itself, exactly the reuse this lookup was
+built generic for back during the Rogue pass (and already paid off once for
+Bard).
+
+**Favored Enemy** (`favoredEnemyMax(level) = level >= 1 ? 2 : 0`) lets a
+Ranger cast Hunter's Mark without a spell slot. Same disclosed-flat-base
+treatment as Channel Divinity/Wild Shape — the feature text confirms the
+base (2, from level 1) but only references higher-level increases via "the
+Favored Enemy column of the Ranger Features table" without giving those
+breakpoints in prose. Modeled with its own play-state counter, Long-Rest-only
+(no Short Rest component, confirmed) — a direct copy of Wild Shape's UI block
+minus the Short Rest behavior.
+
+**Deliberately deferred to informational-only (Features list, not
+interactive): Hunter's Prey, Defensive Tactics, Tireless, Nature's Veil.**
+Hunter's Prey (level 3) and Defensive Tactics (level 7) are each a binary
+choice re-pickable on every Short OR Long Rest — a genuinely different
+shape from every choice mechanic built so far (Order choices are
+permanent-once-picked; Metamagic/cantrips are freely re-settable but not
+explicitly "swap on rest"), and would need a new UI pattern to do properly.
+Tireless (level 10, temp-HP pool sized by WIS modifier) and Nature's Veil
+(level 14, Invisibility uses sized by WIS modifier) are real, confirmed,
+cheap-shaped resources, but both gate in deep in the level range and weren't
+part of this pass's scope. All four are real SRD content already fully
+visible via the existing Features list — nothing is hidden, they're just not
+wired to interactive counters/toggles yet. Revisit if higher-level Ranger
+play comes up.
+
+Tested live with WIS 20, DEX 18 at level 9: Spell Save DC 17, Spell Attack
++9, slots 4/3/2 (`halfCasterSlots(9)`), prepared spells 0/14 (`9 + 5 WIS
+mod`), no Cantrips section, Favored Enemy 2/2 — all matched exactly; Features
+list correctly merged Hunter subclass features (Hunter's Lore, Hunter's
+Prey) with base Ranger features, and the Expertise pending-choice correctly
+showed the level-2 milestone first. Verified Favored Enemy expend/restore +
+boundary clamping + Long Rest full reset.
+
+**All four half/full-caster passes beyond the original priority order (Bard,
+Druid, Paladin, Ranger) are now done with zero homebrew** — every number and
+mechanic for all four came straight from the SRD's own text. Remaining:
+Warlock (genuinely different Pact Magic system), then the three non-casters
+(Fighter, Barbarian, Monk).
