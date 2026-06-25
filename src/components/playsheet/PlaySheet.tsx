@@ -50,6 +50,10 @@ import type {
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
+import CharacterAvatar from "./CharacterAvatar";
+import CharacterBio from "./CharacterBio";
+import DeleteCharacterButton from "./DeleteCharacterButton";
+import SectionNav from "./SectionNav";
 
 interface PlaySheetProps {
   characterId: string;
@@ -68,6 +72,8 @@ interface PlaySheetProps {
   classSpells: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
+  avatarUrl: string | null;
+  bio: string | null;
 }
 
 interface PlayState {
@@ -175,6 +181,8 @@ export default function PlaySheet({
   classSpells,
   isOwner,
   isPublic,
+  avatarUrl,
+  bio,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
@@ -1370,27 +1378,46 @@ export default function PlaySheet({
           &larr; My Characters
         </Link>
 
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="font-heading text-3xl font-bold text-tavern-gold">
-              {sheet.name || "Unnamed"}
-            </h1>
-            <p className="font-heading text-base font-bold tracking-wide text-tavern-gold-light">
-              {sheet.className}
-              {chosenSubclass ? ` (${chosenSubclass.name})` : ""}
-            </p>
-            <p className="text-tavern-muted">
-              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName}
-              {sheet.speciesIsHomebrew ? " (Homebrew)" : ""} — {sheet.backgroundName}
-              {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
-            </p>
-            {chosenOrder && (
-              <p className="text-xs text-tavern-muted">
-                {sheet.className} Order: {chosenOrder.name}
-              </p>
-            )}
+        <div className="mt-2 flex flex-wrap items-start gap-4">
+          <CharacterAvatar
+            characterId={characterId}
+            initialAvatarUrl={avatarUrl}
+            name={sheet.name || "Unnamed"}
+            isOwner={isOwner}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="font-heading text-3xl font-bold text-tavern-gold">
+                  {sheet.name || "Unnamed"}
+                </h1>
+                <p className="font-heading text-base font-bold tracking-wide text-tavern-gold-light">
+                  {sheet.className}
+                  {chosenSubclass ? ` (${chosenSubclass.name})` : ""}
+                </p>
+                <p className="text-tavern-muted">
+                  Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName}
+                  {sheet.speciesIsHomebrew ? " (Homebrew)" : ""} — {sheet.backgroundName}
+                  {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
+                </p>
+                {chosenOrder && (
+                  <p className="text-xs text-tavern-muted">
+                    {sheet.className} Order: {chosenOrder.name}
+                  </p>
+                )}
+              </div>
+              {isOwner && (
+                <div className="flex flex-col items-end gap-2">
+                  <ShareControl characterId={characterId} initialIsPublic={isPublic} />
+                  <DeleteCharacterButton
+                    characterId={characterId}
+                    characterName={sheet.name || "Unnamed"}
+                  />
+                </div>
+              )}
+            </div>
+            <CharacterBio characterId={characterId} initialBio={bio} isOwner={isOwner} />
           </div>
-          {isOwner && <ShareControl characterId={characterId} initialIsPublic={isPublic} />}
         </div>
 
         {!isOwner && (
@@ -1399,6 +1426,23 @@ export default function PlaySheet({
             local to your browser only — they don&apos;t affect the owner&apos;s copy.
           </p>
         )}
+
+        <SectionNav
+          sections={[
+            { id: "stats", label: "Stats" },
+            { id: "hp", label: "HP & Resources" },
+            { id: "abilities", label: "Abilities" },
+            { id: "skills", label: "Skills" },
+            ...(sheet.fightingStyleKnownMax > 0
+              ? [{ id: "fighting-style", label: "Fighting Style" }]
+              : []),
+            ...(sheet.spellcastingAbility ? [{ id: "spells", label: "Spells" }] : []),
+            ...(speciesTraits.length > 0 ? [{ id: "species-traits", label: "Species Traits" }] : []),
+            ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
+            ...(weapons.length > 0 ? [{ id: "attacks", label: "Attacks" }] : []),
+            { id: "equipment", label: "Equipment" },
+          ]}
+        />
 
         {isOwner && (
           <div className="mt-4">
@@ -1752,7 +1796,7 @@ export default function PlaySheet({
         {choiceError && <p className="mt-1 text-xs text-tavern-oxblood-light">{choiceError}</p>}
 
         {/* Stat chips */}
-        <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
+        <div id="stats" className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
           {[
             ["AC", ac],
             ["Initiative", formatModifier(sheet.initiative)],
@@ -1776,7 +1820,7 @@ export default function PlaySheet({
         </div>
 
         {/* HP / resources */}
-        <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+        <div id="hp" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <div className="font-heading text-xs tracking-wider text-tavern-muted uppercase">
@@ -2449,7 +2493,7 @@ export default function PlaySheet({
         </div>
 
         {/* Ability scores + saves */}
-        <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <div id="abilities" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
           {ABILITY_ORDER.map((ability) => (
             <button
               key={ability}
@@ -2489,7 +2533,7 @@ export default function PlaySheet({
         </div>
 
         {/* Skills */}
-        <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+        <div id="skills" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
           <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
             Skills
           </h2>
@@ -2521,7 +2565,7 @@ export default function PlaySheet({
             below: Fighter/Paladin/Ranger all grant this regardless of
             whether the class casts spells. */}
         {sheet.fightingStyleKnownMax > 0 && (
-          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <div id="fighting-style" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
                 Fighting Style ({knownFightingStyleDetails.length}/{sheet.fightingStyleKnownMax})
@@ -2627,7 +2671,7 @@ export default function PlaySheet({
 
         {/* Spells */}
         {sheet.spellcastingAbility && (
-          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <div id="spells" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
               Spells
             </h2>
@@ -3075,7 +3119,7 @@ export default function PlaySheet({
 
         {/* Species Traits */}
         {speciesTraits.length > 0 && (
-          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <div id="species-traits" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
               Species Traits
             </h2>
@@ -3109,7 +3153,7 @@ export default function PlaySheet({
 
         {/* Features */}
         {unlockedFeatures.length > 0 && (
-          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <div id="features" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
               Features
             </h2>
@@ -3141,7 +3185,7 @@ export default function PlaySheet({
 
         {/* Attacks */}
         {weapons.length > 0 && (
-          <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <div id="attacks" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
               Attacks
             </h2>
@@ -3248,7 +3292,7 @@ export default function PlaySheet({
         )}
 
         {/* Equipment */}
-        <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+        <div id="equipment" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
           <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
             Equipment
           </h2>

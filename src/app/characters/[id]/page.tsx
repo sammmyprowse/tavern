@@ -39,7 +39,11 @@ export default async function CharacterPlaySheet({
     traitDescriptions,
   ] = await Promise.all([
     supabase.auth.getUser(),
-    supabase.from("characters").select("id, user_id, name, draft, is_public").eq("id", id).maybeSingle(),
+    supabase
+      .from("characters")
+      .select("id, user_id, name, draft, is_public, avatar_url, bio")
+      .eq("id", id)
+      .maybeSingle(),
     getSpeciesList(),
     getSubspeciesList(),
     getClassesList(),
@@ -99,6 +103,8 @@ export default async function CharacterPlaySheet({
       classSpells={classSpells}
       isOwner={isOwner}
       isPublic={character.is_public}
+      avatarUrl={character.avatar_url}
+      bio={character.bio}
     />
   );
 }

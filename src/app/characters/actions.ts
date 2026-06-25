@@ -82,6 +82,88 @@ export async function setCharacterPublic(
   return { success: true };
 }
 
+export interface SetBioResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function setCharacterBio(characterId: string, bio: string): Promise<SetBioResult> {
+  if (bio.length > 2000) {
+    return { success: false, error: "Bio is too long (max 2000 characters)." };
+  }
+
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ bio })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
+export interface SetAvatarResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function setCharacterAvatar(
+  characterId: string,
+  avatarUrl: string | null,
+): Promise<SetAvatarResult> {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ avatar_url: avatarUrl })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
+export interface DeleteCharacterResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function deleteCharacter(characterId: string): Promise<DeleteCharacterResult> {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .delete()
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/characters");
+  return { success: true };
+}
+
 export interface LevelUpResult {
   success: boolean;
   error?: string;

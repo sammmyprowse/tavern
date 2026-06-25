@@ -1640,3 +1640,101 @@ correctly rolled both and kept the higher); tapped d6 while still in
 Advantage mode (logged "d6: 4", a single roll, confirming non-d20 dice
 correctly ignore Roll Mode). Screenshot-verified the button row's styling
 matches the existing dark-parchment aesthetic. No console errors.
+
+## Character profile: avatar, bio, section nav, delete
+User asked for four things in one pass: a profile-picture upload "at the
+top," an "About Me" bio shown there too ("kind of like a Facebook profile
+but for the dnd character"), a menu to navigate the play sheet's info
+cards, and the ability to delete a character (which had no UI anywhere —
+confirmed there was already a `"Users can delete their own characters"`
+DELETE RLS policy on `characters` sitting unused since the table was
+created, so only the Server Action + UI were missing).
+
+Migration `add_character_bio_and_avatar`: `characters` gained `bio text`
+and `avatar_url text` (both nullable, presentation metadata like
+`is_public`, not part of `CharacterDraft` — never read by
+`buildCharacterSheet`). Also creates a public `avatars` Storage bucket
+(5MB file size limit, image mime types only) with four RLS policies:
+public SELECT, and INSERT/UPDATE/DELETE restricted to
+`(storage.foldername(name))[1] = auth.uid()::text` — i.e. each user can
+only write inside a folder named after their own user id. Avatars are
+stored at `{userId}/{characterId}.{ext}` with `upsert: true`, so
+re-uploading a photo for the same character overwrites in place rather
+than accumulating orphaned files; a `?t=${Date.now()}` cache-busting
+suffix is appended to the stored URL so the browser doesn't keep showing
+a stale cached image after a re-upload. `database.types.ts` regenerated
+to match.
+
+New components, all under `src/components/playsheet/`:
+- `CharacterAvatar.tsx` — a circular image button (initial-letter
+  placeholder when no photo). Owner-only click opens a hidden
+  `<input type="file" accept="image/*">`; validates type and a 5MB cap
+  client-side (the bucket also enforces this server-side — belt and
+  suspenders) before uploading via the browser Supabase client and
+  persisting the public URL through a new `setCharacterAvatar` action.
+  "Remove" sets the URL back to null (does not delete the underlying
+  Storage object — an intentional simplification; the orphaned file is
+  small, RLS-scoped to that user's folder, and never referenced again).
+- `CharacterBio.tsx` — click-to-edit textarea (2000 char cap, matching
+  the Server Action's own cap), persisted via `setCharacterBio`. Renders
+  nothing for non-owners when empty, rather than showing an empty-state
+  prompt that only makes sense for the owner.
+- `DeleteCharacterButton.tsx` — a deliberately unobtrusive text link
+  (not a prominent button) that expands into an inline "Permanently
+  delete {name}? This can't be undone. [Confirm Delete] [Cancel]" bar.
+  Calls the new `deleteCharacter` action and redirects to `/characters`
+  on success.
+- `SectionNav.tsx` — sticky (`top-0`) horizontal pill strip placed right
+  under the header, one button per card on the page that's actually
+  present for this character (conditional cards like Fighting Style,
+  Spells, Species Traits, Features, and Attacks are only listed when
+  they'd actually render — computed inline in `PlaySheet.tsx` from the
+  same flags those cards already gate on). Each button calls
+  `scrollIntoView({behavior:"smooth", block:"start"})` against a plain
+  `id` attribute added to each of the 10 card divs.
+
+Three new Server Actions in `src/app/characters/actions.ts`
+(`setCharacterBio`, `setCharacterAvatar`, `deleteCharacter`) all follow
+the same shape as the existing `setCharacterPublic`: re-check
+`auth.getUser()` and scope the mutation by `.eq("user_id", ...)` rather
+than trusting the client — `deleteCharacter` doesn't need
+`loadOwnedDraft` since it isn't touching the draft, just an
+ownership-scoped `.delete()`.
+
+Tested live end-to-end with a disposable test account/character (deleted
+afterward) built from a copy of a real Dragonborn Paladin draft shape, so
+every conditional nav section (Fighting Style, Spells, Species Traits)
+would actually be present:
+- Bio: saved, rendered, survived a full page reload.
+- Avatar: file inputs can't be scripted for security, so the upload was
+  driven by constructing a real `File` + `DataTransfer` and dispatching a
+  genuine `change` event at the actual `<input>` — exercising the real
+  component end-to-end, not a mocked shortcut. Upload succeeded, the
+  `<img>` rendered the real Storage public URL, survived a reload, and
+  "Remove" correctly reverted to the placeholder. Separately verified
+  Storage RLS directly: uploading to the signed-in user's own folder
+  succeeds, uploading to a different folder is rejected with "new row
+  violates row-level security policy."
+  - this also accidentally fixed a stale local test account that
+    couldn't sign in: GoTrue requires `confirmation_token`,
+    `recovery_token`, `email_change_token_new`, and `email_change` on
+    `auth.users` to be empty strings, not `NULL` — a manually-inserted
+    row that leaves them `NULL` fails login with an opaque `{}` client
+    error. Worth remembering for any future hand-inserted test account.
+- Section nav: clicking a section button scrolls so the target's top
+  edge lands at exactly `0` relative to the viewport (confirmed via
+  `getBoundingClientRect()`, not just a screenshot — a screenshot taken
+  immediately after `click()` can catch the smooth-scroll animation
+  mid-flight and look wrong when the resting position is actually
+  correct).
+- Delete: confirm-bar appears, Cancel dismisses with no mutation
+  (verified the row still existed in the DB after Cancel), Confirm
+  Delete removes the row and redirects to `/characters` — verified by
+  querying the DB directly (row count 0) and confirming the name no
+  longer appears in the My Characters list, not just trusting the
+  redirect.
+- Confirmed RLS still correctly blocks viewing a real, non-public
+  character signed in as a different user (tried loading the real
+  "Lalala" character while signed in as the test account — got the
+  existing "Character Not Found" page, no regression/leak).
+No console errors across any of the above.
