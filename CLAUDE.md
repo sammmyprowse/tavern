@@ -2129,3 +2129,66 @@ picker's search results), silently unequipping the real armor — not a
 product bug, but a reminder that name-based button queries need scoping
 when the same label can legitimately appear twice on a page. No console
 errors.
+
+## Currency tracking
+User asked for "currency pouches, gold silver etc... still should be in
+the inventory, but separate, maybe 3 main boxes along the top." Before
+writing anything, checked `parseEquipmentOptions` in `srd.ts` and
+discovered starting money was already being computed correctly the
+whole time (class/background equipment choices produce real `isMoney:
+true` bundle entries, e.g. `{name: "5 GP", count: 5}`) — the play
+sheet's Equipment card was just explicitly filtering them out
+(`!item.isMoney`) with nowhere else for them to go. So this wasn't
+purely a new feature, it was also a real, previously-shipped bug: every
+character's starting gold has been invisible on the play sheet since
+the Equipment card was first built.
+
+Went with all 5 standard denominations (CP/SP/EP/GP/PP) rather than
+literally 3 — "maybe 3" read as a layout suggestion (a row of boxes),
+not a hard cap, and the official 5e character sheet itself shows all 5
+in that exact low-to-high order, which `CURRENCY_ORDER` in
+`src/lib/currency.ts` matches directly rather than inventing an
+ordering. New nullable `characters.currency` jsonb column, same
+separate-top-level-column pattern as bio/avatar_url/personality/
+inventory.
+
+`deriveStartingCurrency(ownedEquipment)` sums every `isMoney` bundle
+item by denomination (parsed from the tail of its `name` string, e.g.
+`"5 GP"` → unit `"gp"`) — used as a lazy `useState` initializer only
+when `characters.currency` is still null, so it runs once and never
+re-derives after a player starts editing their own totals (e.g. it
+won't re-sum on a level-up). `CurrencyTracker.tsx` renders the 5 boxes
+at the top of the Equipment card as plain number inputs, editable
+directly (not a delta/stepper) since currency swings by large,
+irregular amounts in actual play, not +/-1 — each box commits to the
+server on blur. Inputs are disabled (not hidden) for non-owners, so a
+public character's currency is still visible without anyone being able
+to edit a number that the server would reject anyway.
+
+Implementation note for the next session: when first wiring this up,
+React's `onBlur` lint rule flagged a `useEffect` doing `setDraft(...)`
+to resync local input state with the prop value — fixed by adjusting
+state during render instead (`if (value !== prevValue) { setPrevValue
+(value); setDraft(...) }`), React's documented pattern for exactly this
+"local editable copy of a prop" case, since an effect would commit one
+extra stale frame and risks a cascading-render error.
+
+Testing note: every "did the save actually fail" alarm during this pass
+was actually a check that ran before the async round-trip had time to
+finish — confirmed each time by re-querying the DB a few hundred
+milliseconds later, or testing blur specifically (a raw `dispatchEvent
+(new Event("blur"))` doesn't reliably reach React's delegated listener
+since blur doesn't natively bubble; calling the real `.focus()` then
+shifting focus to a different element is what actually triggers it
+reliably in this harness). Same pattern as several earlier "this looks
+broken" false alarms this session — worth checking timing before
+concluding a save handler is broken.
+
+Tested live end-to-end with a disposable account/character (Human
+Fighter, Soldier background, deleted after): confirmed the previously
+-invisible starting gold (18 GP) now renders automatically without any
+prior currency ever being saved; edited Gold to 99 and confirmed it
+persisted to the database (not just local state) and survived a full
+page reload; toggled the character public and viewed signed-out to
+confirm the inputs show the real value but are genuinely disabled, not
+just visually styled to look disabled. No console errors.

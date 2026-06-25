@@ -92,6 +92,7 @@ export type Database = {
           bio: string | null
           created_at: string
           draft: Json
+          currency: Json | null
           id: string
           inventory: Json | null
           is_public: boolean
@@ -105,6 +106,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           draft: Json
+          currency?: Json | null
           id?: string
           inventory?: Json | null
           is_public?: boolean
@@ -118,6 +120,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           draft?: Json
+          currency?: Json | null
           id?: string
           inventory?: Json | null
           is_public?: boolean

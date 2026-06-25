@@ -17,6 +17,7 @@ import {
 import type { CharacterDraft } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
+import type { Currency } from "@/lib/currency";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
 export default async function CharacterPlaySheet({
@@ -43,7 +44,7 @@ export default async function CharacterPlaySheet({
     supabase.auth.getUser(),
     supabase
       .from("characters")
-      .select("id, user_id, name, draft, is_public, avatar_url, bio, personality, inventory")
+      .select("id, user_id, name, draft, is_public, avatar_url, bio, personality, inventory, currency")
       .eq("id", id)
       .maybeSingle(),
     getSpeciesList(),
@@ -109,6 +110,7 @@ export default async function CharacterPlaySheet({
       bio={character.bio}
       personality={character.personality as unknown as PersonalityAnswers | null}
       inventory={(character.inventory as unknown as InventoryItem[] | null) ?? []}
+      currency={character.currency as unknown as Currency | null}
     />
   );
 }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
+import type { Currency } from "@/lib/currency";
 import type { Json } from "@/lib/database.types";
 
 // Shared by every action below that mutates a single owned character's draft:
@@ -167,6 +168,34 @@ export async function setCharacterInventory(
   const { error } = await supabase
     .from("characters")
     .update({ inventory: inventory as unknown as Json })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
+export interface SetCurrencyResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function setCharacterCurrency(
+  characterId: string,
+  currency: Currency,
+): Promise<SetCurrencyResult> {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ currency: currency as unknown as Json })
     .eq("id", characterId)
     .eq("user_id", userData.user.id);
 

@@ -36,9 +36,12 @@ import {
   setMetamagicChoices,
   setFightingStyleChoices,
   setCharacterInventory,
+  setCharacterCurrency,
 } from "@/app/characters/actions";
 import { resolveInventoryEquipment, type InventoryItem } from "@/lib/inventory";
+import { deriveStartingCurrency, type Currency } from "@/lib/currency";
 import InventoryManager from "./InventoryManager";
+import CurrencyTracker from "./CurrencyTracker";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -81,6 +84,7 @@ interface PlaySheetProps {
   bio: string | null;
   personality: PersonalityAnswers | null;
   inventory: InventoryItem[];
+  currency: Currency | null;
 }
 
 interface PlayState {
@@ -192,6 +196,7 @@ export default function PlaySheet({
   bio,
   personality,
   inventory: initialInventory,
+  currency: initialCurrency,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
@@ -230,6 +235,23 @@ export default function PlaySheet({
   // the rest of the play sheet's local state.
   const [currentDraft, setCurrentDraft] = useState(draft);
   const sheet = buildCharacterSheet(currentDraft, { species, subspecies, classes, backgrounds, skills });
+  // Lazy initializer so deriveStartingCurrency only runs once at mount,
+  // not on every render — once a player has their own saved currency
+  // (initialCurrency non-null), starting money is never re-derived even
+  // if ownedEquipment later changes (e.g. on level-up).
+  const [currency, setCurrency] = useState<Currency>(
+    () => initialCurrency ?? deriveStartingCurrency(sheet?.ownedEquipment ?? []),
+  );
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
+
+  async function commitCurrency(key: keyof Currency, value: number) {
+    const next = { ...currency, [key]: value };
+    setCurrency(next);
+    setCurrencyError(null);
+    const result = await setCharacterCurrency(characterId, next);
+    if (!result.success) setCurrencyError(result.error ?? "Couldn't save currency.");
+  }
+
   const [levelingUp, setLevelingUp] = useState(false);
   const [levelUpError, setLevelUpError] = useState<string | null>(null);
   const [levelUpPending, setLevelUpPending] = useState(false);
@@ -3337,6 +3359,14 @@ export default function PlaySheet({
           <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
             Equipment
           </h2>
+          <div className="mt-3">
+            <CurrencyTracker
+              currency={currency}
+              isOwner={isOwner}
+              error={currencyError}
+              onCommit={commitCurrency}
+            />
+          </div>
           <p className="mt-1 text-xs text-tavern-muted">
             Tap to equip or unequip. Armor and shields affect your AC live.
           </p>
