@@ -93,6 +93,7 @@ export type Database = {
           created_at: string
           draft: Json
           id: string
+          inventory: Json | null
           is_public: boolean
           name: string
           personality: Json | null
@@ -105,6 +106,7 @@ export type Database = {
           created_at?: string
           draft: Json
           id?: string
+          inventory?: Json | null
           is_public?: boolean
           name: string
           personality?: Json | null
@@ -117,6 +119,7 @@ export type Database = {
           created_at?: string
           draft?: Json
           id?: string
+          inventory?: Json | null
           is_public?: boolean
           name?: string
           personality?: Json | null

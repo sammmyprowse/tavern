@@ -218,12 +218,15 @@ export function buildPersonalityPrompt(sheet: CharacterSheet, personality: Perso
   }
   lines.push("");
   lines.push("INSTRUCTIONS");
-  lines.push("1. Write a short (2-4 paragraph) backstory in narrative prose.");
+  lines.push(
+    "1. Write a short (2-4 paragraph) backstory in narrative prose, no more than 2000 characters.",
+  );
   lines.push(
     "2. Generate a portrait image of this character — actually create it with your image " +
-      "generation capability, don't just describe what it would look like. Base it on the " +
-      "species/class/background above plus the Appearance Details below (physical features, " +
-      "gear, pose, setting, mood).",
+      "generation capability, don't just describe what it would look like. Use a square (1:1) " +
+      "aspect ratio so it fits neatly in a circular profile frame. Base it on the species/class/" +
+      "background above plus the Appearance Details below (physical features, gear, pose, " +
+      "setting, mood).",
   );
   lines.push(
     "3. If anything in the personality/backstory section conflicts with the character's actual " +

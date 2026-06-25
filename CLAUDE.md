@@ -2044,3 +2044,88 @@ bounds, not just "looks right" in a screenshot), and confirmed the
 near-bottom Equipment/Attacks boundary case behaves correctly given the
 actual constraint (not enough page below Equipment to scroll it to the
 very top). No console errors.
+
+## Found/custom equipment
+User wanted two things that turned out to be one feature: a way to add
+standard equipment found on an adventure, and "a comprehensive custom
+equipment builder" for DM-granted magic items ("you've found a Goblin
+Slayer Sword") with manually-entered bonuses. Asked two scoping
+questions before writing anything, since the answers changed the build
+significantly: should bonuses auto-apply to Attack/Damage/AC, or just be
+recorded for reference (chose auto-apply); should building a custom item
+start from a real base item or be a blank form (chose base item). The
+"start from a base item" answer unified what looked like two features
+into one — browsing the standard catalog and building a magic item are
+the exact same flow, just with the bonus fields left at zero or filled
+in.
+
+Data model (`src/lib/inventory.ts`): `InventoryItem` is always anchored
+to a real `baseIndex` from the equipment table — `{id, baseIndex,
+customName, count, attackBonus, damageBonus, acBonus, notes}`. Stored as
+a new nullable `characters.inventory` jsonb array, separate top-level
+column like bio/avatar_url/personality (not folded into `draft` — same
+reasoning as always: presentation/player-added data, not part of the
+mechanical build). `setCharacterInventory` is a freely-overwritable
+whole-array action, same shape as setMetamagicChoices etc. — the client
+manages add/edit/remove as local array ops and sends the full list each
+time.
+
+The integration design avoided touching `computeArmorClass` or
+`resolveWeapons` for the AC/weapon-resolution logic itself, which
+mattered given how much existing behavior depends on those functions
+staying correct. `resolveInventoryEquipment()` converts each
+`InventoryItem` into a normal `EquipmentBundleItem` (keyed by the item's
+own client-generated id, which can't collide with a real SRD index) plus
+a *synthetic* entry in a copied `EquipmentLookupItem` map, with the
+item's bonuses already baked into that entry's real stats — an armor
+bonus adds directly to `armorClass.base` before `computeArmorClass` ever
+sees it, so that function needed zero changes. `resolveWeapons` only
+needed two `?? 0` additions (`EquipmentLookupItem` gained optional
+`attackBonus`/`damageBonus` fields that real catalog entries never set).
+Everywhere in `PlaySheet.tsx` that fed `sheet.ownedEquipment` +
+`equipmentByIndex` into AC/weapon resolution now feeds
+`[...sheet.ownedEquipment, ...inventoryBundleItems]` + the augmented
+lookup instead — the equip/unequip toggle (`play.equippedIndexes`,
+already localStorage-only) needed no changes either, since inventory
+item ids are just more strings in the same Set.
+
+A custom item's category (weapon/armor/shield/other) is derived from
+its *base* item's real stats (`base.damage` → weapon, `base.armorClass`
+→ armor, `index === "shield"` → shield) rather than asked of the player
+— a Longsword is obviously a weapon, no need to make someone declare
+that. This also drives which bonus fields the add/edit form shows.
+Once a detail is folded into a saved item (e.g. a name + bonus on top of
+"longsword"), re-editing shows the real underlying base item's current
+fields again — the base is permanent once set; changing it means
+removing and re-adding, which was a deliberate scope cut, not an
+oversight, given the "start from a base item" flow doesn't really need
+mid-life rebasing.
+
+The picker (`InventoryManager.tsx`) loads the full ~182-item catalog
+client-side with a search box and five category tabs (All/Weapons/
+Armor/Gear/Tools) — checked the actual catalog size before deciding
+against pagination; 182 items filtered in a scrollable list is plenty
+fast without it.
+
+Tested live end-to-end with a disposable account/character (Human
+Fighter, Chain Mail base AC 16, deleted after): added a standard gear
+item (Backpack) with zero bonuses to confirm the "ordinary item" path
+shows no bonus fields at all; built "Goblin Slayer Sword" on a Longsword
+base with +1 attack/+1 damage and confirmed the Attacks card showed
+Attack +6 (base +5, correctly +1) immediately, not just on the
+inventory row; built "+1 Chain Mail" and confirmed swapping it in for
+the real Chain Mail moved AC from 16 to 17; edited the sword's attack
+bonus from +1 to +2 and confirmed both the inventory row AND the Attacks
+card picked up Attack +7; removed the sword and confirmed it vanished
+from both Equipment and the database (not just the UI); reloaded and
+confirmed both the DB-backed items and the localStorage-backed equip
+states survived; toggled the character public and viewed signed-out to
+confirm Add/Edit/Remove are genuinely owner-gated (not just
+visually hidden client-side — they don't render at all for a
+non-owner). Caught and fixed one real testing mistake along the way:
+clicking "Chain Mail" by text match hit the *starting equipment* toggle
+button first (same name appears twice — once in owned gear, once in the
+picker's search results), silently unequipping the real armor — not a
+product bug, but a reminder that name-based button queries need scoping
+when the same label can legitimately appear twice on a page. No console
+errors.

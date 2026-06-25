@@ -430,9 +430,14 @@ export function resolveWeapons(
       index: lookup.index,
       name: lookup.name,
       ability,
-      attackBonus: modifiers[ability] + proficiencyBonus + (isRanged && hasArcheryFightingStyle ? 2 : 0),
+      attackBonus:
+        modifiers[ability] +
+        proficiencyBonus +
+        (isRanged && hasArcheryFightingStyle ? 2 : 0) +
+        (lookup.attackBonus ?? 0),
       damageDice,
-      damageBonus: modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0),
+      damageBonus:
+        modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0) + (lookup.damageBonus ?? 0),
       damageType: lookup.damage.damageType,
       mastery: lookup.mastery,
     });

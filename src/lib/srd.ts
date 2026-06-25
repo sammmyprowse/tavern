@@ -91,6 +91,13 @@ export interface EquipmentLookupItem {
   twoHandedDamage: WeaponDamage | null;
   properties: { index: string; name: string }[];
   mastery: { index: string; name: string } | null;
+  // Only ever set on synthetic entries built by resolveInventoryEquipment
+  // (see src/lib/inventory.ts) for a player's custom/found item — real
+  // catalog entries from getEquipmentLookup() never set these, so every
+  // existing call site that doesn't know about inventory items keeps
+  // working unchanged (lookup.attackBonus ?? 0 is always 0 for them).
+  attackBonus?: number;
+  damageBonus?: number;
 }
 
 export interface SkillInfo {

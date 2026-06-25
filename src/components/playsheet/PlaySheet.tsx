@@ -35,7 +35,10 @@ import {
   setPreparedSpells,
   setMetamagicChoices,
   setFightingStyleChoices,
+  setCharacterInventory,
 } from "@/app/characters/actions";
+import { resolveInventoryEquipment, type InventoryItem } from "@/lib/inventory";
+import InventoryManager from "./InventoryManager";
 import type {
   SpeciesOption,
   SubspeciesOption,
@@ -77,6 +80,7 @@ interface PlaySheetProps {
   avatarUrl: string | null;
   bio: string | null;
   personality: PersonalityAnswers | null;
+  inventory: InventoryItem[];
 }
 
 interface PlayState {
@@ -187,9 +191,40 @@ export default function PlaySheet({
   avatarUrl,
   bio,
   personality,
+  inventory: initialInventory,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
+  const [inventory, setInventory] = useState<InventoryItem[]>(initialInventory);
+  const [inventoryManagerOpen, setInventoryManagerOpen] = useState(false);
+  const [editingInventoryItem, setEditingInventoryItem] = useState<InventoryItem | null>(null);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const { bundleItems: inventoryBundleItems, augmentedLookup } = resolveInventoryEquipment(
+    inventory,
+    equipmentByIndex,
+  );
+
+  async function saveInventory(next: InventoryItem[]) {
+    setInventoryError(null);
+    const result = await setCharacterInventory(characterId, next);
+    if (!result.success) {
+      setInventoryError(result.error ?? "Couldn't save inventory.");
+      return;
+    }
+    setInventory(next);
+    setInventoryManagerOpen(false);
+    setEditingInventoryItem(null);
+  }
+
+  function handleSaveInventoryItem(item: InventoryItem) {
+    const exists = inventory.some((i) => i.id === item.id);
+    const next = exists ? inventory.map((i) => (i.id === item.id ? item : i)) : [...inventory, item];
+    saveInventory(next);
+  }
+
+  function handleRemoveInventoryItem(id: string) {
+    saveInventory(inventory.filter((i) => i.id !== id));
+  }
   // Shadows the `draft` prop so a successful level-up can update the sheet
   // instantly without a server round trip — same instant-feedback feel as
   // the rest of the play sheet's local state.
@@ -315,9 +350,10 @@ export default function PlaySheet({
   const rageDamageBonusWhileRaging =
     sheet.classIndex === "barbarian" && play.isRaging ? sheet.rageDamageBonus : 0;
   const monkMartialArtsDie = sheet.classIndex === "monk" ? sheet.martialArtsDie : null;
+  const allOwnedBundleItems = [...sheet.ownedEquipment, ...inventoryBundleItems];
   const ac = computeAC(
-    sheet.ownedEquipment,
-    equipmentByIndex,
+    allOwnedBundleItems,
+    augmentedLookup,
     equippedSet,
     sheet.modifiers.dex,
     hasDefenseFightingStyle,
@@ -346,8 +382,8 @@ export default function PlaySheet({
   const weapons = [
     ...(monkUnarmedStrike ? [monkUnarmedStrike] : []),
     ...resolveWeapons(
-      sheet.ownedEquipment,
-      equipmentByIndex,
+      allOwnedBundleItems,
+      augmentedLookup,
       sheet.modifiers,
       sheet.proficiencyBonus,
       hasArcheryFightingStyle,
@@ -3328,6 +3364,94 @@ export default function PlaySheet({
                 );
               })}
           </div>
+
+          {inventory.length > 0 && (
+            <div className="mt-4 border-t border-tavern-border pt-3">
+              <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                Found / Custom Equipment
+              </h3>
+              <div className="mt-2 space-y-1.5">
+                {inventory.map((item) => {
+                  const base = equipmentByIndex.get(item.baseIndex);
+                  const isEquipped = equippedSet.has(item.id);
+                  const bonusParts = [
+                    item.attackBonus ? `${formatModifier(item.attackBonus)} Attack` : null,
+                    item.damageBonus ? `${formatModifier(item.damageBonus)} Damage` : null,
+                    item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                  ].filter(Boolean);
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-md border border-tavern-border p-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          onClick={() => toggleEquipped(item.id)}
+                          className={`flex flex-1 items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-left text-sm ${
+                            isEquipped
+                              ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                              : "border-tavern-border text-tavern-muted"
+                          }`}
+                        >
+                          <span>
+                            {item.count > 1 ? `${item.count}× ` : ""}
+                            {item.customName ?? base?.name ?? item.baseIndex}
+                          </span>
+                          <span className="text-xs uppercase">
+                            {isEquipped ? "Equipped" : "Stowed"}
+                          </span>
+                        </button>
+                        {isOwner && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setEditingInventoryItem(item)}
+                              className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleRemoveInventoryItem(item.id)}
+                              className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {(bonusParts.length > 0 || item.notes) && (
+                        <p className="mt-1.5 text-xs text-tavern-muted">
+                          {bonusParts.join(", ")}
+                          {bonusParts.length > 0 && item.notes ? " — " : ""}
+                          {item.notes}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isOwner && !inventoryManagerOpen && !editingInventoryItem && (
+            <button
+              onClick={() => setInventoryManagerOpen(true)}
+              className="mt-4 text-xs text-tavern-gold-light hover:text-tavern-gold"
+            >
+              + Add Equipment
+            </button>
+          )}
+          {inventoryError && <p className="mt-2 text-xs text-tavern-oxblood-light">{inventoryError}</p>}
+          {isOwner && (inventoryManagerOpen || editingInventoryItem) && (
+            <InventoryManager
+              equipmentLookup={equipmentByIndex}
+              editingItem={editingInventoryItem}
+              onSave={handleSaveInventoryItem}
+              onClose={() => {
+                setInventoryManagerOpen(false);
+                setEditingInventoryItem(null);
+              }}
+            />
+          )}
         </div>
 
         <CharacterPersonality
