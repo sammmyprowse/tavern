@@ -13,7 +13,8 @@ export default function PersonalityStep({ personality, onUpdate }: PersonalitySt
         <h2 className="font-heading text-2xl font-bold text-tavern-gold">Bring Your Character to Life</h2>
         <p className="mt-3 max-w-md text-tavern-muted">
           Answer a few quick questions about who they are. At the end you&apos;ll get a ready-to-use
-          prompt you can paste into your favorite AI tool to generate a portrait and backstory.
+          prompt — paste it into one AI tool and it&apos;ll hand back both a backstory and a portrait.
+          Works best with ChatGPT, Google Gemini, or Grok, since they can generate the image too.
         </p>
         <p className="mt-3 max-w-md text-sm text-tavern-gold-light">
           This is entirely optional flavor — nothing here changes your character&apos;s stats,

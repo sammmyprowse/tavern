@@ -153,7 +153,12 @@ export default function CharacterPersonality({
         ))}
       </dl>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-tavern-border pt-3">
+      <p className="mt-4 border-t border-tavern-border pt-3 text-xs text-tavern-muted">
+        Works best pasted into ChatGPT, Google Gemini, or Grok — they can generate the portrait
+        image directly from this same prompt, not just the backstory text.
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           onClick={copyPrompt}
           className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold"

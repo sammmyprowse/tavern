@@ -1843,3 +1843,66 @@ reopening the questionnaire from empty. Also reused a real, unmodified
 character (Dragonborn Paladin) purely to confirm RLS still blocks a
 non-owner, non-public view with no changes made to it. No console errors
 after the clipboard fix landed.
+
+## Personality questionnaire UX pass
+User feedback after using the feature: the wrapping-pill option grid was
+"chaotic to read" for someone who "struggles to focus on that kind of
+thing"; the prompt should note it works best with ChatGPT/Gemini/Grok
+specifically because they generate images too; and some curated options
+are too vague to be useful verbatim — "I distrust an entire people" begs
+"who? what?" with no way to answer that without abandoning the quick-pick
+for full custom text. They also asked for every question to get a short
+description like Destructive Trait already had.
+
+Layout: `PersonalityQuestionnaire.tsx` rebuilt around two changes —
+options render as a vertical list (one full-width row each, a small
+radio-dot circle for state) instead of a wrapping flex of pill buttons,
+and each question is now its own bordered card (`rounded-lg border
+border-tavern-bg/40 p-4`) rather than a thin top-border divider between
+flowing sections. Both are aimed straight at "chaotic to read" — a
+predictable top-to-bottom list and a clear visual boundary per question,
+not just a color change.
+
+Descriptions: `PersonalityQuestion` gained a required `description`
+field (replacing the optional `note` two questions had); all 9 now carry
+one. Destructive Trait's and Appearance's existing text became their
+description verbatim — the user said they liked that one specifically,
+so it wasn't reworded, just renamed in the data model.
+
+Detail enrichment: selecting any curated (non-None) option reveals an
+optional "Add specifics — who, what, where?" input. Typing into it folds
+the text into the committed answer as `"<option> Specifically: <detail>"`
+— no new field on `PersonalityAnswers`, just a richer string for that
+same key. Re-opening Edit later shows the combined sentence as plain
+custom text (the curated/detail split is a compose-time UI affordance
+only, not preserved structurally) — an intentional simplification, not
+an oversight.
+
+Real bug caught live (not before): the first build derived "is this a
+curated pick versus custom text" from comparing the live `value` prop
+against `question.options` on every render. The moment a detail's first
+keystroke folded into the committed string, that combined string no
+longer matched any curated option verbatim, so the component flipped to
+"custom" mode on its own — hiding the detail input and showing an empty
+custom box instead, discarding what looked like a no-op to the player.
+Fixed by deciding `mode: "picked" | "custom"` ONCE at mount from the
+initial value, as plain local state never re-derived from props
+afterward — only explicit clicks change it from then on. Confirmed fixed
+by reproducing the original failure on a fresh reload, then re-testing
+the exact same sequence (pick a vague option, type a detail, type more)
+and watching the option stay selected and the detail persist throughout.
+Also re-verified "Write your own" on an unrelated question still works
+post-refactor (regression check) — it does, untouched by the fix.
+
+AI tool note added in two places: the builder gate screen ("Works best
+with ChatGPT, Google Gemini, or Grok, since they can generate the image
+too") and directly above the Copy/Preview buttons on the play sheet,
+where it matters most since that's the point of action.
+
+Tested live with a disposable account/character (deleted after):
+confirmed the new vertical-list layout and per-question cards render
+correctly, confirmed detail enrichment on Destructive Trait survives a
+second edit and a full Save→reload→Preview-prompt round trip with the
+exact combined text appearing correctly in the generated prompt, and
+confirmed "Write your own" still works on a different question in the
+same session. No console errors.

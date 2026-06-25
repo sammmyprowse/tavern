@@ -27,9 +27,9 @@ export const EMPTY_PERSONALITY: PersonalityAnswers = {
 export interface PersonalityQuestion {
   key: keyof PersonalityAnswers;
   label: string;
+  description: string;
   group: "Personality" | "Backstory" | "Appearance";
   options: string[];
-  note?: string;
 }
 
 // Original content written for Tavern — pure flavor, never read by
@@ -42,6 +42,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "positiveTrait",
     label: "Positive Trait",
+    description: "A likable quality that makes them easy to root for.",
     group: "Personality",
     options: [
       "I'm fiercely loyal to those who earn my trust.",
@@ -55,6 +56,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "negativeTrait",
     label: "Negative Trait",
+    description: "A personality quirk or flaw — not necessarily harmful to others, just human.",
     group: "Personality",
     options: [
       "I'm stubborn to a fault — I rarely admit when I'm wrong.",
@@ -68,6 +70,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "heroicTrait",
     label: "Heroic Trait",
+    description: "A quality or past deed that shows real courage or selflessness.",
     group: "Personality",
     options: [
       "I once stood alone against overwhelming odds to protect a stranger.",
@@ -81,8 +84,9 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "destructiveTrait",
     label: "Destructive Trait",
+    description:
+      "An in-fiction social flaw for roleplay — a grudge, a prejudice, a habit that damages relationships. About your character, not any real group.",
     group: "Personality",
-    note: "An in-fiction social flaw for roleplay — a grudge, a prejudice, a habit that damages relationships. About your character, not any real group.",
     options: [
       "I hold a deep grudge against a person, group, or place from my past.",
       "I lie reflexively, even when the truth would serve me better.",
@@ -95,6 +99,8 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "flaw",
     label: "Flaw",
+    description:
+      "A compulsion or vice that causes recurring trouble — different from Negative Trait, which is more passive.",
     group: "Personality",
     options: [
       "I can't resist taking something that isn't mine, even when it's pointless or risky.",
@@ -108,6 +114,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "backstory",
     label: "Backstory / Origin",
+    description: "What happened before the story starts — where they're from and what shaped them.",
     group: "Backstory",
     options: [
       "Orphaned or abandoned young, raised by strangers or no one at all.",
@@ -121,6 +128,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "motivation",
     label: "Motivation / Goal",
+    description: "What they're actually chasing on this adventure, deep down.",
     group: "Backstory",
     options: [
       "Searching for someone they lost — or someone who left.",
@@ -134,6 +142,7 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "bond",
     label: "Bond",
+    description: "A person, place, or thing they care about enough to risk everything for.",
     group: "Backstory",
     options: [
       "A family member or mentor they're desperate to protect or impress.",
@@ -147,8 +156,9 @@ export const PERSONALITY_QUESTIONS: PersonalityQuestion[] = [
   {
     key: "appearance",
     label: "Appearance Details",
+    description:
+      "Purely visual flavor for the AI art prompt — won't add, remove, or change anything in your inventory.",
     group: "Appearance",
-    note: "Purely visual flavor for the AI art prompt — won't add, remove, or change anything in your inventory.",
     options: [
       "A notable scar, old injury, or asymmetry.",
       "An unusual eye color, marking, or feature tied to their heritage.",
