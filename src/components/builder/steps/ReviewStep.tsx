@@ -128,6 +128,7 @@ export default function ReviewStep({
           <dt className="text-tavern-gold-light">Species</dt>
           <dd className="text-tavern-text">
             {sheet?.speciesName}
+            {sheet?.speciesIsHomebrew ? " (Homebrew)" : ""}
             {sheet?.subspeciesName ? ` — ${sheet.subspeciesName}` : ""}
           </dd>
         </div>

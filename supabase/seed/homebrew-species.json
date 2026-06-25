@@ -1,0 +1,256 @@
+{
+  "traits": [
+    {
+      "index": "celestial-resistance",
+      "name": "Celestial Resistance",
+      "description": "You have Resistance to Necrotic damage and Radiant damage."
+    },
+    {
+      "index": "healing-hands",
+      "name": "Healing Hands",
+      "description": "As an action, you can touch a creature and cause it to regain a number of Hit Points equal to your character level. Once you use this trait, you can't use it again until you finish a Long Rest."
+    },
+    {
+      "index": "light-bearer",
+      "name": "Light Bearer",
+      "description": "You know the Light cantrip. Charisma is your spellcasting ability for it."
+    },
+    {
+      "index": "charge",
+      "name": "Charge",
+      "description": "If you move at least 10 feet straight toward a target and then hit it with an attack on the same turn, that target takes an extra 1d6 damage of the attack's type."
+    },
+    {
+      "index": "equine-build",
+      "name": "Equine Build",
+      "description": "You count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift. In addition, you have Advantage on saving throws made to avoid being knocked Prone."
+    },
+    {
+      "index": "hooved-step",
+      "name": "Hooved Step",
+      "description": "You ignore the extra movement cost of moving through difficult terrain created by non-magical rubble, undergrowth, or similar plant growth."
+    },
+    {
+      "index": "shapechanger-trait",
+      "name": "Shapechanger",
+      "description": "As an action, you can change your appearance: height, weight, facial features, the sound of your voice, and other distinguishing characteristics, all within the bounds of your size category. You stay this way until you use this trait again, become Incapacitated, or die. The new form doesn't change any of your game statistics."
+    },
+    {
+      "index": "changeling-instincts",
+      "name": "Changeling Instincts",
+      "description": "You gain proficiency in two of the following skills of your choice: Deception, Insight, Performance, Persuasion."
+    },
+    {
+      "index": "unsettling-visage",
+      "name": "Unsettling Visage",
+      "description": "When a creature you can see hits you with an attack roll, you can take a Reaction to let your features ripple unnervingly, giving that creature Disadvantage on its next attack roll before the end of its next turn. Once you use this trait, you can't use it again until you finish a Long Rest."
+    },
+    {
+      "index": "fairy-flight",
+      "name": "Fairy Flight",
+      "description": "You have a Fly Speed equal to your Speed. You can't use this Fly Speed if you're wearing Heavy armor."
+    },
+    {
+      "index": "innate-charm",
+      "name": "Innate Charm",
+      "description": "You know the Friends cantrip. Charisma is your spellcasting ability for it."
+    },
+    {
+      "index": "satyr-magic-resistance",
+      "name": "Magic Resistance",
+      "description": "You have Advantage on saving throws you make to avoid or end the effects of spells."
+    },
+    {
+      "index": "mirthful-leaps",
+      "name": "Mirthful Leaps",
+      "description": "Your jump distance is doubled, and you don't need a running start to make a long or high jump."
+    },
+    {
+      "index": "rams-headbutt",
+      "name": "Ram's Headbutt",
+      "description": "Your Unarmed Strike can deal 1d4 Bludgeoning damage instead of its normal damage. On a hit, you can push the target up to 5 feet away from you."
+    },
+    {
+      "index": "cats-claws",
+      "name": "Cat's Claws",
+      "description": "You have a Climb Speed of 20 feet, and your Unarmed Strike can deal 1d4 Slashing damage instead of its normal damage."
+    },
+    {
+      "index": "feline-agility",
+      "name": "Feline Agility",
+      "description": "Your reflexes and agility allow you to move with a burst of speed. When you move on your turn, you can double your Speed until the end of that turn. Once you use this trait, you can't use it again until you move 0 feet on one of your turns."
+    },
+    {
+      "index": "cats-talent",
+      "name": "Cat's Talent",
+      "description": "You gain proficiency in the Perception or Stealth skill (your choice)."
+    },
+    {
+      "index": "natural-armor",
+      "name": "Natural Armor",
+      "description": "You have tough, shell-like skin. While you aren't wearing armor, your base Armor Class is 17. You can't benefit from wearing body armor, but you can still use a Shield."
+    },
+    {
+      "index": "tortle-claws",
+      "name": "Claws",
+      "description": "Your Unarmed Strike can deal 1d4 Slashing damage instead of its normal damage."
+    },
+    {
+      "index": "hold-breath",
+      "name": "Hold Breath",
+      "description": "You can hold your breath for up to 1 hour."
+    },
+    {
+      "index": "owlin-flight",
+      "name": "Flight",
+      "description": "You have a Fly Speed of 30 feet. You can't use this Fly Speed if you're wearing Heavy armor."
+    },
+    {
+      "index": "silent-feathers",
+      "name": "Silent Feathers",
+      "description": "You gain proficiency in the Stealth skill."
+    },
+    {
+      "index": "keen-sight",
+      "name": "Keen Sight",
+      "description": "You gain proficiency in the Perception skill."
+    },
+    {
+      "index": "fury-of-the-small",
+      "name": "Fury of the Small",
+      "description": "When you hit a creature with an attack roll and that creature is larger than you, you can deal extra damage to it equal to your character level. Once you use this trait, you can't use it again until you finish a Short or Long Rest."
+    },
+    {
+      "index": "nimble-escape",
+      "name": "Nimble Escape",
+      "description": "You can take the Disengage or Hide action as a Bonus Action."
+    },
+    {
+      "index": "shifting",
+      "name": "Shifting",
+      "description": "As a Bonus Action, you can assume a more bestial appearance for 1 minute. For the duration, you gain Temporary Hit Points equal to your character level plus your Constitution modifier, and your Speed increases by 10 feet. Once you use this trait, you can't use it again until you finish a Short or Long Rest."
+    }
+  ],
+  "species": [
+    {
+      "index": "aasimar",
+      "name": "Aasimar",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "celestial-resistance", "name": "Celestial Resistance"},
+        {"index": "healing-hands", "name": "Healing Hands"},
+        {"index": "light-bearer", "name": "Light Bearer"}
+      ]
+    },
+    {
+      "index": "centaur",
+      "name": "Centaur",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 40,
+      "traits": [
+        {"index": "charge", "name": "Charge"},
+        {"index": "equine-build", "name": "Equine Build"},
+        {"index": "hooved-step", "name": "Hooved Step"}
+      ]
+    },
+    {
+      "index": "changeling",
+      "name": "Changeling",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "shapechanger-trait", "name": "Shapechanger"},
+        {"index": "changeling-instincts", "name": "Changeling Instincts"},
+        {"index": "unsettling-visage", "name": "Unsettling Visage"}
+      ]
+    },
+    {
+      "index": "fairy",
+      "name": "Fairy",
+      "size": "Small",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "fairy-flight", "name": "Fairy Flight"},
+        {"index": "fey-ancestry", "name": "Fey Ancestry"},
+        {"index": "innate-charm", "name": "Innate Charm"}
+      ]
+    },
+    {
+      "index": "satyr",
+      "name": "Satyr",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 35,
+      "traits": [
+        {"index": "satyr-magic-resistance", "name": "Magic Resistance"},
+        {"index": "mirthful-leaps", "name": "Mirthful Leaps"},
+        {"index": "rams-headbutt", "name": "Ram's Headbutt"}
+      ]
+    },
+    {
+      "index": "tabaxi",
+      "name": "Tabaxi",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "cats-claws", "name": "Cat's Claws"},
+        {"index": "feline-agility", "name": "Feline Agility"},
+        {"index": "cats-talent", "name": "Cat's Talent"}
+      ]
+    },
+    {
+      "index": "tortle",
+      "name": "Tortle",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "natural-armor", "name": "Natural Armor"},
+        {"index": "tortle-claws", "name": "Claws"},
+        {"index": "hold-breath", "name": "Hold Breath"}
+      ]
+    },
+    {
+      "index": "owlin",
+      "name": "Owlin",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "owlin-flight", "name": "Flight"},
+        {"index": "silent-feathers", "name": "Silent Feathers"},
+        {"index": "keen-sight", "name": "Keen Sight"}
+      ]
+    },
+    {
+      "index": "goblin",
+      "name": "Goblin",
+      "size": "Small",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "fury-of-the-small", "name": "Fury of the Small"},
+        {"index": "nimble-escape", "name": "Nimble Escape"},
+        {"index": "darkvision-60", "name": "Darkvision (60 ft.)"}
+      ]
+    },
+    {
+      "index": "shifter",
+      "name": "Shifter",
+      "size": "Medium",
+      "type": "Humanoid",
+      "speed": 30,
+      "traits": [
+        {"index": "shifting", "name": "Shifting"},
+        {"index": "keen-senses", "name": "Keen Senses"},
+        {"index": "darkvision-60", "name": "Darkvision (60 ft.)"}
+      ]
+    }
+  ]
+}

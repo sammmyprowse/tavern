@@ -78,6 +78,7 @@ export interface CharacterSheet {
   name: string;
   level: number;
   speciesName: string;
+  speciesIsHomebrew: boolean;
   subspeciesName: string | null;
   className: string;
   classIndex: string;
@@ -220,6 +221,7 @@ export function buildCharacterSheet(
     name: draft.name,
     level: draft.level,
     speciesName: species.name,
+    speciesIsHomebrew: species.isHomebrew,
     subspeciesName: subspecies?.name ?? null,
     className: cls.name,
     classIndex: cls.index,

@@ -1233,7 +1233,8 @@ export default function PlaySheet({
               {chosenSubclass ? ` (${chosenSubclass.name})` : ""}
             </p>
             <p className="text-tavern-muted">
-              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName} — {sheet.backgroundName}
+              Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName}
+              {sheet.speciesIsHomebrew ? " (Homebrew)" : ""} — {sheet.backgroundName}
               {sheet.backgroundIsHomebrew ? " (Homebrew)" : ""}
             </p>
             {chosenOrder && (

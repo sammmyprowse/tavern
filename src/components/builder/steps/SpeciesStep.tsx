@@ -38,6 +38,11 @@ export default function SpeciesStep({ species, subspecies, draft, onUpdate }: Sp
               }`}
             >
               <div className="font-heading font-bold text-tavern-text">{s.name}</div>
+              {s.isHomebrew && (
+                <span className="mt-1 inline-block rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                  Homebrew
+                </span>
+              )}
               <div className="mt-1 text-xs text-tavern-muted">
                 {s.size ? `${s.size} · ` : ""}
                 {s.speed} ft speed
@@ -52,6 +57,12 @@ export default function SpeciesStep({ species, subspecies, draft, onUpdate }: Sp
           <h3 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
             {selected.name} Traits
           </h3>
+          {selected.isHomebrew && (
+            <p className="mt-1 text-xs text-tavern-muted">
+              <span className="text-tavern-gold-light">Homebrew species</span> — original
+              content written for Tavern, not part of the official SRD.
+            </p>
+          )}
           <ul className="mt-2 space-y-1 text-sm text-tavern-muted">
             {selected.traits.map((t) => (
               <li key={t.index}>{t.name}</li>

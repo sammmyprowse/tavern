@@ -1380,3 +1380,65 @@ shipped for Wizard/Sorcerer/Cleric/Bard/Druid/Paladin/Ranger/Warlock/
 Fighter/Barbarian/Monk plus Rogue (done earlier in the project). Remaining
 from the original roadmap: homebrew species (Fairy and others missing from
 the free SRD's 9), explicitly pre-authorized by the user.
+
+## Homebrew species
+The free SRD only ships the 9 official 2024 PHB species (Dragonborn, Dwarf,
+Elf, Gnome, Goliath, Halfling, Human, Orc, Tiefling) — same root-cause gap as
+backgrounds (4/16) and Fighting Style (4/~9). User explicitly pre-authorized
+homebrew here ("happy for these to be homebrew too"), naming Fairy plus "any
+others" missing from the roster. Added 10 original homebrew species: Fairy
+(explicit request) plus Aasimar, Centaur, Changeling, Goblin, Owlin, Satyr,
+Shifter, Tabaxi, Tortle — a varied spread across flight (Fairy, Owlin),
+small/sneaky (Goblin, Tabaxi), tanky (Tortle, Centaur), and magical/fey
+(Aasimar, Changeling, Satyr, Shifter), comparable in scope to the 12 homebrew
+backgrounds. **Original mechanics only, same legal posture as the homebrew
+backgrounds/feats** — these are NOT reproductions of the real published
+Aasimar/Fairy/Tabaxi/etc. stat blocks from Volo's Guide, Wild Beyond the
+Witchlight, or other sourcebooks (those are licensed content with the same
+copyright status as the missing PHB backgrounds); each trait here is freshly
+written, only the species *concept/name* is drawn from the wider game.
+
+**Source/seed file:** `supabase/seed/homebrew-species.json` — 26 new homebrew
+traits (`ruleset='homebrew'` in the `traits` table) plus the 10 species rows
+(`ruleset='homebrew'` in `species`). Two traits are deliberately REUSED from
+the real SRD rather than duplicated: `darkvision-60` (Goblin, Shifter — the
+exact same mechanical effect already shared by Dragonborn/Elf/Gnome/Tiefling)
+and `fey-ancestry` (Fairy, via Elf's existing trait — "Advantage on saves to
+avoid/end Charmed," an exact match for the flavor). `keen-senses` (Shifter)
+also reuses the real Elf trait (skill-proficiency choice) rather than writing
+a near-duplicate. Every other trait is original. **Deliberately scoped flat
+— no subspecies/lineages** for any of the 10, unlike several real species
+(Gnome/Dwarf/Elf/Tiefling/Dragonborn all have 2024 lineage choices) — keeps
+the batch bounded, consistent with shipping 1 subclass per class instead of
+the real game's 3-4.
+
+**Required one real code change, not just data**: `getSpeciesList()` in
+`srd.ts` hardcoded `.eq("ruleset", "2024")` — homebrew species would have
+been invisible in the builder without widening it to
+`.in("ruleset", ["2024", "homebrew"])`, mirroring `getGeneralFeatsList()`'s
+existing pattern exactly. Added `isHomebrew: boolean` to `SpeciesOption`
+(same shape as `FeatOption.isHomebrew`) and a new `speciesIsHomebrew` field
+on `CharacterSheet` (`buildCharacterSheet` now reads `species.isHomebrew`,
+mirroring the existing `backgroundIsHomebrew` plumbing exactly). Surfaced in
+three places, matching backgrounds' existing disclosure pattern at each:
+`SpeciesStep.tsx`'s species grid (a "Homebrew" badge chip) and its selected-
+species trait panel (a one-line disclosure sentence), `ReviewStep.tsx`'s
+summary line, and the Play Sheet's header line — all three now show
+"SpeciesName (Homebrew)" exactly like backgrounds already did. Did NOT touch
+`getSubspeciesList()` — none of the 10 homebrew species have lineages, so its
+existing 2024-only filter is still correct as-is.
+
+Tested live end-to-end through the actual builder (not a hand-inserted SQL
+character, since this exercises the builder's species list/picker, not just
+the play sheet's rendering): confirmed all 19 species appear (9 official
+sorted first, 10 homebrew sorted after, each homebrew one badged), selected
+Fairy and confirmed its 3 traits (Fairy Flight, Fey Ancestry, Innate Charm)
+plus the homebrew disclosure sentence render, walked a full Sorcerer/Sage
+build through Class → Abilities → Background, confirmed the Review step
+showed "Species: Fairy (Homebrew)", saved, and confirmed the Play Sheet
+header showed "Level 1 Fairy (Homebrew) — Sage". No console errors.
+
+**With this, every item in the original full-leveling roadmap is shipped**:
+all 12 classes' spellcasting/resources, plus homebrew species filling the
+free SRD's species gap. No further roadmap items are queued — see
+`project_tavern.md` for what's next if the user opens a new initiative.

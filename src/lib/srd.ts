@@ -8,6 +8,7 @@ export interface SpeciesOption {
   speed: number | null;
   traits: { index: string; name: string }[];
   hasSubspecies: boolean;
+  isHomebrew: boolean;
 }
 
 export interface SubspeciesOption {
@@ -148,9 +149,15 @@ function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
   return [];
 }
 
+// Species (incl. homebrew, same disclosure pattern as backgrounds/feats):
+// the free SRD only ships the 9 official 2024 PHB species, so 10 original
+// homebrew species (Fairy explicitly requested, plus other well-known D&D
+// species missing from the free SRD's roster) are tagged ruleset='homebrew'
+// — see CLAUDE.md's "Homebrew species" section and
+// supabase/seed/homebrew-species.json for the full writeup.
 export async function getSpeciesList(): Promise<SpeciesOption[]> {
   const [{ data: species }, { data: subspecies }] = await Promise.all([
-    supabase.from("species").select("index, name, size, speed, data").eq("ruleset", "2024"),
+    supabase.from("species").select("index, name, size, speed, ruleset, data").in("ruleset", ["2024", "homebrew"]),
     supabase.from("subspecies").select("species_index").eq("ruleset", "2024"),
   ]);
 
@@ -166,9 +173,13 @@ export async function getSpeciesList(): Promise<SpeciesOption[]> {
         speed: s.speed,
         traits: data.traits ?? [],
         hasSubspecies: speciesWithSubspecies.has(s.index),
+        isHomebrew: s.ruleset === "homebrew",
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (a.isHomebrew !== b.isHomebrew) return a.isHomebrew ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export async function getSubspeciesList(): Promise<SubspeciesOption[]> {
