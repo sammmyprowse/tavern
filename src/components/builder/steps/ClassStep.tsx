@@ -57,6 +57,9 @@ export default function ClassStep({ classes, skills, draft, onUpdate }: ClassSte
 
       {selected && (
         <div className="mt-6 space-y-4">
+          {selected.description && (
+            <p className="text-sm text-tavern-muted italic">{selected.description}</p>
+          )}
           <div className="rounded-lg border border-tavern-border bg-tavern-bg p-4 text-sm text-tavern-muted">
             <div>
               <span className="text-tavern-gold-light">Primary Ability:</span>{" "}

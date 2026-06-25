@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { AbilityKey, ArmorClassData } from "./character";
+import { SPECIES_DESCRIPTIONS, CLASS_DESCRIPTIONS, OFFICIAL_BACKGROUND_DESCRIPTIONS } from "./flavor-text";
 
 export interface SpeciesOption {
   index: string;
@@ -9,6 +10,7 @@ export interface SpeciesOption {
   traits: { index: string; name: string }[];
   hasSubspecies: boolean;
   isHomebrew: boolean;
+  description: string | null;
 }
 
 export interface SubspeciesOption {
@@ -46,6 +48,7 @@ export interface ClassOption {
   // null for non-casters. Generic (not Wizard-specific) so the same field
   // works once Sorcerer/Cleric's spellcasting passes happen.
   spellcastingAbility: AbilityKey | null;
+  description: string | null;
 }
 
 export interface EquipmentBundleItem {
@@ -180,6 +183,7 @@ export async function getSpeciesList(): Promise<SpeciesOption[]> {
         traits: data.traits ?? [],
         hasSubspecies: speciesWithSubspecies.has(s.index),
         isHomebrew: s.ruleset === "homebrew",
+        description: SPECIES_DESCRIPTIONS[s.index] ?? null,
       };
     })
     .sort((a, b) => {
@@ -264,6 +268,7 @@ export async function getClassesList(): Promise<ClassOption[]> {
         startingEquipmentDesc: d.starting_equipment_options?.[0]?.desc ?? null,
         startingEquipmentFirstOption: parseEquipmentOptions(d.starting_equipment_options?.[0]),
         spellcastingAbility: (d.spellcasting?.spellcasting_ability?.index as AbilityKey) ?? null,
+        description: CLASS_DESCRIPTIONS[c.index] ?? null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -287,7 +292,7 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
       return {
         index: b.index,
         name: b.name,
-        description: d.description ?? null,
+        description: d.description ?? OFFICIAL_BACKGROUND_DESCRIPTIONS[b.index] ?? null,
         isHomebrew: b.ruleset === "homebrew",
         abilityScores: d.ability_scores ?? [],
         feat: d.feat ?? null,

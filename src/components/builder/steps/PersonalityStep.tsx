@@ -4,9 +4,10 @@ import PersonalityQuestionnaire from "@/components/PersonalityQuestionnaire";
 interface PersonalityStepProps {
   personality: PersonalityAnswers | null;
   onUpdate: (personality: PersonalityAnswers | null) => void;
+  onSkip: () => void;
 }
 
-export default function PersonalityStep({ personality, onUpdate }: PersonalityStepProps) {
+export default function PersonalityStep({ personality, onUpdate, onSkip }: PersonalityStepProps) {
   if (!personality) {
     return (
       <div className="flex flex-col items-center py-10 text-center">
@@ -28,7 +29,7 @@ export default function PersonalityStep({ personality, onUpdate }: PersonalitySt
             Let&apos;s Do It
           </button>
           <button
-            onClick={() => onUpdate(null)}
+            onClick={onSkip}
             className="rounded-lg border border-tavern-border px-6 py-2.5 font-heading text-sm font-bold tracking-widest text-tavern-muted uppercase hover:border-tavern-gold-light hover:text-tavern-gold-light"
           >
             Skip For Now

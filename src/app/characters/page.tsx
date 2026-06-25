@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 import { getSpeciesList, getSubspeciesList, getClassesList } from "@/lib/srd";
 import type { CharacterDraft } from "@/lib/character";
+import CharacterList, { type CharacterListItem } from "@/components/characters/CharacterList";
 
 export default async function Characters() {
   const supabase = await createClient();
@@ -55,47 +56,20 @@ export default async function Characters() {
           </Link>
         </div>
 
-        {!characters || characters.length === 0 ? (
-          <p className="mt-8 text-tavern-muted">
-            No characters yet —{" "}
-            <Link href="/builder" className="text-tavern-gold-light underline hover:text-tavern-gold">
-              build your first one
-            </Link>
-            .
-          </p>
-        ) : (
-          <ul className="mt-8 space-y-3">
-            {characters.map((c) => {
-              const draft = c.draft as unknown as CharacterDraft;
-              const sp = species.find((s) => s.index === draft.speciesIndex);
-              const sub = subspecies.find((s) => s.index === draft.subspeciesIndex);
-              const cls = classes.find((cl) => cl.index === draft.classIndex);
-              return (
-                <li key={c.id}>
-                  <Link
-                    href={`/characters/${c.id}`}
-                    className="block rounded-lg border border-tavern-border bg-tavern-card p-4 hover:border-tavern-gold-light"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="font-heading text-lg font-bold text-tavern-text">
-                        {c.name}
-                      </div>
-                      {c.is_public && (
-                        <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
-                          Public
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 text-sm text-tavern-muted">
-                      {sub ? sub.name : sp?.name}
-                      {cls ? ` ${cls.name}` : ""}
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <CharacterList
+          characters={(characters ?? []).map((c): CharacterListItem => {
+            const draft = c.draft as unknown as CharacterDraft;
+            const sp = species.find((s) => s.index === draft.speciesIndex);
+            const sub = subspecies.find((s) => s.index === draft.subspeciesIndex);
+            const cls = classes.find((cl) => cl.index === draft.classIndex);
+            return {
+              id: c.id,
+              name: c.name,
+              isPublic: c.is_public,
+              subtitle: `${sub ? sub.name : sp?.name ?? ""}${cls ? ` ${cls.name}` : ""}`,
+            };
+          })}
+        />
       </div>
     </div>
   );

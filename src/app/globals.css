@@ -18,3 +18,14 @@
   --color-tavern-parchment: #f4e8c1;
   --color-tavern-parchment-dark: #d4c89e;
 }
+
+/* Hides the scrollbar track/thumb on an otherwise-scrollable element —
+   used for horizontal swipe/drag-to-scroll strips where the native
+   scrollbar reads as visual clutter rather than a useful affordance. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

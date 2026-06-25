@@ -1919,3 +1919,68 @@ and the instructions are now numbered, with #2 explicitly saying
 "actually create it with your image generation capability, don't just
 describe what it would look like." Verified live via Preview prompt
 that the new wording renders correctly.
+
+## Four small UX fixes
+1. **Section nav scrollbar** — "the scroll bar is ugly." Added a
+   `.scrollbar-hide` utility in `globals.css` (the standard
+   `scrollbar-width: none` + `::-webkit-scrollbar { display: none }`
+   pair) applied to `SectionNav.tsx`'s scrollable strip, plus two static
+   edge-fade gradients (`bg-gradient-to-r/l from-tavern-bg`) so there's
+   still a visual hint the strip scrolls now that the native scrollbar
+   chrome is gone. The underlying `overflow-x-auto` is untouched — only
+   the scrollbar's own visual track/thumb is hidden, scroll itself
+   (wheel, trackpad, touch, drag) still works exactly as before.
+2. **Delete on the My Characters list** — previously only existed on the
+   play sheet. `DeleteCharacterButton` gained an optional `onDeleted`
+   callback (list usage removes the row from local state; play-sheet
+   usage, when the prop is omitted, keeps navigating to `/characters`
+   since that page's own data is gone). The list page's row markup
+   changed from "the whole card is a `<Link>`" to "a `<div>` card
+   containing a text-only `<Link>` plus a delete control below it" —
+   needed because a `<button>` can't nest inside an `<a>`, and doing it
+   this way (rather than absolute-positioning the button into a corner)
+   gives the confirm bar room to expand without overflowing the card.
+   New `CharacterList.tsx` client component under
+   `src/components/characters/` owns this local state; `page.tsx` stays
+   a server component that just computes display strings and hands off
+   a plain array.
+3. **"Skip For Now" did nothing** — a real bug, not a vague complaint.
+   `PersonalityStep`'s gate screen calls `onUpdate(null)` for both
+   buttons' original code, but the gate screen only ever renders when
+   `personality` is ALREADY null — so "Skip For Now" was a true no-op
+   state update (`null === null`, React doesn't even re-render). Fixed
+   by adding an `onSkip` prop threaded from `BuilderWizard.tsx`'s
+   existing `goNext`, called instead of the pointless `onUpdate(null)`.
+4. **Species/Class/Background selectors only showed stats, not
+   descriptions.** Background already rendered `selected.description`
+   — but investigating revealed that field is `null` for all 4 OFFICIAL
+   SRD backgrounds (Acolyte/Criminal/Sage/Soldier); it only has real
+   text for homebrew ones, because that text was authored alongside
+   each homebrew background, not sourced from the open dataset. Species
+   and classes don't have any description field in their SRD data
+   at all — checked directly via `jsonb_object_keys` before assuming
+   otherwise. New `src/lib/flavor-text.ts` holds three original,
+   one-line-each lookup maps: `SPECIES_DESCRIPTIONS` (19),
+   `CLASS_DESCRIPTIONS` (12), and `OFFICIAL_BACKGROUND_DESCRIPTIONS` (4,
+   filling just the gap the homebrew ones don't have). `getSpeciesList`/
+   `getClassesList`/`getBackgroundsList` merge these in as a fallback
+   (`d.description ?? LOOKUP[index] ?? null`), so the three step
+   components' rendering code didn't need new logic — `SpeciesStep`/
+   `ClassStep` just gained the same `{selected.description && <p
+   className="italic">...}` block `BackgroundStep` already had.
+   This is original short flavor text, not paraphrased from any
+   specific copyrighted book — same authorship footing as the homebrew
+   feats/backgrounds/Metamagic options already in the project.
+
+Tested live end-to-end with a disposable account/character (deleted
+after): walked the full builder (Human Wizard, Sage background),
+confirmed Species/Class/Background each show their description text in
+the same spot relative to the stats panel; confirmed "Skip For Now" now
+advances all the way to Review with "Personality & Backstory: Skipped"
+showing correctly; confirmed the play sheet's section nav has no visible
+scrollbar while `scrollWidth > clientWidth` (so the fix is actually being
+exercised, not a no-op test) and still scrolls programmatically;
+confirmed Delete on the My Characters list shows the same confirm bar,
+removes the row immediately without a page reload, and the row is
+actually gone from the database, not just hidden client-side. No console
+errors.

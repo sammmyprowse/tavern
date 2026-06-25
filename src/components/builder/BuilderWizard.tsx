@@ -153,7 +153,7 @@ export default function BuilderWizard({
           <BackgroundStep backgrounds={backgrounds} draft={draft} onUpdate={updateDraft} />
         )}
         {step === "personality" && (
-          <PersonalityStep personality={personality} onUpdate={setPersonality} />
+          <PersonalityStep personality={personality} onUpdate={setPersonality} onSkip={goNext} />
         )}
         {step === "review" && (
           <ReviewStep

@@ -7,11 +7,17 @@ import { deleteCharacter } from "@/app/characters/actions";
 interface DeleteCharacterButtonProps {
   characterId: string;
   characterName: string;
+  // Play sheet usage (default): navigate away, since the page you're on
+  // no longer has valid data once its own character is gone. List-page
+  // usage passes this instead, to remove the row from local state
+  // without a full navigation.
+  onDeleted?: () => void;
 }
 
 export default function DeleteCharacterButton({
   characterId,
   characterName,
+  onDeleted,
 }: DeleteCharacterButtonProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -27,7 +33,8 @@ export default function DeleteCharacterButton({
       setPending(false);
       return;
     }
-    router.push("/characters");
+    if (onDeleted) onDeleted();
+    else router.push("/characters");
   }
 
   if (!confirming) {

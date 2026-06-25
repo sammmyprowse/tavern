@@ -52,6 +52,10 @@ export default function SpeciesStep({ species, subspecies, draft, onUpdate }: Sp
         })}
       </div>
 
+      {selected?.description && (
+        <p className="mt-6 text-sm text-tavern-muted italic">{selected.description}</p>
+      )}
+
       {selected && selected.traits.length > 0 && (
         <div className="mt-6 rounded-lg border border-tavern-border bg-tavern-bg p-4">
           <h3 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
