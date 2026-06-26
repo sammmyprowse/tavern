@@ -2434,3 +2434,106 @@ goblins)... 1d6 [6] — add to Goblin Slayer Sword's normal Damage roll";
 reopened Edit and confirmed the Special Variant section opened already
 expanded with every field (name, d6, count, condition) correctly
 pre-filled. No console errors.
+
+## Magic Items
+User question ("shouldn't there be boots or gloves?") led to checking
+the `magic_items` table directly rather than answering from memory —
+confirmed 5e has no armor "slots" beyond body armor + shield at all,
+and mundane boots/gloves/cloaks/helms don't exist in the `equipment`
+table either (zero matches). They only exist as 262 real **magic**
+items (Boots of Elvenkind, Cloak of Protection, etc.), in a completely
+separate table the inventory system never touched. User's follow-up:
+build that in, as a second tab next to Add Equipment, with the same
+kind of custom builder — including homebrew items with no real-world
+equivalent at all (their example: "Ol'Greg's Loin Cloth," a homebrew
++1-resistance item from a past campaign, not in any book).
+
+**Why magic items needed a separate system rather than extending
+InventoryItem:** every real magic item's mechanics live in free-text
+prose (`data.desc`) — there's no structured `damage`/`armor_class` field
+to anchor bonuses to, the way equipment has. More fundamentally, most
+magic items (Wondrous Items, Rings, Potions, Wands, Staffs — 191 of
+262) have no mundane "base item" at all (a Bag of Holding isn't a
+buffed Backpack). New `characters.magic_items jsonb` column, same
+separate-top-level-column pattern as inventory/currency/personality.
+
+**`MagicItem`** (`src/lib/magic-items.ts`): `{id, magicItemIndex,
+customName, count, acBonus, notes}`. `magicItemIndex` anchors into the
+real `magic_items` SRD table for flavor/rarity/attunement/real
+description, or is `null` for a fully homebrew item like Ol'Greg's Loin
+Cloth — `customName` becomes REQUIRED (validated in the UI, Save
+disabled until non-empty) only in that case, since there's no real name
+to fall back on. **`acBonus` is deliberately the ONLY auto-applying
+number** — summed directly onto the computed AC for every equipped
+magic item (`magicItemAcBonus` in `PlaySheet.tsx`, added straight onto
+`computeAC(...)`'s result, no changes to `computeArmorClass` itself
+needed). Attack/damage bonuses were deliberately NOT given structured
+fields the way the equipment custom-builder has them: a worn magic
+item isn't anchored to one specific weapon, so unlike a custom sword
+there's no unambiguous "which attack does this buff" answer to
+auto-apply a number to — Flame Tongue's extra fire damage, a Ring's
+passive bonus, etc. all go in `notes` as freeform "Effect" text
+instead, same informational-only treatment as dozens of other "real
+effect, shown not auto-applied" rules already in this app.
+
+**`getMagicItemLookup()`** (`src/lib/srd.ts`) reads the `magic_items`
+table — it has the SAME dedicated `equipment_category`/`rarity`
+columns pattern as `equipment`'s `categories`/`weight`/`cost_qty`, just
+discovered this session. Real bug caught immediately by live testing,
+fixed before anything shipped: the dedicated `equipment_category`
+column stores the raw slug (`"wondrous-items"`), not a display label —
+the category tabs in `MagicItemManager` compare against display names
+(`"Wondrous Items"`), so every tab except "All" would have silently
+matched zero items. Fixed with a small `MAGIC_ITEM_CATEGORY_LABELS`
+slug→label map in `getMagicItemLookup()` itself, so every consumer
+gets the pretty name directly rather than needing to know about the
+slug form. Confirmed live afterward: the Rings tab correctly filters
+to just Ring of Animal Influence/Djinni Summoning/Elemental Command/
+Evasion, etc.
+
+**`MagicItemManager.tsx`** mirrors `InventoryManager.tsx`'s shape
+(search + category tabs + add/edit form) but the picker step has a
+second, always-visible entry point — **"+ Create Homebrew Magic
+Item"** — alongside the real 262-item searchable list, since unlike
+equipment there's no mundane fallback to "start from." When a real
+item is picked, the form shows a read-only reference block (category —
+rarity — Requires Attunement, then the full real description text)
+directly above the editable fields, since for a magic item "what does
+this do" is the single most useful thing to see while deciding what AC
+bonus/notes to fill in — unlike the equipment builder, which only
+reveals real stats behind a separate expand click on the LIST view,
+not inline in the form itself. No "Special Variant" collapse toggle
+here (unlike the equipment builder's restructuring two sections up) —
+every magic item IS the special case by definition, there's no "plain
+version" to default to, so showing the fields directly isn't the same
+cheat-temptation risk that motivated that toggle for mundane gear.
+
+**PlaySheet wiring**: `magicItems` state + `setCharacterMagicItems`
+Server Action follow the exact `inventory`/`setCharacterInventory`
+shape. Equip state lives in a new `PlayState.equippedMagicItemIndexes`
+(localStorage-only, same as `equippedIndexes` — completely separate
+Set since magic items are a separate list from `ownedEquipment`/
+`inventory`). A "Magic Items" subsection renders under "Found / Custom
+Equipment" using the same row shape (equip/stow toggle, Edit/Remove,
+expandable details via the new `magicItemDetailLines()` in
+`equipment-details.ts`), and "+ Add Magic Item" sits right next to
+"+ Add Equipment" rather than replacing it.
+
+Tested live with a disposable account/character (Human Fighter, Soldier
+background, deleted after): picked a real item (Cloak of Protection)
+from the picker, confirmed its reference block showed "Wondrous Items —
+Uncommon (Requires Attunement)" plus the real "+1 bonus to Armor Class
+and saving throws" text, set AC bonus to 1, saved, equipped it, and
+confirmed AC went from 16 to 17 live; separately created the homebrew
+"Ol'Greg's Loin Cloth" with Effect "+1 resistance to necrotic damage" —
+confirmed the Save button stayed disabled with a visible validation
+message until a name was entered, confirmed the DB row saved with
+`magicItemIndex: null` and the real custom name/notes; reopened Edit on
+both items and confirmed each correctly pre-filled (reference block for
+the real one, plain name+effect for the homebrew one); confirmed the
+category tabs filter correctly post-fix. One testing-only false alarm
+along the way: editing `srd.ts` while a form was open mid-test
+triggered Next.js Fast Refresh to remount the page, which looked like
+the form had silently closed/lost its in-progress AC bonus value — it
+hadn't; re-checking confirmed the value survived the remount. No
+console errors.

@@ -37,11 +37,14 @@ import {
   setFightingStyleChoices,
   setCharacterInventory,
   setCharacterCurrency,
+  setCharacterMagicItems,
 } from "@/app/characters/actions";
 import { resolveInventoryEquipment, type InventoryItem } from "@/lib/inventory";
+import type { MagicItem } from "@/lib/magic-items";
 import { deriveStartingCurrency, type Currency } from "@/lib/currency";
-import { equipmentDetailLines } from "@/lib/equipment-details";
+import { equipmentDetailLines, magicItemDetailLines } from "@/lib/equipment-details";
 import InventoryManager from "./InventoryManager";
+import MagicItemManager from "./MagicItemManager";
 import CurrencyTracker from "./CurrencyTracker";
 import type {
   SpeciesOption,
@@ -50,6 +53,7 @@ import type {
   BackgroundOption,
   SkillInfo,
   EquipmentLookupItem,
+  MagicItemLookupEntry,
   ClassFeature,
   SubclassOption,
   FeatOption,
@@ -73,6 +77,7 @@ interface PlaySheetProps {
   backgrounds: BackgroundOption[];
   skills: SkillInfo[];
   equipment: EquipmentLookupItem[];
+  magicItemLookup: MagicItemLookupEntry[];
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
@@ -86,6 +91,7 @@ interface PlaySheetProps {
   personality: PersonalityAnswers | null;
   inventory: InventoryItem[];
   currency: Currency | null;
+  magicItems: MagicItem[];
 }
 
 interface PlayState {
@@ -95,6 +101,10 @@ interface PlayState {
   deathSaveSuccesses: number;
   deathSaveFailures: number;
   equippedIndexes: string[];
+  // Separate from equippedIndexes since magic items live in their own list
+  // (magicItems, not ownedEquipment/inventory) — same localStorage-only,
+  // ephemeral-session treatment as every other equip state on this sheet.
+  equippedMagicItemIndexes: string[];
   rollMode: RollMode;
   // expendedSlots[i] = slots used at spell level i+1. Play state, not part of
   // the saved draft — resets every Long Rest the same way hit dice used does.
@@ -185,6 +195,7 @@ export default function PlaySheet({
   backgrounds,
   skills,
   equipment,
+  magicItemLookup,
   features,
   subclassOptions,
   generalFeats,
@@ -198,9 +209,11 @@ export default function PlaySheet({
   personality,
   inventory: initialInventory,
   currency: initialCurrency,
+  magicItems: initialMagicItems,
 }: PlaySheetProps) {
   const storageKey = `tavern_play_${characterId}`;
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
+  const magicItemByIndex = new Map(magicItemLookup.map((m) => [m.index, m]));
   const [inventory, setInventory] = useState<InventoryItem[]>(initialInventory);
   const [inventoryManagerOpen, setInventoryManagerOpen] = useState(false);
   const [editingInventoryItem, setEditingInventoryItem] = useState<InventoryItem | null>(null);
@@ -230,6 +243,33 @@ export default function PlaySheet({
 
   function handleRemoveInventoryItem(id: string) {
     saveInventory(inventory.filter((i) => i.id !== id));
+  }
+
+  const [magicItems, setMagicItems] = useState<MagicItem[]>(initialMagicItems);
+  const [magicItemManagerOpen, setMagicItemManagerOpen] = useState(false);
+  const [editingMagicItem, setEditingMagicItem] = useState<MagicItem | null>(null);
+  const [magicItemError, setMagicItemError] = useState<string | null>(null);
+
+  async function saveMagicItems(next: MagicItem[]) {
+    setMagicItemError(null);
+    const result = await setCharacterMagicItems(characterId, next);
+    if (!result.success) {
+      setMagicItemError(result.error ?? "Couldn't save magic items.");
+      return;
+    }
+    setMagicItems(next);
+    setMagicItemManagerOpen(false);
+    setEditingMagicItem(null);
+  }
+
+  function handleSaveMagicItem(item: MagicItem) {
+    const exists = magicItems.some((i) => i.id === item.id);
+    const next = exists ? magicItems.map((i) => (i.id === item.id ? item : i)) : [...magicItems, item];
+    saveMagicItems(next);
+  }
+
+  function handleRemoveMagicItem(id: string) {
+    saveMagicItems(magicItems.filter((i) => i.id !== id));
   }
   // Shadows the `draft` prop so a successful level-up can update the sheet
   // instantly without a server round trip — same instant-feedback feel as
@@ -291,6 +331,7 @@ export default function PlaySheet({
     deathSaveSuccesses: 0,
     deathSaveFailures: 0,
     equippedIndexes: allOwnedIndexes,
+    equippedMagicItemIndexes: [],
     rollMode: "normal",
     expendedSlots: [],
     expendedSorceryPoints: 0,
@@ -374,15 +415,25 @@ export default function PlaySheet({
     sheet.classIndex === "barbarian" && play.isRaging ? sheet.rageDamageBonus : 0;
   const monkMartialArtsDie = sheet.classIndex === "monk" ? sheet.martialArtsDie : null;
   const allOwnedBundleItems = [...sheet.ownedEquipment, ...inventoryBundleItems];
-  const ac = computeAC(
-    allOwnedBundleItems,
-    augmentedLookup,
-    equippedSet,
-    sheet.modifiers.dex,
-    hasDefenseFightingStyle,
-    unarmoredDefenseBonus,
-    sheet.naturalArmorAC,
-  );
+  // Magic items aren't anchored to a piece of armor (a Cloak of Protection
+  // isn't a buffed Cloak), so they don't go through computeAC's equipment-
+  // lookup path at all — just a flat sum of every EQUIPPED magic item's own
+  // acBonus, added straight onto the armor-based AC. Not multiplied by
+  // count: owning 3 of an item doesn't mean wearing 3 at once.
+  const equippedMagicItemSet = new Set(play.equippedMagicItemIndexes);
+  const magicItemAcBonus = magicItems
+    .filter((item) => equippedMagicItemSet.has(item.id))
+    .reduce((sum, item) => sum + item.acBonus, 0);
+  const ac =
+    computeAC(
+      allOwnedBundleItems,
+      augmentedLookup,
+      equippedSet,
+      sheet.modifiers.dex,
+      hasDefenseFightingStyle,
+      unarmoredDefenseBonus,
+      sheet.naturalArmorAC,
+    ) + magicItemAcBonus;
   // Monk's Unarmed Strike isn't equipment, so resolveWeapons (which only
   // resolves ownedEquipment) can't produce it — synthesized here and
   // prepended instead. Always available per Martial Arts' text ("while you
@@ -637,6 +688,15 @@ export default function PlaySheet({
       if (next.has(index)) next.delete(index);
       else next.add(index);
       return { ...prev, equippedIndexes: [...next] };
+    });
+  }
+
+  function toggleMagicItemEquipped(id: string) {
+    setPlay((prev) => {
+      const next = new Set(prev.equippedMagicItemIndexes);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...prev, equippedMagicItemIndexes: [...next] };
     });
   }
 
@@ -3541,15 +3601,102 @@ export default function PlaySheet({
             </div>
           )}
 
-          {isOwner && !inventoryManagerOpen && !editingInventoryItem && (
-            <button
-              onClick={() => setInventoryManagerOpen(true)}
-              className="mt-4 text-xs text-tavern-gold-light hover:text-tavern-gold"
-            >
-              + Add Equipment
-            </button>
+          {magicItems.length > 0 && (
+            <div className="mt-4 border-t border-tavern-border pt-3">
+              <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                Magic Items
+              </h3>
+              <div className="mt-2 space-y-1.5">
+                {magicItems.map((item) => {
+                  const lookup = item.magicItemIndex ? magicItemByIndex.get(item.magicItemIndex) : undefined;
+                  const isEquipped = equippedMagicItemSet.has(item.id);
+                  const summaryParts = [
+                    item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                    item.notes,
+                  ].filter(Boolean);
+                  const detailsKey = `magic:${item.id}`;
+                  const expanded = expandedFeatures.has(detailsKey);
+                  const details = magicItemDetailLines(lookup);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-md border p-2.5 ${
+                        isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          onClick={() => toggleMagicItemEquipped(item.id)}
+                          className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
+                            isEquipped ? "text-tavern-text" : "text-tavern-muted"
+                          }`}
+                        >
+                          <span>
+                            {item.count > 1 ? `${item.count}× ` : ""}
+                            {item.customName ?? lookup?.name ?? "Unknown Item"}
+                          </span>
+                          <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {details.length > 0 && (
+                            <button
+                              onClick={() => toggleFeature(detailsKey)}
+                              className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                            >
+                              {expanded ? "▲" : "▼"}
+                            </button>
+                          )}
+                          {isOwner && (
+                            <>
+                              <button
+                                onClick={() => setEditingMagicItem(item)}
+                                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleRemoveMagicItem(item.id)}
+                                className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {summaryParts.length > 0 && (
+                        <p className="mt-1.5 text-xs text-tavern-muted">{summaryParts.join(" — ")}</p>
+                      )}
+                      {expanded && details.length > 0 && (
+                        <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
+                          {details.join("\n")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isOwner && !inventoryManagerOpen && !editingInventoryItem && !magicItemManagerOpen && !editingMagicItem && (
+            <div className="mt-4 flex gap-4">
+              <button
+                onClick={() => setInventoryManagerOpen(true)}
+                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+              >
+                + Add Equipment
+              </button>
+              <button
+                onClick={() => setMagicItemManagerOpen(true)}
+                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+              >
+                + Add Magic Item
+              </button>
+            </div>
           )}
           {inventoryError && <p className="mt-2 text-xs text-tavern-oxblood-light">{inventoryError}</p>}
+          {magicItemError && <p className="mt-2 text-xs text-tavern-oxblood-light">{magicItemError}</p>}
           {isOwner && (inventoryManagerOpen || editingInventoryItem) && (
             <InventoryManager
               equipmentLookup={equipmentByIndex}
@@ -3558,6 +3705,17 @@ export default function PlaySheet({
               onClose={() => {
                 setInventoryManagerOpen(false);
                 setEditingInventoryItem(null);
+              }}
+            />
+          )}
+          {isOwner && (magicItemManagerOpen || editingMagicItem) && (
+            <MagicItemManager
+              magicItemLookup={magicItemByIndex}
+              editingItem={editingMagicItem}
+              onSave={handleSaveMagicItem}
+              onClose={() => {
+                setMagicItemManagerOpen(false);
+                setEditingMagicItem(null);
               }}
             />
           )}

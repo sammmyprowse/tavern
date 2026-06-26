@@ -1,6 +1,7 @@
 import { formatModifier } from "./character";
-import type { EquipmentLookupItem } from "./srd";
+import type { EquipmentLookupItem, MagicItemLookupEntry } from "./srd";
 import type { InventoryItem } from "./inventory";
+import type { MagicItem } from "./magic-items";
 
 // A handful of items have no `description`/`utilize` AND no damage/AC of
 // their own (ammunition, spellcasting foci) — too small a list to be
@@ -84,6 +85,30 @@ export function equipmentDetailLines(lookup: EquipmentLookupItem | undefined, in
       );
     }
     if (invItem.notes) lines.push(`Notes: ${invItem.notes}`);
+  }
+
+  return lines;
+}
+
+// Magic items have no structured stats to format — every real one's
+// mechanics live in free-text prose (lookup.description), not fields
+// like equipment's damage/armor_class — so this is mostly just
+// surfacing that prose plus the reference metadata (rarity/attunement)
+// alongside whatever bonus/notes the player entered. lookup is undefined
+// for a fully homebrew item (no magicItemIndex) — only magicItem.notes
+// carries the effect description in that case.
+export function magicItemDetailLines(lookup: MagicItemLookupEntry | undefined, magicItem?: MagicItem): string[] {
+  const lines: string[] = [];
+
+  if (lookup) {
+    if (lookup.rarity) lines.push(`Rarity: ${lookup.rarity}`);
+    if (lookup.requiresAttunement) lines.push("Requires Attunement");
+    if (lookup.description) lines.push(lookup.description);
+  }
+
+  if (magicItem) {
+    if (magicItem.acBonus) lines.push(`Bonus: ${formatModifier(magicItem.acBonus)} AC`);
+    if (magicItem.notes) lines.push(`Effect: ${magicItem.notes}`);
   }
 
   return lines;

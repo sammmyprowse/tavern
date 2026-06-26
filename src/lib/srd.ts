@@ -397,6 +397,53 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
   return map;
 }
 
+export interface MagicItemLookupEntry {
+  index: string;
+  name: string;
+  category: string;
+  rarity: string | null;
+  requiresAttunement: boolean;
+  // Real SRD prose — every magic item's actual mechanics live here as
+  // free text, never structured fields like equipment's damage/
+  // armor_class, so there's nothing else to extract.
+  description: string;
+}
+
+// The dedicated equipment_category column stores the raw SRD slug
+// ("wondrous-items"), not a display label — mapped here so callers (the
+// category tabs in MagicItemManager) get a human-readable name directly
+// rather than every consumer having to know about the slug form.
+const MAGIC_ITEM_CATEGORY_LABELS: Record<string, string> = {
+  "wondrous-items": "Wondrous Items",
+  weapons: "Weapons",
+  armor: "Armor",
+  rings: "Rings",
+  potions: "Potions",
+  wands: "Wands",
+  staffs: "Staffs",
+};
+
+export async function getMagicItemLookup(): Promise<Map<string, MagicItemLookupEntry>> {
+  const { data } = await supabase
+    .from("magic_items")
+    .select("index, name, equipment_category, rarity, data")
+    .eq("ruleset", "2024");
+
+  const map = new Map<string, MagicItemLookupEntry>();
+  for (const item of data ?? []) {
+    const d = item.data as { desc?: string; attunement?: boolean };
+    map.set(item.index, {
+      index: item.index,
+      name: item.name,
+      category: MAGIC_ITEM_CATEGORY_LABELS[item.equipment_category ?? ""] ?? "Wondrous Items",
+      rarity: item.rarity,
+      requiresAttunement: d.attunement ?? false,
+      description: d.desc ?? "",
+    });
+  }
+  return map;
+}
+
 export interface SpellOption {
   index: string;
   name: string;

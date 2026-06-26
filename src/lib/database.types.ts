@@ -91,11 +91,12 @@ export type Database = {
           avatar_url: string | null
           bio: string | null
           created_at: string
-          draft: Json
           currency: Json | null
+          draft: Json
           id: string
           inventory: Json | null
           is_public: boolean
+          magic_items: Json | null
           name: string
           personality: Json | null
           updated_at: string
@@ -105,11 +106,12 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
-          draft: Json
           currency?: Json | null
+          draft: Json
           id?: string
           inventory?: Json | null
           is_public?: boolean
+          magic_items?: Json | null
           name: string
           personality?: Json | null
           updated_at?: string
@@ -119,11 +121,12 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
-          draft?: Json
           currency?: Json | null
+          draft?: Json
           id?: string
           inventory?: Json | null
           is_public?: boolean
+          magic_items?: Json | null
           name?: string
           personality?: Json | null
           updated_at?: string
@@ -857,7 +860,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals["public"]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends

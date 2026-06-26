@@ -7,6 +7,7 @@ import {
   getBackgroundsList,
   getSkillsList,
   getEquipmentLookup,
+  getMagicItemLookup,
   getFeaturesForClass,
   getSubclassesForClass,
   getGeneralFeatsList,
@@ -17,6 +18,7 @@ import {
 import type { CharacterDraft } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
+import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
@@ -37,6 +39,7 @@ export default async function CharacterPlaySheet({
     backgrounds,
     skills,
     equipment,
+    magicItemLookup,
     generalFeats,
     fightingStyleFeats,
     traitDescriptions,
@@ -44,7 +47,9 @@ export default async function CharacterPlaySheet({
     supabase.auth.getUser(),
     supabase
       .from("characters")
-      .select("id, user_id, name, draft, is_public, avatar_url, bio, personality, inventory, currency")
+      .select(
+        "id, user_id, name, draft, is_public, avatar_url, bio, personality, inventory, currency, magic_items",
+      )
       .eq("id", id)
       .maybeSingle(),
     getSpeciesList(),
@@ -53,6 +58,7 @@ export default async function CharacterPlaySheet({
     getBackgroundsList(),
     getSkillsList(),
     getEquipmentLookup(),
+    getMagicItemLookup(),
     getGeneralFeatsList(),
     getFightingStyleFeats(),
     getTraitDescriptions(),
@@ -98,6 +104,7 @@ export default async function CharacterPlaySheet({
       backgrounds={backgrounds}
       skills={skills}
       equipment={Array.from(equipment.values())}
+      magicItemLookup={Array.from(magicItemLookup.values())}
       features={features}
       subclassOptions={subclassOptions}
       generalFeats={generalFeats}
@@ -111,6 +118,7 @@ export default async function CharacterPlaySheet({
       personality={character.personality as unknown as PersonalityAnswers | null}
       inventory={(character.inventory as unknown as InventoryItem[] | null) ?? []}
       currency={character.currency as unknown as Currency | null}
+      magicItems={(character.magic_items as unknown as MagicItem[] | null) ?? []}
     />
   );
 }

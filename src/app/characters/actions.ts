@@ -12,6 +12,7 @@ import {
 } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
+import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
 import type { Json } from "@/lib/database.types";
 
@@ -196,6 +197,42 @@ export async function setCharacterCurrency(
   const { error } = await supabase
     .from("characters")
     .update({ currency: currency as unknown as Json })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
+export interface SetMagicItemsResult {
+  success: boolean;
+  error?: string;
+}
+
+// Same freely-overwritable shape as setCharacterInventory — separate
+// column/action rather than folded into inventory, since a magic item has
+// a meaningfully different shape (anchors into magic_items, not
+// equipment; no baseIndex/attackBonus/damageBonus/bonusDamageDice).
+export async function setCharacterMagicItems(
+  characterId: string,
+  magicItems: MagicItem[],
+): Promise<SetMagicItemsResult> {
+  if (!Array.isArray(magicItems) || magicItems.length > 200) {
+    return { success: false, error: "Invalid magic items." };
+  }
+
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ magic_items: magicItems as unknown as Json })
     .eq("id", characterId)
     .eq("user_id", userData.user.id);
 
