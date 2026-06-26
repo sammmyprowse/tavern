@@ -1,5 +1,41 @@
 [
   {
+    "index": "tough",
+    "name": "Tough",
+    "description": "Your body has been hardened by hardship and toil. Your hit point maximum increases by 2 for each character level you have attained, including when you first gain this feat, and increases by a further 2 each time you gain a level thereafter.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
+    "index": "lucky",
+    "name": "Lucky",
+    "description": "Fortune favors you in unexpected ways. You have 3 Luck Points. Whenever you make an attack roll, ability check, or saving throw, or a creature makes an attack roll against you, you can spend 1 Luck Point to roll an additional d20 and choose which result to use. You must decide to spend a Luck Point before the outcome is determined. You regain all spent Luck Points when you finish a Long Rest.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
+    "index": "tavern-brawler",
+    "name": "Tavern Brawler",
+    "description": "You are accustomed to rough-and-tumble fighting. You are proficient with improvised weapons. Your unarmed strikes deal 1d4 Bludgeoning damage. Immediately after you hit a creature with an unarmed strike or an improvised weapon, you can attempt to grapple that creature as a Bonus Action.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
+    "index": "musician",
+    "name": "Musician",
+    "description": "You are a practiced musician. You gain proficiency with three musical instruments of your choice. At the end of a Short or Long Rest, you can play uplifting music for up to six willing creatures (including yourself) that can hear you, granting each of them one Bardic Inspiration die (d6). A creature can have only one Bardic Inspiration die at a time. A creature can expend its die on one attack roll, ability check, or saving throw it makes within 24 hours, adding the result of the roll to that check.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
+    "index": "crafter",
+    "name": "Crafter",
+    "description": "You have honed your craft to an art. You gain proficiency with three Artisan's Tools of your choice. Whenever you purchase a nonmagical item, you receive a 20 percent discount on the price. In addition, during a Long Rest you can craft one piece of nonmagical equipment worth 5 GP or less using materials at hand — no extra cost required — provided you are proficient with the tools needed to make it.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
+    "index": "healer",
+    "name": "Healer",
+    "description": "You are an able physician, letting you stave off death with ease. When you use a Healer's Kit to stabilize a dying creature, that creature also regains 1 hit point. As an action, you can spend one use of a Healer's Kit to tend to a willing creature within 5 feet of you, restoring a number of hit points equal to 1d6 plus your proficiency bonus plus that creature's total number of Hit Dice. A creature can benefit from this feature only once per Long Rest.",
+    "prerequisites": { "minimum_level": 1 }
+  },
+  {
     "index": "hardened",
     "name": "Hardened",
     "description": "Your hit point maximum increases by 2, and increases by 2 again every time you gain a level thereafter.",

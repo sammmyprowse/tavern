@@ -85,7 +85,7 @@ export interface BackgroundOption {
   description: string | null;
   isHomebrew: boolean;
   abilityScores: { index: string; name: string }[];
-  feat: { index: string; name: string; note?: string } | null;
+  feat: { index: string; name: string; note?: string; description?: string } | null;
   proficiencies: { index: string; name: string }[];
   equipmentDesc: string | null;
   equipmentFirstOption: EquipmentBundleItem[];
@@ -344,10 +344,13 @@ export async function getClassesList(): Promise<ClassOption[]> {
 }
 
 export async function getBackgroundsList(): Promise<BackgroundOption[]> {
-  const { data } = await supabase
-    .from("backgrounds")
-    .select("index, name, ruleset, data")
-    .in("ruleset", ["2024", "homebrew"]);
+  const [{ data }, { data: featsData }] = await Promise.all([
+    supabase.from("backgrounds").select("index, name, ruleset, data").in("ruleset", ["2024", "homebrew"]),
+    supabase.from("feats").select("index, data").in("ruleset", ["2024", "homebrew"]),
+  ]);
+  const featDescByIndex = new Map(
+    (featsData ?? []).map((f) => [f.index, ((f.data as { description?: string }).description) ?? null]),
+  );
 
   return (data ?? [])
     .map((b) => {
@@ -370,7 +373,9 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
         description: d.description ?? OFFICIAL_BACKGROUND_DESCRIPTIONS[b.index] ?? null,
         isHomebrew: b.ruleset === "homebrew",
         abilityScores: d.ability_scores ?? [],
-        feat: d.feat ?? null,
+        feat: d.feat
+          ? { ...d.feat, description: featDescByIndex.get(d.feat.index) ?? undefined }
+          : null,
         proficiencies: d.proficiencies ?? [],
         equipmentDesc: d.equipment_options?.[0]?.desc ?? null,
         equipmentFirstOption: parseEquipmentOptions(d.equipment_options?.[0]),

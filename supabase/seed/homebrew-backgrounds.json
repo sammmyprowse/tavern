@@ -4,7 +4,7 @@
     "name": "Artisan",
     "description": "Years at the workbench taught you patience, precision, and the value of a job done right — skills that translate surprisingly well to a life of adventure.",
     "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "int", "name": "INT"}],
-    "feat": {"index": "skilled", "name": "Skilled"},
+    "feat": {"index": "crafter", "name": "Crafter"},
     "proficiencies": [
       {"index": "skill-investigation", "name": "Skill: Investigation"},
       {"index": "skill-persuasion", "name": "Skill: Persuasion"},
@@ -38,7 +38,7 @@
     "name": "Charlatan",
     "description": "You've talked your way out of more trouble than most people ever get into, usually by convincing someone you're somebody you're not.",
     "ability_scores": [{"index": "int", "name": "INT"}, {"index": "wis", "name": "WIS"}, {"index": "cha", "name": "CHA"}],
-    "feat": {"index": "alert", "name": "Alert"},
+    "feat": {"index": "skilled", "name": "Skilled"},
     "proficiencies": [
       {"index": "skill-deception", "name": "Skill: Deception"},
       {"index": "skill-sleight-of-hand", "name": "Skill: Sleight of Hand"},
@@ -72,7 +72,7 @@
     "name": "Entertainer",
     "description": "The road has been your stage for as long as you can remember, and you've learned to read a crowd as easily as a book.",
     "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "cha", "name": "CHA"}],
-    "feat": {"index": "skilled", "name": "Skilled"},
+    "feat": {"index": "musician", "name": "Musician"},
     "proficiencies": [
       {"index": "skill-acrobatics", "name": "Skill: Acrobatics"},
       {"index": "skill-performance", "name": "Skill: Performance"},
@@ -106,7 +106,7 @@
     "name": "Farmer",
     "description": "You grew up working land that didn't care how tired you were, and it left you stronger and steadier than people expect.",
     "ability_scores": [{"index": "str", "name": "STR"}, {"index": "con", "name": "CON"}, {"index": "wis", "name": "WIS"}],
-    "feat": {"index": "savage-attacker", "name": "Savage Attacker"},
+    "feat": {"index": "tough", "name": "Tough"},
     "proficiencies": [
       {"index": "skill-animal-handling", "name": "Skill: Animal Handling"},
       {"index": "skill-nature", "name": "Skill: Nature"},
@@ -212,7 +212,7 @@
     "name": "Hermit",
     "description": "Years of solitude gave you space to think — and, eventually, to listen to something beyond yourself.",
     "ability_scores": [{"index": "con", "name": "CON"}, {"index": "wis", "name": "WIS"}, {"index": "int", "name": "INT"}],
-    "feat": {"index": "magic-initiate", "name": "Magic Initiate", "note": "Cleric"},
+    "feat": {"index": "healer", "name": "Healer"},
     "proficiencies": [
       {"index": "skill-medicine", "name": "Skill: Medicine"},
       {"index": "skill-religion", "name": "Skill: Religion"},
@@ -247,7 +247,7 @@
     "name": "Merchant",
     "description": "You learned to read a room before you learned to read a ledger, and both skills have kept you in business.",
     "ability_scores": [{"index": "con", "name": "CON"}, {"index": "int", "name": "INT"}, {"index": "cha", "name": "CHA"}],
-    "feat": {"index": "skilled", "name": "Skilled"},
+    "feat": {"index": "lucky", "name": "Lucky"},
     "proficiencies": [
       {"index": "skill-insight", "name": "Skill: Insight"},
       {"index": "skill-persuasion", "name": "Skill: Persuasion"},
@@ -318,7 +318,7 @@
     "name": "Sailor",
     "description": "The sea doesn't forgive mistakes, and neither did the crews you sailed with — so you learned fast, and you learned to hold your own.",
     "ability_scores": [{"index": "str", "name": "STR"}, {"index": "dex", "name": "DEX"}, {"index": "con", "name": "CON"}],
-    "feat": {"index": "savage-attacker", "name": "Savage Attacker"},
+    "feat": {"index": "tavern-brawler", "name": "Tavern Brawler"},
     "proficiencies": [
       {"index": "skill-athletics", "name": "Skill: Athletics"},
       {"index": "skill-perception", "name": "Skill: Perception"},
@@ -389,7 +389,7 @@
     "name": "Wayfarer",
     "description": "You grew up with no fixed address and learned to read streets, strangers, and trouble long before anyone taught you anything else.",
     "ability_scores": [{"index": "dex", "name": "DEX"}, {"index": "con", "name": "CON"}, {"index": "cha", "name": "CHA"}],
-    "feat": {"index": "alert", "name": "Alert"},
+    "feat": {"index": "lucky", "name": "Lucky"},
     "proficiencies": [
       {"index": "skill-insight", "name": "Skill: Insight"},
       {"index": "skill-stealth", "name": "Skill: Stealth"},

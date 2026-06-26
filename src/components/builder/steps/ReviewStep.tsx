@@ -173,10 +173,16 @@ export default function ReviewStep({
         </div>
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Background</dt>
-          <dd className="text-tavern-text">
+          <dd className="text-right text-tavern-text">
             {sheet?.backgroundName}
             {sheet?.backgroundIsHomebrew ? " (Homebrew)" : ""}
             {sheet?.backgroundFeatName ? ` — ${sheet.backgroundFeatName}` : ""}
+            {(() => {
+              const bg = backgrounds.find((b) => b.index === draft.backgroundIndex);
+              return bg?.feat?.description ? (
+                <p className="mt-0.5 text-xs text-tavern-muted">{bg.feat.description}</p>
+              ) : null;
+            })()}
           </dd>
         </div>
         {draft.weaponMasteryChoices.length > 0 && (

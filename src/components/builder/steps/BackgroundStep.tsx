@@ -99,8 +99,14 @@ export default function BackgroundStep({ backgrounds, draft, onUpdate }: Backgro
             </div>
             {selected.feat && (
               <div className="mt-1">
-                <span className="text-tavern-gold-light">Origin Feat:</span> {selected.feat.name}
-                {selected.feat.note ? ` (${selected.feat.note})` : ""}
+                <span className="text-tavern-gold-light">Origin Feat:</span>{" "}
+                <span className="text-tavern-text">
+                  {selected.feat.name}
+                  {selected.feat.note ? ` (${selected.feat.note})` : ""}
+                </span>
+                {selected.feat.description && (
+                  <p className="mt-1 text-xs text-tavern-muted">{selected.feat.description}</p>
+                )}
               </div>
             )}
           </div>
