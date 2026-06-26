@@ -190,6 +190,14 @@ interface PlayState {
   // time you'd be reduced to 0 each Long Rest — checked automatically by
   // applyDamage below, not a button the player clicks.
   usedRelentlessEndurance: boolean;
+  // Starting equipment has no "delete" concept in the build itself (it's
+  // derived fresh from class/background every render, not stored as
+  // removable state) — this is the play-state-only equivalent of deleting
+  // an inventory row: indexes listed here are filtered out of the unified
+  // Equipment list entirely. A player can always get the same item back via
+  // "+ Add Equipment" since it's just another real catalog item at that
+  // point, so no separate "undo" affordance is needed.
+  removedStartingIndexes: string[];
 }
 
 export default function PlaySheet({
@@ -369,6 +377,7 @@ export default function PlaySheet({
     expendedAdrenalineRush: 0,
     usedLargeForm: false,
     usedRelentlessEndurance: false,
+    removedStartingIndexes: [],
   };
 
   const [play, setPlay] = useState<PlayState>(defaultPlayState);
@@ -726,12 +735,47 @@ export default function PlaySheet({
     });
   }
 
+  // 5e doesn't let you wear two suits of body armor or wield two shields at
+  // once, but nothing previously enforced that here — a player could equip
+  // a found/custom piece of armor without first unequipping their starting
+  // one, leaving BOTH marked equipped. computeArmorClass only ever looks at
+  // the first body-armor (or shield) item it finds in a fixed array order
+  // (starting equipment always before inventory items), so the one the
+  // player actually just equipped could silently lose to whichever happened
+  // to come first — a real bug, the same shape as the shield-category fix
+  // above but for the "two armors equipped" case specifically, not a
+  // category-matching issue. Equipping a new body armor/shield now first
+  // unequips any other already-equipped item of the same kind.
   function toggleEquipped(index: string) {
     setPlay((prev) => {
       const next = new Set(prev.equippedIndexes);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        const lookup = augmentedLookup.get(index);
+        if (lookup?.armorClass) {
+          const isShieldItem = (lookup.categories ?? []).includes("shields");
+          for (const otherIndex of [...next]) {
+            const other = augmentedLookup.get(otherIndex);
+            if (!other?.armorClass) continue;
+            const otherIsShield = (other.categories ?? []).includes("shields");
+            if (otherIsShield === isShieldItem) next.delete(otherIndex);
+          }
+        }
+        next.add(index);
+      }
       return { ...prev, equippedIndexes: [...next] };
+    });
+  }
+
+  function removeStartingItem(index: string) {
+    setPlay((prev) => {
+      const equippedIndexes = prev.equippedIndexes.filter((i) => i !== index);
+      return {
+        ...prev,
+        equippedIndexes,
+        removedStartingIndexes: [...prev.removedStartingIndexes, index],
+      };
     });
   }
 
@@ -3724,9 +3768,9 @@ export default function PlaySheet({
           <p className="mt-1 text-xs text-tavern-muted">
             Tap to equip or unequip. Armor and shields affect your AC live.
           </p>
-          <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <div className="mt-3 space-y-1.5">
             {sheet.ownedEquipment
-              .filter((item) => !item.isMoney && item.index)
+              .filter((item) => !item.isMoney && item.index && !play.removedStartingIndexes.includes(item.index))
               .map((item, i) => {
                 const isEquipped = equippedSet.has(item.index!);
                 const detailsKey = `equip:${item.index}-${i}`;
@@ -3735,14 +3779,14 @@ export default function PlaySheet({
                 return (
                   <div
                     key={detailsKey}
-                    className={`rounded-md border ${
+                    className={`rounded-md border p-2.5 ${
                       isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
                     }`}
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <button
                         onClick={() => toggleEquipped(item.index!)}
-                        className={`flex flex-1 items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
+                        className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
                           isEquipped ? "text-tavern-text" : "text-tavern-muted"
                         }`}
                       >
@@ -3752,190 +3796,180 @@ export default function PlaySheet({
                         </span>
                         <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
                       </button>
-                      {details.length > 0 && (
-                        <button
-                          onClick={() => toggleFeature(detailsKey)}
-                          className="px-2 text-xs text-tavern-muted hover:text-tavern-gold-light"
-                        >
-                          {expanded ? "▲" : "▼"}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {details.length > 0 && (
+                          <button
+                            onClick={() => toggleFeature(detailsKey)}
+                            className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                          >
+                            {expanded ? "▲" : "▼"}
+                          </button>
+                        )}
+                        {isOwner && (
+                          <button
+                            onClick={() => removeStartingItem(item.index!)}
+                            className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {expanded && details.length > 0 && (
-                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                      <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
                         {details.join("\n")}
                       </p>
                     )}
                   </div>
                 );
               })}
+
+            {inventory.map((item) => {
+              const base = equipmentByIndex.get(item.baseIndex);
+              const isEquipped = equippedSet.has(item.id);
+              const bonusParts = [
+                item.attackBonus ? `${formatModifier(item.attackBonus)} Attack` : null,
+                item.damageBonus ? `${formatModifier(item.damageBonus)} Damage` : null,
+                item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                item.bonusDamageDice
+                  ? `+${item.bonusDamageDice}${item.bonusDamageCondition ? ` ${item.bonusDamageCondition}` : ""}`
+                  : null,
+              ].filter(Boolean);
+              const detailsKey = `inv:${item.id}`;
+              const expanded = expandedFeatures.has(detailsKey);
+              const baseDetails = equipmentDetailLines(base);
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-md border p-2.5 ${
+                    isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleEquipped(item.id)}
+                      className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
+                        isEquipped ? "text-tavern-text" : "text-tavern-muted"
+                      }`}
+                    >
+                      <span>
+                        {item.count > 1 ? `${item.count}× ` : ""}
+                        {item.customName ?? base?.name ?? item.baseIndex}
+                      </span>
+                      <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {baseDetails.length > 0 && (
+                        <button
+                          onClick={() => toggleFeature(detailsKey)}
+                          className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                        >
+                          {expanded ? "▲" : "▼"}
+                        </button>
+                      )}
+                      {isOwner && (
+                        <>
+                          <button
+                            onClick={() => setEditingInventoryItem(item)}
+                            className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveInventoryItem(item.id)}
+                            className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {(bonusParts.length > 0 || item.notes) && (
+                    <p className="mt-1.5 text-xs text-tavern-muted">
+                      {bonusParts.join(", ")}
+                      {bonusParts.length > 0 && item.notes ? " — " : ""}
+                      {item.notes}
+                    </p>
+                  )}
+                  {expanded && baseDetails.length > 0 && (
+                    <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
+                      {baseDetails.join("\n")}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+
+            {magicItems.map((item) => {
+              const lookup = item.magicItemIndex ? magicItemByIndex.get(item.magicItemIndex) : undefined;
+              const isEquipped = equippedMagicItemSet.has(item.id);
+              const summaryParts = [
+                item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                item.notes,
+              ].filter(Boolean);
+              const detailsKey = `magic:${item.id}`;
+              const expanded = expandedFeatures.has(detailsKey);
+              const details = magicItemDetailLines(lookup);
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-md border p-2.5 ${
+                    isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => toggleMagicItemEquipped(item.id)}
+                      className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
+                        isEquipped ? "text-tavern-text" : "text-tavern-muted"
+                      }`}
+                    >
+                      <span>
+                        {item.count > 1 ? `${item.count}× ` : ""}
+                        {item.customName ?? lookup?.name ?? "Unknown Item"}
+                      </span>
+                      <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {details.length > 0 && (
+                        <button
+                          onClick={() => toggleFeature(detailsKey)}
+                          className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                        >
+                          {expanded ? "▲" : "▼"}
+                        </button>
+                      )}
+                      {isOwner && (
+                        <>
+                          <button
+                            onClick={() => setEditingMagicItem(item)}
+                            className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveMagicItem(item.id)}
+                            className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {summaryParts.length > 0 && (
+                    <p className="mt-1.5 text-xs text-tavern-muted">{summaryParts.join(" — ")}</p>
+                  )}
+                  {expanded && details.length > 0 && (
+                    <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
+                      {details.join("\n")}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          {inventory.length > 0 && (
-            <div className="mt-4 border-t border-tavern-border pt-3">
-              <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                Found / Custom Equipment
-              </h3>
-              <div className="mt-2 space-y-1.5">
-                {inventory.map((item) => {
-                  const base = equipmentByIndex.get(item.baseIndex);
-                  const isEquipped = equippedSet.has(item.id);
-                  const bonusParts = [
-                    item.attackBonus ? `${formatModifier(item.attackBonus)} Attack` : null,
-                    item.damageBonus ? `${formatModifier(item.damageBonus)} Damage` : null,
-                    item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
-                    item.bonusDamageDice
-                      ? `+${item.bonusDamageDice}${item.bonusDamageCondition ? ` ${item.bonusDamageCondition}` : ""}`
-                      : null,
-                  ].filter(Boolean);
-                  const detailsKey = `inv:${item.id}`;
-                  const expanded = expandedFeatures.has(detailsKey);
-                  const baseDetails = equipmentDetailLines(base);
-                  return (
-                    <div
-                      key={item.id}
-                      className={`rounded-md border p-2.5 ${
-                        isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <button
-                          onClick={() => toggleEquipped(item.id)}
-                          className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
-                            isEquipped ? "text-tavern-text" : "text-tavern-muted"
-                          }`}
-                        >
-                          <span>
-                            {item.count > 1 ? `${item.count}× ` : ""}
-                            {item.customName ?? base?.name ?? item.baseIndex}
-                          </span>
-                          <span className="text-xs uppercase">
-                            {isEquipped ? "Equipped" : "Stowed"}
-                          </span>
-                        </button>
-                        <div className="flex items-center gap-2">
-                          {baseDetails.length > 0 && (
-                            <button
-                              onClick={() => toggleFeature(detailsKey)}
-                              className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "▲" : "▼"}
-                            </button>
-                          )}
-                          {isOwner && (
-                            <>
-                              <button
-                                onClick={() => setEditingInventoryItem(item)}
-                                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleRemoveInventoryItem(item.id)}
-                                className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {(bonusParts.length > 0 || item.notes) && (
-                        <p className="mt-1.5 text-xs text-tavern-muted">
-                          {bonusParts.join(", ")}
-                          {bonusParts.length > 0 && item.notes ? " — " : ""}
-                          {item.notes}
-                        </p>
-                      )}
-                      {expanded && baseDetails.length > 0 && (
-                        <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
-                          {baseDetails.join("\n")}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {magicItems.length > 0 && (
-            <div className="mt-4 border-t border-tavern-border pt-3">
-              <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                Magic Items
-              </h3>
-              <div className="mt-2 space-y-1.5">
-                {magicItems.map((item) => {
-                  const lookup = item.magicItemIndex ? magicItemByIndex.get(item.magicItemIndex) : undefined;
-                  const isEquipped = equippedMagicItemSet.has(item.id);
-                  const summaryParts = [
-                    item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
-                    item.notes,
-                  ].filter(Boolean);
-                  const detailsKey = `magic:${item.id}`;
-                  const expanded = expandedFeatures.has(detailsKey);
-                  const details = magicItemDetailLines(lookup);
-                  return (
-                    <div
-                      key={item.id}
-                      className={`rounded-md border p-2.5 ${
-                        isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <button
-                          onClick={() => toggleMagicItemEquipped(item.id)}
-                          className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
-                            isEquipped ? "text-tavern-text" : "text-tavern-muted"
-                          }`}
-                        >
-                          <span>
-                            {item.count > 1 ? `${item.count}× ` : ""}
-                            {item.customName ?? lookup?.name ?? "Unknown Item"}
-                          </span>
-                          <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
-                        </button>
-                        <div className="flex items-center gap-2">
-                          {details.length > 0 && (
-                            <button
-                              onClick={() => toggleFeature(detailsKey)}
-                              className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "▲" : "▼"}
-                            </button>
-                          )}
-                          {isOwner && (
-                            <>
-                              <button
-                                onClick={() => setEditingMagicItem(item)}
-                                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleRemoveMagicItem(item.id)}
-                                className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {summaryParts.length > 0 && (
-                        <p className="mt-1.5 text-xs text-tavern-muted">{summaryParts.join(" — ")}</p>
-                      )}
-                      {expanded && details.length > 0 && (
-                        <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
-                          {details.join("\n")}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {isOwner && !inventoryManagerOpen && !editingInventoryItem && !magicItemManagerOpen && !editingMagicItem && (
             <div className="mt-4 flex gap-4">

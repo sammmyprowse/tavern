@@ -2857,3 +2857,77 @@ Tested Randomize twice in the Abilities step and confirmed two
 different valid permutations of the standard array. No console errors
 after the draft-merge fix landed (one real crash before it, exactly as
 described above).
+
+## Armor mutual exclusivity; unified Equipment list
+Two more pieces of feedback right after the round above, both about
+Equipment. First: "found the same bug we had with shields, but with
+armor" — a custom body armor added via the inventory system also did
+nothing to AC. Second: "there is no real reason found/custom equipment
+should be separate from the starting inventory — should realistically
+be one list you can add to and remove from."
+
+**The armor bug turned out to be a genuinely different root cause from
+the shield one, not the same bug recurring.** The shield fix (above)
+was a category-matching bug — a custom shield's index was never the
+literal string `"shield"`, so it was never recognized as a shield at
+all. Reproduced the armor report directly: adding a custom Studded
+Leather Armor and equipping it *alone* computed its AC correctly
+(12 + Dex = 13) — the category logic itself was fine. The real bug
+only showed up with a *second* body armor (the character's starting
+Chain Mail) also still marked equipped: `computeArmorClass`
+(`character.ts`) picks body armor via `equipped.find(...)` — the
+*first* match in a fixed array order (starting equipment always comes
+before inventory items in `allOwnedBundleItems`), so Chain Mail always
+won regardless of which piece the player most recently equipped or
+intended to wear. 5e doesn't let you wear two suits of armor or wield
+two shields at once, but nothing previously enforced that — a player
+equipping a new found piece without first unequipping the old one
+landed in exactly this state. Fixed at the source instead of patching
+the AC math: `toggleEquipped` (`PlaySheet.tsx`) now unequips any other
+already-equipped item of the same kind (body armor vs. shield, checked
+via the same category tag the shield fix uses) the moment a new one is
+equipped, so the ambiguous "two equipped" state can't occur in the
+first place. Audited the other AC-contributing path while in there —
+magic items' AC bonus (`magicItemAcBonus`) is a plain `.reduce()` sum
+across every equipped magic item, not a `.find()`, so it was already
+safe and needed no change.
+
+**Unified Equipment list.** "Equipment" (starting gear), "Found /
+Custom Equipment," and "Magic Items" were three visually separate
+list sections with their own headers and `border-t` dividers, even
+though equip/unequip and the details toggle already worked identically
+across all three underneath. Removed the section headers and dividers
+entirely so all three `.map()` calls render as direct siblings in one
+shared `space-y-1.5` container — found/custom and magic items now just
+appear as more rows in the same list, in the same order as before
+(starting equipment first, since that's simply array order, not a
+section boundary anymore).
+
+**This also surfaced a real, asymmetric gap worth fixing while
+unifying the list: starting equipment had no "Remove" at all**, only
+found/custom and magic items did. Starting equipment isn't a deletable
+record the way `InventoryItem`/`MagicItem` are — it's derived fresh
+from the class/background draft on every render, not stored as
+removable state — so a real per-item delete isn't possible without
+touching the build itself. Instead, new `PlayState.removedStartingIndexes:
+string[]` (localStorage-only, same treatment as `equippedIndexes`)
+tracks indexes to hide from the list; `removeStartingItem()` adds to it
+and auto-unequips at the same time. Deliberately has no "undo" button
+— if removed by mistake, the same item can always be added back via
+"+ Add Equipment" since it's just another real catalog lookup at that
+point, the same reasoning already used for not needing rebasing on
+custom items elsewhere in this system.
+
+Tested live with a disposable Fighter (Chain Mail equipped, AC 16):
+unequipped Chain Mail, added a custom Studded Leather Armor, equipped
+*only* it, and confirmed AC correctly read 13 — ruling out a
+category-matching bug. Re-equipped Chain Mail alongside it and
+confirmed AC reverted to 16 (Chain Mail winning), reproducing the real
+bug exactly. Toggled Studded Leather Armor off and back on post-fix
+and confirmed Chain Mail automatically flipped to Stowed and AC
+correctly became 13 — no manual unequip needed. Confirmed the
+Equipment card now renders as one continuous list with no section
+headers, found/custom and magic item rows sitting at the end with no
+visual seam. Clicked Remove on a starting item (Healer's Kit),
+confirmed it disappeared, and confirmed it was still gone after a full
+page reload (localStorage, not lost on refresh). No console errors.
