@@ -27,6 +27,7 @@ import {
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
 import {
   levelUpCharacter,
+  levelDownCharacter,
   chooseSubclass,
   chooseOriginOrder,
   chooseFeat,
@@ -296,6 +297,9 @@ export default function PlaySheet({
   const [levelingUp, setLevelingUp] = useState(false);
   const [levelUpError, setLevelUpError] = useState<string | null>(null);
   const [levelUpPending, setLevelUpPending] = useState(false);
+  const [levelingDown, setLevelingDown] = useState(false);
+  const [levelDownError, setLevelDownError] = useState<string | null>(null);
+  const [levelDownPending, setLevelDownPending] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
   const [subclassPending, setSubclassPending] = useState(false);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<string | null>(null);
@@ -1231,6 +1235,34 @@ export default function PlaySheet({
     setLevelUpPending(false);
   }
 
+  // Safety net for an accidental Level Up click. Mirrors handleLevelUp's
+  // currentHp adjustment in reverse (subtracts the HP roll being undone,
+  // floored at 0 the same way applyDamage already floors incoming damage)
+  // — the action itself handles trimming back any choices (subclass/feats/
+  // expertise/fighting style/metamagic/cantrips) that are no longer valid
+  // at the lower level.
+  async function handleLevelDown() {
+    if (!sheet || sheet.level <= 1) return;
+    setLevelDownPending(true);
+    setLevelDownError(null);
+
+    const lastGain = currentDraft.hpRolls[currentDraft.hpRolls.length - 1] ?? 0;
+    const result = await levelDownCharacter(characterId);
+    if (result.success && result.draft) {
+      pushLog({
+        label: `Level Down → ${result.draft.level}`,
+        detail: "Undid last level's HP and choices",
+        total: -lastGain,
+      });
+      setCurrentDraft(result.draft);
+      setPlay((prev) => ({ ...prev, currentHp: Math.max(0, prev.currentHp - lastGain) }));
+      setLevelingDown(false);
+    } else {
+      setLevelDownError(result.error ?? "Couldn't level down.");
+    }
+    setLevelDownPending(false);
+  }
+
   async function handleChooseSubclass(subclassIndex: string) {
     setSubclassPending(true);
     setChoiceError(null);
@@ -1633,6 +1665,44 @@ export default function PlaySheet({
             )}
             {levelUpError && (
               <p className="mt-1 text-xs text-tavern-oxblood-light">{levelUpError}</p>
+            )}
+
+            {!levelingUp && sheet.level > 1 && !levelingDown && (
+              <button
+                onClick={() => setLevelingDown(true)}
+                className="mt-2 block text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+              >
+                Accidentally leveled up? Level Down
+              </button>
+            )}
+            {levelingDown && (
+              <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-tavern-oxblood bg-tavern-oxblood/10 px-3 py-2">
+                <span className="text-xs text-tavern-text">
+                  Level down to {sheet.level - 1}? This undoes the HP gained at level{" "}
+                  {sheet.level} and any choices made at that level (subclass, feats, expertise,
+                  fighting style, metamagic, cantrips).
+                </span>
+                <button
+                  onClick={handleLevelDown}
+                  disabled={levelDownPending}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                >
+                  {levelDownPending ? "Leveling Down…" : "Confirm Level Down"}
+                </button>
+                <button
+                  onClick={() => {
+                    setLevelingDown(false);
+                    setLevelDownError(null);
+                  }}
+                  disabled={levelDownPending}
+                  className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {levelDownError && (
+              <p className="mt-1 text-xs text-tavern-oxblood-light">{levelDownError}</p>
             )}
           </div>
         )}

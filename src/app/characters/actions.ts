@@ -7,6 +7,9 @@ import {
   ORDER_CHOICES,
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
+  FIGHTING_STYLE_KNOWN_BY_CLASS,
+  CANTRIPS_KNOWN_BY_CLASS,
+  metamagicKnownMax,
   type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
@@ -324,6 +327,62 @@ export async function levelUpCharacter(
     ...draft,
     level: draft.level + 1,
     hpRolls: [...draft.hpRolls, hpGain],
+  };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+export interface LevelDownResult {
+  success: boolean;
+  error?: string;
+  draft?: CharacterDraft;
+}
+
+// Safety net for an accidental Level Up click — undoes the level increment
+// and HP roll, and trims back any choices that are no longer valid at the
+// lower level (subclass below 3, feats/expertise/fighting styles/metamagic/
+// cantrips past their new level's count). Only truncates the END of each
+// append-style list rather than wiping it, so a level-down from 9 to 8 keeps
+// earlier milestone picks and only drops whatever the level being removed
+// granted. Deliberately does NOT touch preparedSpells — its cap
+// (preparedSpellCount) needs the character's FINAL ability modifier
+// (species/background/ASI-adjusted), which isn't derivable here without the
+// SRD species/background lookups this action doesn't have; left as a
+// disclosed gap rather than guessed at, same as every other "can't fully
+// verify server-side" call in this app.
+export async function levelDownCharacter(characterId: string): Promise<LevelDownResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (draft.level <= 1) {
+    return { success: false, error: "Already at level 1." };
+  }
+
+  const newLevel = draft.level - 1;
+  const classIndex = draft.classIndex ?? "";
+
+  const expertiseMax = (EXPERTISE_SCHEDULE[classIndex] ?? [])
+    .filter((m) => m.level <= newLevel)
+    .reduce((sum, m) => sum + m.count, 0);
+  const fightingStyleMax = FIGHTING_STYLE_KNOWN_BY_CLASS[classIndex]?.(newLevel) ?? 0;
+  const cantripsMax = CANTRIPS_KNOWN_BY_CLASS[classIndex]?.(newLevel) ?? 0;
+  const metamagicMax = metamagicKnownMax(newLevel);
+
+  const nextDraft: CharacterDraft = {
+    ...draft,
+    level: newLevel,
+    hpRolls: draft.hpRolls.slice(0, -1),
+    subclassIndex: newLevel < 3 ? null : draft.subclassIndex,
+    featChoices: draft.featChoices.filter((f) => f.level <= newLevel),
+    expertiseChoices: draft.expertiseChoices.slice(0, expertiseMax),
+    fightingStyleChoices: draft.fightingStyleChoices.slice(0, fightingStyleMax),
+    knownCantrips: draft.knownCantrips.slice(0, cantripsMax),
+    metamagicChoices: draft.metamagicChoices.slice(0, metamagicMax),
   };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);

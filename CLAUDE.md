@@ -2537,3 +2537,62 @@ triggered Next.js Fast Refresh to remount the page, which looked like
 the form had silently closed/lost its in-progress AC bonus value — it
 hadn't; re-checking confirmed the value survived the remount. No
 console errors.
+
+## Level Down (undo an accidental Level Up)
+User-requested safety net — clicking Level Up is a single button with
+no confirm step, so a misclick had no way back. Symmetric counterpart
+to `levelUpCharacter`: decrements `level`, pops the last `hpRolls`
+entry, and — the part that needed real thought — trims back any
+choices that are no longer valid at the lower level, not just the
+level number itself.
+
+**`levelDownCharacter`** (`src/app/characters/actions.ts`) follows the
+same `loadOwnedDraft`/`saveDraft` shape as every other leveling action,
+truncating the END of each append-style list rather than wiping it, so
+a level-down from 9 to 8 keeps earlier milestone picks and only drops
+whatever the level being removed granted:
+- `subclassIndex` → cleared if `newLevel < 3`.
+- `featChoices` → filtered to `f.level <= newLevel` (drops an ASI/feat
+  picked at exactly the level being removed).
+- `expertiseChoices`/`fightingStyleChoices`/`metamagicChoices`/
+  `knownCantrips` → sliced to whatever count the class's own schedule
+  function (`EXPERTISE_SCHEDULE`, `FIGHTING_STYLE_KNOWN_BY_CLASS`,
+  `metamagicKnownMax`, `CANTRIPS_KNOWN_BY_CLASS`) says should be known
+  at `newLevel` — all four were already pure functions of level (+
+  class for the first two), so no new math, just calling them with one
+  level lower.
+
+**Deliberately does NOT truncate `preparedSpells`.** Its cap
+(`preparedSpellCount`) needs the character's FINAL ability modifier
+(species/background/ASI-adjusted), which isn't derivable in this
+action without the SRD species/background lookups it doesn't have
+access to — left as a disclosed gap (a prepared list could end up
+transiently "over cap" after leveling down past a spellcasting-ability
+ASI) rather than guessed at. Same reasoning `chooseSubclass` already
+uses for not re-deriving things server-side that the client already
+has fully resolved.
+
+**UI**: a small "Accidentally leveled up? Level Down" text link sits
+under the main Level Up control (not a prominent button — this is the
+rare "oops" path, not a normal leveling action), gated on `sheet.level
+> 1` and hidden while the Level Up confirm flow is open. Clicking it
+expands the same confirm-bar pattern `DeleteCharacterButton` already
+established (inline warning text + Confirm/Cancel) rather than a new
+pattern, since this is also a real-data-loss action. `currentHp` is
+adjusted symmetrically to `handleLevelUp` — subtracts the popped HP
+roll, floored at 0 via `Math.max(0, ...)`, the same floor
+`applyDamage` already uses for incoming damage. Logs a dice-log entry
+("Level Down → N, -X") so the HP change is visible in context, same as
+every other HP-affecting action on this sheet.
+
+Tested live with a disposable Rogue (level 6, Thief subclass, an ASI
+feat at level 4, 4 Expertise skills — 2 from the level-1 milestone + 2
+from level 6) stepped down one level at a time, checking the DB after
+each click: 6→5 correctly truncated Expertise from 4 to 2 (the level-6
+milestone no longer qualifies) while keeping the level-4 feat and
+subclass; 5→4 correctly kept the feat (4<=4 still holds) and 4→3
+correctly dropped it (4<=3 no longer holds); 3→2 correctly cleared
+`subclassIndex` to null (and the header lost its "(Thief)" suffix
+live); HP tracked exactly right at every step (39→33→27→20→15→10,
+matching each popped roll); the Level Down link correctly disappeared
+once level 1 was reached. No console errors.
