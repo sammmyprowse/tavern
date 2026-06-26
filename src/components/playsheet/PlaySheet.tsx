@@ -596,15 +596,12 @@ export default function PlaySheet({
   );
 
   const backgroundFeatFeature: ClassFeature | null = sheet.backgroundFeatIndex
-    ? (() => {
-        const opt = generalFeats.find((f) => f.index === sheet.backgroundFeatIndex);
-        return {
-          index: `background-feat-${sheet.backgroundFeatIndex}`,
-          name: opt?.name ?? sheet.backgroundFeatName ?? sheet.backgroundFeatIndex,
-          level: 1,
-          description: opt?.description ?? null,
-        };
-      })()
+    ? {
+        index: `background-feat-${sheet.backgroundFeatIndex}`,
+        name: sheet.backgroundFeatName ?? sheet.backgroundFeatIndex,
+        level: 1,
+        description: sheet.backgroundFeatDescription,
+      }
     : null;
 
   const unlockedFeatures = [
