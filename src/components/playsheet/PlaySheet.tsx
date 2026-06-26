@@ -531,8 +531,22 @@ export default function PlaySheet({
   // resolved below, drop the generic marker so it doesn't sit next to the
   // real pick (which might not even be Ability Score Improvement).
   const resolvedFeatLevels = new Set(currentDraft.featChoices.map((fc) => fc.level));
+  // The base features table also flattens the official SRD subclass's own
+  // features into the base class (the "Disciple of Life" case noted above,
+  // dedupe in the other direction) — this only ever looked correct before
+  // homebrew subclasses existed, because Berserker/Life Domain/etc. was the
+  // ONLY subclass choice, so a leaked feature like "Frenzy" always matched
+  // whatever was chosen. Now that other subclasses are real alternatives,
+  // a base-table feature whose name belongs to SOME subclass must only
+  // show if it's also the CHOSEN subclass's own feature — otherwise a
+  // Barbarian who picked Path of the Bloodletter would still see Berserker's
+  // "Frenzy" leak into their Features list.
+  const allSubclassFeatureNames = new Set(subclassOptions.flatMap((s) => s.features.map((f) => f.name)));
+  const chosenSubclassFeatureNames = new Set(chosenSubclass?.features.map((f) => f.name) ?? []);
   const baseFeaturesWithoutResolvedAsi = features.filter(
-    (f) => !(f.name === "Ability Score Improvement" && resolvedFeatLevels.has(f.level)),
+    (f) =>
+      !(f.name === "Ability Score Improvement" && resolvedFeatLevels.has(f.level)) &&
+      (!allSubclassFeatureNames.has(f.name) || chosenSubclassFeatureNames.has(f.name)),
   );
 
   const unlockedFeatures = [...baseFeaturesWithoutResolvedAsi, ...subclassFeatures, ...featFeatures]
@@ -1566,7 +1580,9 @@ export default function PlaySheet({
                 </h1>
                 <p className="font-heading text-base font-bold tracking-wide text-tavern-gold-light">
                   {sheet.className}
-                  {chosenSubclass ? ` (${chosenSubclass.name})` : ""}
+                  {chosenSubclass
+                    ? ` (${chosenSubclass.name}${chosenSubclass.isHomebrew ? " — Homebrew" : ""})`
+                    : ""}
                 </p>
                 <p className="text-tavern-muted">
                   Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName}
@@ -1751,10 +1767,21 @@ export default function PlaySheet({
                       className="block w-full p-3 text-left hover:bg-tavern-bg"
                     >
                       <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
+                      {opt.isHomebrew && (
+                        <span className="ml-2 inline-block rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                          Homebrew
+                        </span>
+                      )}
                       {opt.summary && <p className="mt-1 text-xs text-tavern-muted">{opt.summary}</p>}
                     </button>
                     {isSelected && (
                       <div className="space-y-1 border-t border-tavern-border p-2">
+                        {opt.isHomebrew && (
+                          <p className="px-1 pb-1 text-xs text-tavern-muted">
+                            <span className="text-tavern-gold-light">Homebrew subclass</span> —
+                            original content written for Tavern, not part of the official SRD.
+                          </p>
+                        )}
                         <p className="px-1 pb-1 text-[10px] tracking-wider text-tavern-muted uppercase">
                           What you&apos;ll gain
                         </p>

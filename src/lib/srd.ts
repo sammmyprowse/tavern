@@ -525,16 +525,21 @@ export interface SubclassOption {
   summary: string | null;
   description: string | null;
   features: SubclassFeature[];
+  isHomebrew: boolean;
 }
 
 // Unlike base class features, subclass features aren't in the shared
 // `features` table — they're embedded directly in the subclass's own
-// `data.features[]` array.
+// `data.features[]` array. Widened to include 'homebrew' alongside the
+// official '2024' ruleset — every class only ships 1 real SRD subclass,
+// so the homebrew rows (3 more per class, reaching the real PHB's 4
+// total) are most of what this returns. Mirrors getSpeciesList's/
+// getGeneralFeatsList's existing official+homebrew pattern.
 export async function getSubclassesForClass(classIndex: string): Promise<SubclassOption[]> {
   const { data } = await supabase
     .from("subclasses")
-    .select("index, name, data")
-    .eq("ruleset", "2024")
+    .select("index, name, ruleset, data")
+    .in("ruleset", ["2024", "homebrew"])
     .eq("class_index", classIndex);
 
   return (data ?? [])
@@ -550,9 +555,10 @@ export async function getSubclassesForClass(classIndex: string): Promise<Subclas
         summary: d.summary ?? null,
         description: d.description ?? null,
         features: [...(d.features ?? [])].sort((a, b) => a.level - b.level),
+        isHomebrew: s.ruleset === "homebrew",
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => Number(a.isHomebrew) - Number(b.isHomebrew) || a.name.localeCompare(b.name));
 }
 
 export interface FeatOption {

@@ -2596,3 +2596,115 @@ correctly dropped it (4<=3 no longer holds); 3→2 correctly cleared
 live); HP tracked exactly right at every step (39→33→27→20→15→10,
 matching each popped roll); the Level Down link correctly disappeared
 once level 1 was reached. No console errors.
+
+## Homebrew subclasses — full PHB parity (36 new subclasses)
+User asked for "more subclasses (homebrew if needed)." Same root-cause
+gap as backgrounds (4/16) and Fighting Styles (4/~9): the free SRD
+ships exactly 1 subclass per class, the real 2024 PHB ships 4. Asked a
+scoping question before writing anything, since the answer changed the
+deliverable by 10-30x — full parity (+3 per class, 36 total) vs. a
+smaller +1 per class vs. starting with just a few classes. User picked
+full parity, the same ambition as every other homebrew pass this
+project (species, backgrounds, feats, Metamagic).
+
+**Confirmed before writing a single feature: subclass features get NO
+bespoke interactive treatment anywhere in this app, for any of the 12
+official subclasses** (checked directly — no hardcoded "19-20 crit"
+for Champion, no Frenzy-specific code for Berserker, nothing). Every
+subclass feature, official or homebrew, flows through the same generic
+Features-list merge that already existed. This made the whole 36-
+subclass effort pure CONTENT, not new app code — no new interactive
+resources, no new PlaySheet.tsx mechanics beyond what was already
+needed to surface the data and badge it as homebrew.
+
+**Naming: original names, not the real PHB ones.** Unlike species
+names (Aasimar, Tabaxi, Satyr — generic mythological/genre concepts
+not exclusive to WotC) or magic item names (sourced from the actually-
+open `magic_items` SRD table), real subclass names like "Battle
+Master," "Eldritch Knight," "Circle of the Moon," "Way of Shadow" are
+PHB-exclusive distinctive coinages, not generic words or open content —
+same legal footing as the 12 missing background names, which also got
+entirely original homebrew names rather than reused real ones. All 36
+new names are original (e.g. "Path of the Bloodletter" not "Berserker,"
+"Duelist"/"Guardian"/"Iron Tactician" instead of Battle Master/
+Eldritch Knight/Psi Warrior). **Deliberately avoided giving any
+non-caster class (Fighter/Barbarian/Monk) a spellcasting-hybrid
+subclass** (no Eldritch-Knight-style "Fighter who casts spells") and
+gave Rogue's magic-flavored one (Hexweaver) only at-will, slot-free
+cantrip-tier tricks in plain prose — actual spell-slot/prepared-spell
+integration for a class with `spellcastingAbility: null` would need
+real new infrastructure this pass deliberately stayed out of scope
+for, the same reasoning that kept Fighting Style's Great Weapon
+Fighting/Two-Weapon Fighting display-only instead of building new
+dice-engine support.
+
+**Cadence grounded in the real data, not invented:** before writing
+any of the 36, pulled the full feature list + grant levels for all 12
+official subclasses (Champion: 3/3/7/10/15/18; Life Domain: 3/3/3/6/17;
+Thief: 3/3/9/13/17; etc.) to confirm the real shape — always 2-3
+features at level 3, then roughly one every 3-5 levels through
+14-20. Every homebrew subclass follows this same real cadence (4-6
+features, first 1-2 at level 3) rather than an invented schedule.
+
+Seeded directly via `subclasses` rows (`ruleset='homebrew'`, same
+`{summary, description, features:[{name,level,description}]}` shape
+the official rows already use) — 3 per class, 36 total:
+- Barbarian: Path of the Bloodletter, Path of the Stormcaller, Path of the Unbroken
+- Bard: College of the Vanguard, College of Whispers, College of Mirrors
+- Cleric: War Domain, Trickery Domain, Storm Domain
+- Druid: Circle of the Tide, Circle of the Bloom, Circle of the Wildheart
+- Fighter: Iron Tactician, Duelist, Guardian
+- Monk: Way of the Shifting Wind, Way of the Iron Soul, Way of the Whispering Blade
+- Paladin: Oath of the Stormguard, Oath of the Wanderer, Oath of Judgment
+- Ranger: Beastcaller, Shadowstalker, Wayfinder
+- Rogue: Shadowstriker, Mindbender, Hexweaver
+- Sorcerer: Wildspark Sorcery, Stormborn Sorcery, Starborn Sorcery
+- Warlock: Fey Patron, Celestial Patron, Voidborn Patron
+- Wizard: Warder, Oracle, Phantasm
+
+**Code changes, mirroring `getSpeciesList`'s/`getGeneralFeatsList`'s
+existing official+homebrew pattern exactly:** `getSubclassesForClass`
+widened from `.eq("ruleset", "2024")` to `.in("ruleset", ["2024",
+"homebrew"])`; `SubclassOption` gained `isHomebrew: boolean`; sort
+order changed to official-first-then-homebrew (was a flat alphabetical
+sort, which would have interleaved them). Three disclosure points,
+matching species' exact pattern: a "Homebrew" badge chip on each
+option card in the subclass picker, a one-line "Homebrew subclass —
+original content written for Tavern, not part of the official SRD"
+sentence on the expanded/selected option, and "(Homebrew)" appended to
+the play sheet header's "{ClassName} ({SubclassName})" subtitle.
+
+**Real, previously-invisible bug this surfaced — not a new bug
+introduced, a latent one that could never manifest before now.** The
+existing subclass-feature dedup (`baseFeatureNames` check, added back
+in the original single-subclass-per-class build for cases like Cleric's
+"Disciple of Life" appearing in both the base `features` table AND the
+subclass's own embedded list) only ever filtered in ONE direction —
+removing a chosen subclass's feature if it ALSO leaked into the base
+table. It never filtered the other way: a feature that leaked into the
+base table but belongs to a DIFFERENT subclass than the one chosen.
+This was invisible for the entire project so far because every
+class only ever HAD one subclass — a leaked feature like Barbarian's
+"Frenzy" always matched whatever was "chosen" by necessity, since
+nothing else existed to choose. The instant a real alternative existed
+(Path of the Bloodletter), a Barbarian who chose it still saw
+Berserker's "Frenzy" phantom-appear in their Features list. Fixed by
+also checking each base-table feature's name against the full set of
+every subclass option's feature names for that class, only keeping it
+if it's either not a subclass-attributed name at all, or it IS the
+chosen subclass's own. Confirmed both directions live on the same
+character: chose Bloodletter → Frenzy correctly absent, Iron Stomach/
+Open Wound present; reset and chose Berserker instead → Frenzy
+correctly present, no duplicates either way.
+
+Tested live with a disposable level-3 Barbarian: confirmed all 4
+subclass options appear (1 official, 3 homebrew, each homebrew one
+badged), expanded Path of the Bloodletter and confirmed the homebrew
+disclosure sentence and all 5 features (with real level numbers) and
+full description text render correctly, confirmed it persisted to the
+DB (`subclassIndex: "path-of-the-bloodletter"`) after confirming,
+confirmed the header showed "Barbarian (Path of the Bloodletter —
+Homebrew)", and confirmed Features correctly showed Iron Stomach/Open
+Wound at level 3 with Frenzy absent — then caught the dedup bug,
+fixed it, and re-verified both the Bloodletter and Berserker cases
+post-fix as described above. No console errors.
