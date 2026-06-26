@@ -65,6 +65,20 @@ export interface CharacterDraft {
   // you finish a Long Rest, you can practice weapon drills and change one
   // of those weapon choices." See WEAPON_MASTERY_KNOWN_BY_CLASS for counts.
   weaponMasteryChoices: string[];
+  // Languages chosen at character creation — 2 picks for every character.
+  // Thieves' Cant (Rogue) and Druidic (Druid) are automatic class grants,
+  // not counted against these 2, and never in this array.
+  languageChoices: string[];
+  // 0-based index into the class's startingEquipmentOptions array (Option A
+  // = 0, Option B = 1, Option C = 2). Clamped to valid range if the chosen
+  // class has fewer options than a previously-selected one.
+  classEquipmentChoice: number;
+  // 0-based index into the background's equipmentOptions array.
+  backgroundEquipmentChoice: number;
+  // Index of the chosen tool proficiency for backgrounds that offer a pick
+  // (e.g. Soldier: one Gaming Set from dice/dragonchess/playing-cards/
+  // three-dragon-ante). null for backgrounds with no such choice.
+  toolProficiencyChoice: string | null;
 }
 
 export interface ExpertiseMilestone {
@@ -192,6 +206,10 @@ export const EMPTY_DRAFT: CharacterDraft = {
   metamagicChoices: [],
   fightingStyleChoices: [],
   weaponMasteryChoices: [],
+  languageChoices: [],
+  classEquipmentChoice: 0,
+  backgroundEquipmentChoice: 0,
+  toolProficiencyChoice: null,
 };
 
 export const MAX_LEVEL = 20;

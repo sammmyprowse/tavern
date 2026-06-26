@@ -57,6 +57,7 @@ import type {
   BackgroundOption,
   SkillInfo,
   EquipmentLookupItem,
+  LanguageOption,
   MagicItemLookupEntry,
   MasteryPropertyInfo,
   ClassFeature,
@@ -82,6 +83,7 @@ interface PlaySheetProps {
   backgrounds: BackgroundOption[];
   skills: SkillInfo[];
   equipment: EquipmentLookupItem[];
+  languages: LanguageOption[];
   magicItemLookup: MagicItemLookupEntry[];
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
@@ -209,6 +211,7 @@ export default function PlaySheet({
   backgrounds,
   skills,
   equipment,
+  languages,
   magicItemLookup,
   features,
   subclassOptions,
@@ -2897,6 +2900,43 @@ export default function PlaySheet({
             ))}
           </div>
         </div>
+
+        {/* Languages */}
+        {(currentDraft.languageChoices.length > 0 || currentDraft.toolProficiencyChoice) && (() => {
+          const languagesByIndex = new Map(languages.map((l) => [l.index, l]));
+          const background = backgrounds.find((b) => b.index === currentDraft.backgroundIndex) ?? null;
+          const autoLang =
+            currentDraft.classIndex === "rogue"
+              ? "Thieves' Cant"
+              : currentDraft.classIndex === "druid"
+                ? "Druidic"
+                : null;
+          const chosenNames = currentDraft.languageChoices.map(
+            (idx) => languagesByIndex.get(idx)?.name ?? idx,
+          );
+          const toolProfName = currentDraft.toolProficiencyChoice
+            ? background?.toolProficiencyChoices
+                .flatMap((tpc) => tpc.options)
+                .find((o) => o.index === currentDraft.toolProficiencyChoice)
+                ?.name.replace(/^Tool:\s*/, "") ?? currentDraft.toolProficiencyChoice
+            : null;
+          const allLanguages = autoLang ? [autoLang, ...chosenNames] : chosenNames;
+          return (
+            <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Languages &amp; Proficiencies
+              </h2>
+              {allLanguages.length > 0 && (
+                <p className="mt-2 text-sm text-tavern-text">{allLanguages.join(", ")}</p>
+              )}
+              {toolProfName && (
+                <p className="mt-1 text-sm text-tavern-muted">
+                  Gaming Set: {toolProfName}
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Fighting Style — not gated on spellcastingAbility, unlike Spells
             below: Fighter/Paladin/Ranger all grant this regardless of

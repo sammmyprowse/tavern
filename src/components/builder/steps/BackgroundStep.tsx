@@ -13,7 +13,12 @@ export default function BackgroundStep({ backgrounds, draft, onUpdate }: Backgro
 
   function selectBackground(b: BackgroundOption) {
     if (b.index === draft.backgroundIndex) return;
-    onUpdate({ backgroundIndex: b.index, backgroundAbilityBonus: null });
+    onUpdate({
+      backgroundIndex: b.index,
+      backgroundAbilityBonus: null,
+      backgroundEquipmentChoice: 0,
+      toolProficiencyChoice: null,
+    });
   }
 
   function setMode(mode: AbilityBonusChoice["mode"]) {
@@ -166,6 +171,61 @@ export default function BackgroundStep({ backgrounds, draft, onUpdate }: Backgro
               </p>
             )}
           </div>
+
+          {selected.toolProficiencyChoices.map((tpc, i) => (
+            <div key={i}>
+              <h3 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                {tpc.desc}
+              </h3>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {tpc.options.map((opt) => (
+                  <button
+                    key={opt.index}
+                    onClick={() => onUpdate({ toolProficiencyChoice: opt.index })}
+                    className={`rounded-lg border p-3 text-left text-sm transition-colors ${
+                      draft.toolProficiencyChoice === opt.index
+                        ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                        : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                    }`}
+                  >
+                    {opt.name.replace(/^Tool:\s*/, "")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {selected.equipmentOptions.length > 1 && (
+            <div>
+              <h3 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Starting Equipment Package
+              </h3>
+              <div className="mt-3 space-y-2">
+                {selected.equipmentOptions.map((option, i) => {
+                  const label = String.fromCharCode(65 + i);
+                  const isChosen = draft.backgroundEquipmentChoice === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => onUpdate({ backgroundEquipmentChoice: i })}
+                      className={`w-full rounded-lg border p-3 text-left text-sm transition-colors ${
+                        isChosen
+                          ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                          : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                      }`}
+                    >
+                      <span className="font-heading font-bold text-tavern-gold-light">Option {label}:</span>{" "}
+                      {option
+                        .map((item) =>
+                          item.isMoney ? item.name : `${item.count > 1 ? `${item.count}× ` : ""}${item.name}`,
+                        )
+                        .join(", ")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

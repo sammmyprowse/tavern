@@ -4,6 +4,7 @@ export type StepId =
   | "weapon-mastery"
   | "abilities"
   | "background"
+  | "languages"
   | "personality"
   | "review";
 
@@ -13,6 +14,7 @@ export const STEPS: { id: StepId; label: string }[] = [
   { id: "weapon-mastery", label: "Weapons" },
   { id: "abilities", label: "Abilities" },
   { id: "background", label: "Background" },
+  { id: "languages", label: "Languages" },
   { id: "personality", label: "Personality" },
   { id: "review", label: "Review" },
 ];

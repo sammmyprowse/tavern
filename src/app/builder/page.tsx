@@ -5,6 +5,7 @@ import {
   getBackgroundsList,
   getAbilityScoresList,
   getEquipmentLookup,
+  getLanguagesList,
   getSkillsList,
   getWeaponMasteryProperties,
 } from "@/lib/srd";
@@ -21,6 +22,7 @@ export default async function Builder() {
     backgrounds,
     abilityScores,
     equipment,
+    languages,
     skills,
     masteryProperties,
   ] = await Promise.all([
@@ -31,6 +33,7 @@ export default async function Builder() {
     getBackgroundsList(),
     getAbilityScoresList(),
     getEquipmentLookup(),
+    getLanguagesList(),
     getSkillsList(),
     getWeaponMasteryProperties(),
   ]);
@@ -45,6 +48,7 @@ export default async function Builder() {
         backgrounds={backgrounds}
         abilityScores={abilityScores}
         equipment={Array.from(equipment.values())}
+        languages={languages}
         skills={skills}
         masteryProperties={masteryProperties}
       />

@@ -10,6 +10,7 @@ import type {
   ClassOption,
   BackgroundOption,
   EquipmentLookupItem,
+  LanguageOption,
   SkillInfo,
 } from "@/lib/srd";
 import { saveCharacter } from "@/app/builder/actions";
@@ -23,6 +24,7 @@ interface ReviewStepProps {
   classes: ClassOption[];
   backgrounds: BackgroundOption[];
   equipment: EquipmentLookupItem[];
+  languages: LanguageOption[];
   skills: SkillInfo[];
   onRestart: () => void;
   onSaved: () => void;
@@ -38,6 +40,7 @@ export default function ReviewStep({
   classes,
   backgrounds,
   equipment,
+  languages,
   skills,
   onRestart,
   onSaved,
@@ -68,7 +71,19 @@ export default function ReviewStep({
   }
 
   const equipmentByIndex = new Map(equipment.map((e) => [e.index, e]));
+  const languagesByIndex = new Map(languages.map((l) => [l.index, l]));
   const sheet = buildCharacterSheet(draft, { species, subspecies, classes, backgrounds, skills });
+
+  const selectedClass = classes.find((c) => c.index === draft.classIndex) ?? null;
+  const selectedBackground = backgrounds.find((b) => b.index === draft.backgroundIndex) ?? null;
+
+  const chosenLanguageNames = draft.languageChoices.map((idx) => languagesByIndex.get(idx)?.name ?? idx);
+  const chosenToolProficiencyName = draft.toolProficiencyChoice
+    ? selectedBackground?.toolProficiencyChoices
+        .flatMap((tpc) => tpc.options)
+        .find((o) => o.index === draft.toolProficiencyChoice)
+        ?.name.replace(/^Tool:\s*/, "") ?? draft.toolProficiencyChoice
+    : null;
   const resolvedEquipment = sheet?.ownedEquipment ?? [];
   const allOwnedIndexes = new Set(
     resolvedEquipment.map((i) => i.index).filter((i): i is string => Boolean(i)),
@@ -174,6 +189,36 @@ export default function ReviewStep({
             </dd>
           </div>
         )}
+        {selectedClass && selectedClass.startingEquipmentOptions.length > 1 && (
+          <div className="border-b border-tavern-border pb-2">
+            <dt className="mb-2 text-tavern-gold-light">Class Equipment Package</dt>
+            <dd className="space-y-1.5">
+              {selectedClass.startingEquipmentOptions.map((option, i) => {
+                const label = String.fromCharCode(65 + i);
+                const isChosen = draft.classEquipmentChoice === i;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => onUpdate({ classEquipmentChoice: i })}
+                    className={`w-full rounded-lg border p-2.5 text-left text-xs transition-colors ${
+                      isChosen
+                        ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                        : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                    }`}
+                  >
+                    <span className="font-heading font-bold text-tavern-gold-light">Option {label}:</span>{" "}
+                    {option
+                      .map((item) =>
+                        item.isMoney ? item.name : `${item.count > 1 ? `${item.count}× ` : ""}${item.name}`,
+                      )
+                      .join(", ")}
+                  </button>
+                );
+              })}
+            </dd>
+          </div>
+        )}
+
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Starting Equipment</dt>
           <dd className="text-right text-tavern-text">
@@ -184,16 +229,26 @@ export default function ReviewStep({
             ))}
           </dd>
         </div>
+
+        {chosenLanguageNames.length > 0 && (
+          <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
+            <dt className="text-tavern-gold-light">Languages</dt>
+            <dd className="text-right text-tavern-text">{chosenLanguageNames.join(", ")}</dd>
+          </div>
+        )}
+
+        {chosenToolProficiencyName && (
+          <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
+            <dt className="text-tavern-gold-light">Gaming Set Proficiency</dt>
+            <dd className="text-tavern-text">{chosenToolProficiencyName}</dd>
+          </div>
+        )}
+
         <div className="flex flex-wrap justify-between gap-1">
           <dt className="text-tavern-gold-light">Personality &amp; Backstory</dt>
           <dd className="text-tavern-text">{personality ? "Added" : "Skipped"}</dd>
         </div>
       </dl>
-
-      <p className="mt-6 text-xs text-tavern-muted">
-        Starting equipment shown is option A from your class and background — choosing between
-        equipment packages is coming soon.
-      </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {isSignedIn ? (

@@ -7,6 +7,7 @@ import {
   getBackgroundsList,
   getSkillsList,
   getEquipmentLookup,
+  getLanguagesList,
   getMagicItemLookup,
   getFeaturesForClass,
   getSubclassesForClass,
@@ -40,6 +41,7 @@ export default async function CharacterPlaySheet({
     backgrounds,
     skills,
     equipment,
+    languages,
     magicItemLookup,
     generalFeats,
     fightingStyleFeats,
@@ -60,6 +62,7 @@ export default async function CharacterPlaySheet({
     getBackgroundsList(),
     getSkillsList(),
     getEquipmentLookup(),
+    getLanguagesList(),
     getMagicItemLookup(),
     getGeneralFeatsList(),
     getFightingStyleFeats(),
@@ -116,6 +119,7 @@ export default async function CharacterPlaySheet({
       backgrounds={backgrounds}
       skills={skills}
       equipment={Array.from(equipment.values())}
+      languages={languages}
       magicItemLookup={Array.from(magicItemLookup.values())}
       features={features}
       subclassOptions={subclassOptions}

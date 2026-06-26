@@ -7,6 +7,7 @@ import ClassStep from "./steps/ClassStep";
 import WeaponMasteryStep from "./steps/WeaponMasteryStep";
 import AbilitiesStep from "./steps/AbilitiesStep";
 import BackgroundStep from "./steps/BackgroundStep";
+import LanguagesStep from "./steps/LanguagesStep";
 import PersonalityStep from "./steps/PersonalityStep";
 import ReviewStep from "./steps/ReviewStep";
 import { EMPTY_DRAFT, WEAPON_MASTERY_KNOWN_BY_CLASS, type CharacterDraft, type DraftUpdate } from "@/lib/character";
@@ -18,6 +19,7 @@ import type {
   BackgroundOption,
   AbilityScoreInfo,
   EquipmentLookupItem,
+  LanguageOption,
   SkillInfo,
   MasteryPropertyInfo,
 } from "@/lib/srd";
@@ -33,6 +35,7 @@ interface BuilderWizardProps {
   backgrounds: BackgroundOption[];
   abilityScores: AbilityScoreInfo[];
   equipment: EquipmentLookupItem[];
+  languages: LanguageOption[];
   skills: SkillInfo[];
   masteryProperties: MasteryPropertyInfo[];
 }
@@ -45,6 +48,7 @@ export default function BuilderWizard({
   backgrounds,
   abilityScores,
   equipment,
+  languages,
   skills,
   masteryProperties,
 }: BuilderWizardProps) {
@@ -114,6 +118,7 @@ export default function BuilderWizard({
 
   const selectedSpecies = species.find((s) => s.index === draft.speciesIndex) ?? null;
   const selectedClass = classes.find((c) => c.index === draft.classIndex) ?? null;
+  const selectedBackground = backgrounds.find((b) => b.index === draft.backgroundIndex) ?? null;
 
   const draftSummary = [draft.name.trim(), selectedSpecies?.name, selectedClass?.name]
     .filter(Boolean)
@@ -126,6 +131,9 @@ export default function BuilderWizard({
   const hasWeaponMastery = weaponMasteryCount > 0;
   const relevantSteps = STEPS.filter((s) => s.id !== "weapon-mastery" || hasWeaponMastery);
 
+  const needsToolProficiencyChoice =
+    (selectedBackground?.toolProficiencyChoices.length ?? 0) > 0;
+
   const canAdvance: Record<StepId, boolean> = {
     species: Boolean(draft.speciesIndex) && (!selectedSpecies?.hasSubspecies || Boolean(draft.subspeciesIndex)),
     class:
@@ -135,7 +143,11 @@ export default function BuilderWizard({
       ),
     "weapon-mastery": draft.weaponMasteryChoices.length >= weaponMasteryCount,
     abilities: Object.values(draft.baseAbilityScores).every((v) => v !== null),
-    background: Boolean(draft.backgroundIndex) && Boolean(draft.backgroundAbilityBonus),
+    background:
+      Boolean(draft.backgroundIndex) &&
+      Boolean(draft.backgroundAbilityBonus) &&
+      (!needsToolProficiencyChoice || Boolean(draft.toolProficiencyChoice)),
+    languages: draft.languageChoices.length >= 2,
     personality: true,
     review: true,
   };
@@ -217,6 +229,9 @@ export default function BuilderWizard({
         {step === "background" && (
           <BackgroundStep backgrounds={backgrounds} draft={draft} onUpdate={updateDraft} />
         )}
+        {step === "languages" && (
+          <LanguagesStep languages={languages} draft={draft} onUpdate={updateDraft} />
+        )}
         {step === "personality" && (
           <PersonalityStep personality={personality} onUpdate={setPersonality} onSkip={goNext} />
         )}
@@ -230,6 +245,7 @@ export default function BuilderWizard({
             classes={classes}
             backgrounds={backgrounds}
             equipment={equipment}
+            languages={languages}
             skills={skills}
             onRestart={restart}
             onSaved={restart}

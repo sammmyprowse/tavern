@@ -222,9 +222,11 @@ export function buildCharacterSheet(
   const perception = skills.find((s) => s.index === "perception");
   const passivePerception = 10 + (perception?.bonus ?? modifiers.wis);
 
+  const clsEquipChoiceIdx = Math.min(draft.classEquipmentChoice, cls.startingEquipmentOptions.length - 1);
+  const bgEquipChoiceIdx = Math.min(draft.backgroundEquipmentChoice, background.equipmentOptions.length - 1);
   const ownedEquipment = [
-    ...cls.startingEquipmentFirstOption,
-    ...background.equipmentFirstOption,
+    ...(cls.startingEquipmentOptions[clsEquipChoiceIdx] ?? cls.startingEquipmentFirstOption),
+    ...(background.equipmentOptions[bgEquipChoiceIdx] ?? background.equipmentFirstOption),
   ];
 
   const spellcastingAbility = cls.spellcastingAbility;

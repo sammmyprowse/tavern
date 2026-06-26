@@ -51,6 +51,11 @@ export interface ClassOption {
   proficiencyChoices: ProficiencyChoice[];
   startingEquipmentDesc: string | null;
   startingEquipmentFirstOption: EquipmentBundleItem[];
+  // All top-level equipment package options (Option A = [0], B = [1], …).
+  // The player's choice index (draft.classEquipmentChoice) selects which
+  // one to use — startingEquipmentFirstOption stays for backward compat
+  // with call sites that haven't been migrated yet.
+  startingEquipmentOptions: EquipmentBundleItem[][];
   // null for non-casters. Generic (not Wizard-specific) so the same field
   // works once Sorcerer/Cleric's spellcasting passes happen.
   spellcastingAbility: AbilityKey | null;
@@ -64,6 +69,16 @@ export interface EquipmentBundleItem {
   isMoney: boolean;
 }
 
+export interface ToolProficiencyChoiceOption {
+  index: string;
+  name: string;
+}
+
+export interface BackgroundToolProficiencyChoice {
+  desc: string;
+  options: ToolProficiencyChoiceOption[];
+}
+
 export interface BackgroundOption {
   index: string;
   name: string;
@@ -74,6 +89,17 @@ export interface BackgroundOption {
   proficiencies: { index: string; name: string }[];
   equipmentDesc: string | null;
   equipmentFirstOption: EquipmentBundleItem[];
+  // All top-level equipment package options (Option A = [0], B = [1]).
+  equipmentOptions: EquipmentBundleItem[][];
+  // Non-empty for backgrounds that offer a tool proficiency pick (e.g.
+  // Soldier: choose one Gaming Set). Empty array for all others.
+  toolProficiencyChoices: BackgroundToolProficiencyChoice[];
+}
+
+export interface LanguageOption {
+  index: string;
+  name: string;
+  isRare: boolean;
 }
 
 export interface AbilityScoreInfo {
@@ -134,28 +160,25 @@ export interface SkillInfo {
   description: string;
 }
 
-function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
-  const block = optionsBlock as
-    | { from?: { options?: unknown[] } }
-    | undefined;
-  const firstOption = block?.from?.options?.[0] as
+function parseSingleEquipmentOption(option: unknown): EquipmentBundleItem[] {
+  const opt = option as
     | { option_type?: string; items?: unknown[]; unit?: string; count?: number }
     | undefined;
-  if (!firstOption) return [];
+  if (!opt) return [];
 
-  if (firstOption.option_type === "money") {
+  if (opt.option_type === "money") {
     return [
       {
         index: null,
-        name: `${firstOption.count} ${firstOption.unit?.toUpperCase()}`,
-        count: firstOption.count ?? 0,
+        name: `${opt.count} ${opt.unit?.toUpperCase()}`,
+        count: opt.count ?? 0,
         isMoney: true,
       },
     ];
   }
 
-  if (firstOption.option_type === "multiple" && Array.isArray(firstOption.items)) {
-    return firstOption.items.map((raw) => {
+  if (opt.option_type === "multiple" && Array.isArray(opt.items)) {
+    return opt.items.map((raw) => {
       const item = raw as {
         option_type?: string;
         of?: { index: string; name: string };
@@ -190,6 +213,16 @@ function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
   }
 
   return [];
+}
+
+function parseEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[] {
+  const block = optionsBlock as { from?: { options?: unknown[] } } | undefined;
+  return parseSingleEquipmentOption(block?.from?.options?.[0]);
+}
+
+function parseAllEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[][] {
+  const block = optionsBlock as { from?: { options?: unknown[] } } | undefined;
+  return (block?.from?.options ?? []).map(parseSingleEquipmentOption);
 }
 
 // Species (incl. homebrew, same disclosure pattern as backgrounds/feats):
@@ -302,6 +335,7 @@ export async function getClassesList(): Promise<ClassOption[]> {
         })),
         startingEquipmentDesc: d.starting_equipment_options?.[0]?.desc ?? null,
         startingEquipmentFirstOption: parseEquipmentOptions(d.starting_equipment_options?.[0]),
+        startingEquipmentOptions: parseAllEquipmentOptions(d.starting_equipment_options?.[0]),
         spellcastingAbility: (d.spellcasting?.spellcasting_ability?.index as AbilityKey) ?? null,
         description: CLASS_DESCRIPTIONS[c.index] ?? null,
       };
@@ -323,6 +357,12 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
         feat?: { index: string; name: string; note?: string };
         proficiencies?: { index: string; name: string }[];
         equipment_options?: { desc?: string; from?: { options?: unknown[] } }[];
+        proficiency_choices?: {
+          desc: string;
+          from?: {
+            options?: { item?: { index: string; name: string }; option_type?: string }[];
+          };
+        }[];
       };
       return {
         index: b.index,
@@ -334,6 +374,15 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
         proficiencies: d.proficiencies ?? [],
         equipmentDesc: d.equipment_options?.[0]?.desc ?? null,
         equipmentFirstOption: parseEquipmentOptions(d.equipment_options?.[0]),
+        equipmentOptions: parseAllEquipmentOptions(d.equipment_options?.[0]),
+        toolProficiencyChoices: (d.proficiency_choices ?? [])
+          .map((pc) => ({
+            desc: pc.desc,
+            options: (pc.from?.options ?? [])
+              .filter((o) => o.option_type === "reference" && o.item)
+              .map((o) => ({ index: o.item!.index, name: o.item!.name })),
+          }))
+          .filter((pc) => pc.options.length > 0),
       };
     })
     .sort((a, b) => {
@@ -640,6 +689,23 @@ export async function getWeaponMasteryProperties(): Promise<MasteryPropertyInfo[
   return (data ?? []).map((p) => {
     const d = p.data as { description?: string };
     return { index: p.index, name: p.name, description: d.description ?? "" };
+  });
+}
+
+export async function getLanguagesList(): Promise<LanguageOption[]> {
+  const { data } = await supabase
+    .from("languages")
+    .select("index, name, data")
+    .eq("ruleset", "2024")
+    .order("name");
+
+  return (data ?? []).map((l) => {
+    const d = l.data as { is_rare?: boolean };
+    return {
+      index: l.index,
+      name: l.name,
+      isRare: d.is_rare ?? false,
+    };
   });
 }
 
