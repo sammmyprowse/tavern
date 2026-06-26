@@ -89,6 +89,7 @@ export interface CharacterSheet {
   backgroundName: string;
   backgroundIsHomebrew: boolean;
   backgroundFeatName: string | null;
+  backgroundFeatIndex: string | null;
   finalScores: Record<AbilityKey, number>;
   modifiers: Record<AbilityKey, number>;
   proficiencyBonus: number;
@@ -255,6 +256,7 @@ export function buildCharacterSheet(
     backgroundName: background.name,
     backgroundIsHomebrew: background.isHomebrew,
     backgroundFeatName: background.feat?.name ?? null,
+    backgroundFeatIndex: background.feat?.index ?? null,
     finalScores,
     modifiers,
     proficiencyBonus,

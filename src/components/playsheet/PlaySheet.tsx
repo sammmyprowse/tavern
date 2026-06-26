@@ -594,7 +594,24 @@ export default function PlaySheet({
       (!allSubclassFeatureNames.has(f.name) || chosenSubclassFeatureNames.has(f.name)),
   );
 
-  const unlockedFeatures = [...baseFeaturesWithoutResolvedAsi, ...subclassFeatures, ...featFeatures]
+  const backgroundFeatFeature: ClassFeature | null = sheet.backgroundFeatIndex
+    ? (() => {
+        const opt = generalFeats.find((f) => f.index === sheet.backgroundFeatIndex);
+        return {
+          index: `background-feat-${sheet.backgroundFeatIndex}`,
+          name: opt?.name ?? sheet.backgroundFeatName ?? sheet.backgroundFeatIndex,
+          level: 1,
+          description: opt?.description ?? null,
+        };
+      })()
+    : null;
+
+  const unlockedFeatures = [
+    ...baseFeaturesWithoutResolvedAsi,
+    ...subclassFeatures,
+    ...featFeatures,
+    ...(backgroundFeatFeature ? [backgroundFeatFeature] : []),
+  ]
     .filter((f) => f.level <= sheet.level)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
