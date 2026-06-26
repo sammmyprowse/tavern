@@ -3235,17 +3235,27 @@ export default function PlaySheet({
 
             {!weaponMasteryPickerOpen ? (
               <div className="mt-2 space-y-1">
-                {knownWeaponMasteryDetails.map((w) => (
-                  <div
-                    key={w.index}
-                    className="flex items-center justify-between gap-2 rounded-md border border-tavern-border px-3 py-1.5 text-sm"
-                  >
-                    <span className="text-tavern-text">{w.name}</span>
-                    <span className="text-xs tracking-wide text-tavern-gold-light uppercase">
-                      {w.mastery?.name}
-                    </span>
-                  </div>
-                ))}
+                {knownWeaponMasteryDetails.map((w) => {
+                  const masteryDesc = w.mastery
+                    ? masteryProperties.find((p) => p.index === w.mastery!.index)?.description
+                    : null;
+                  return (
+                    <div
+                      key={w.index}
+                      className="rounded-md border border-tavern-border px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-tavern-text">{w.name}</span>
+                        <span className="text-xs tracking-wide text-tavern-gold-light uppercase">
+                          {w.mastery?.name}
+                        </span>
+                      </div>
+                      {masteryDesc && (
+                        <p className="mt-1 text-xs text-tavern-muted">{masteryDesc}</p>
+                      )}
+                    </div>
+                  );
+                })}
                 {knownWeaponMasteryDetails.length === 0 && (
                   <p className="text-xs text-tavern-muted">No Weapon Mastery chosen yet.</p>
                 )}
@@ -3920,6 +3930,10 @@ export default function PlaySheet({
                       {weapon.damageType ? ` ${weapon.damageType}` : ""}
                       {weapon.mastery ? ` — ${weapon.mastery.name}` : ""}
                     </div>
+                    {weapon.mastery && (() => {
+                      const desc = masteryProperties.find((p) => p.index === weapon.mastery!.index)?.description;
+                      return desc ? <div className="mt-0.5 text-xs text-tavern-muted italic">{desc}</div> : null;
+                    })()}
                     {weapon.bonusDamageDice && (
                       <div className="mt-0.5 text-xs text-tavern-gold-light italic">
                         +{weapon.bonusDamageDice} bonus damage
