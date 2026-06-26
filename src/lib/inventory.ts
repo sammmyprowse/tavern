@@ -83,6 +83,7 @@ export function resolveInventoryEquipment(
       armorClass: base.armorClass ? { ...base.armorClass, base: base.armorClass.base + item.acBonus } : null,
       attackBonus: item.attackBonus,
       damageBonus: item.damageBonus,
+      notes: item.notes ?? undefined,
     });
   }
 

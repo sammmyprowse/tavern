@@ -106,6 +106,7 @@ export interface EquipmentLookupItem {
   // working unchanged (lookup.attackBonus ?? 0 is always 0 for them).
   attackBonus?: number;
   damageBonus?: number;
+  notes?: string;
 }
 
 export interface SkillInfo {

@@ -362,6 +362,7 @@ export interface ResolvedWeapon {
   damageBonus: number;
   damageType: string | null;
   mastery: { index: string; name: string } | null;
+  notes: string | null;
 }
 
 const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
@@ -440,6 +441,7 @@ export function resolveWeapons(
         modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0) + (lookup.damageBonus ?? 0),
       damageType: lookup.damage.damageType,
       mastery: lookup.mastery,
+      notes: lookup.notes ?? null,
     });
   }
   return weapons;

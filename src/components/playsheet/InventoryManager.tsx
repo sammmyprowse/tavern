@@ -178,6 +178,15 @@ export default function InventoryManager({
             </div>
           )}
 
+          {category === "weapon" && (
+            <p className="mt-2 text-xs text-tavern-muted italic">
+              These are flat numbers added to every attack/damage roll automatically. For anything
+              conditional or dice-based — like &quot;+1d6 damage vs goblins&quot; — leave these at 0
+              and describe it in Notes below instead; it&apos;ll show on the Attacks card as a
+              reminder, but you apply it yourself when it&apos;s relevant.
+            </p>
+          )}
+
           {(category === "armor" || category === "shield") && (
             <label className="mt-2 block text-xs text-tavern-muted">
               AC bonus
@@ -193,13 +202,15 @@ export default function InventoryManager({
           )}
 
           <label className="mt-2 block text-xs text-tavern-muted">
-            Notes — special properties, flavor, anything that doesn&apos;t fit a number
+            Notes — conditional or dice-based effects (e.g. &quot;+1d6 damage vs goblins&quot;),
+            special properties, flavor
             <textarea
               value={draft.notes ?? ""}
               onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value || null }))}
+              placeholder='e.g. "+1d6 damage vs goblins" — shown on the Attacks card as a reminder, but you apply it yourself when relevant'
               maxLength={500}
               rows={2}
-              className="mt-1 w-full rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text"
+              className="mt-1 w-full rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text placeholder:text-tavern-muted/50"
             />
           </label>
 

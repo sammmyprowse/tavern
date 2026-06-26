@@ -2276,3 +2276,58 @@ tick under-counted, which is the same already-documented React-batching
 artifact from earlier scroll-spy/select testing this session, not a
 product bug; the themed scrollbar is visible in every screenshot from
 this pass. No console errors.
+
+## Custom equipment: conditional/dice-based bonuses
+User feedback on the custom item form (screenshot of "Add Longsword" /
+"Goblin Slayer Sword"): unclear how to express something like "an extra
+1d6 damage to goblins" — a bonus that's both conditional (only vs. a
+specific enemy) and dice-based, neither of which the Attack/Damage
+bonus number fields can represent (they're flat integers, always-on).
+Two real gaps, not just one: the form didn't say where this kind of
+thing belongs, and even Notes — the right place for it — never
+surfaced anywhere the player would actually see it mid-combat.
+
+**Form copy clarifies the split.** Added a line under the weapon
+Attack/Damage bonus fields in `InventoryManager.tsx`: these are flat
+numbers added to every roll automatically; anything conditional or
+dice-based belongs in Notes instead. Notes' own label and placeholder
+now use the user's exact example (`"+1d6 damage vs goblins"`) rather
+than generic "special properties" wording, and say directly that it'll
+show on the Attacks card as a reminder but isn't auto-applied.
+
+**Notes now actually reach the Attacks card — previously they only
+ever showed in the Equipment list, nowhere near where you'd roll
+damage.** Threaded `notes` through the same synthetic-lookup-entry path
+the attack/damage bonuses already use (`EquipmentLookupItem.notes?`,
+set by `resolveInventoryEquipment()` in `inventory.ts`) into a new
+`ResolvedWeapon.notes` field, set by `resolveWeapons()` in
+`character-sheet.ts`. `PlaySheet.tsx`'s Attacks card renders it as a
+gold-italic line directly under the weapon's damage dice/type/mastery
+line — visible at the exact moment it'd matter, not just on the
+Equipment row further down the page. Real catalog weapons and the
+synthesized Monk Unarmed Strike entry both get `notes: null`, so
+nothing changes for them.
+
+Caught and fixed a real authoring bug while writing the new form copy,
+before it ever reached a user: `&apos;`/`&#39;` HTML entities only
+decode inside JSX text children, not inside a plain JS string used for
+an attribute value like `placeholder`. The first two drafts of the
+placeholder string would have rendered the literal text `&apos;s` to
+every user. Caught by re-reading the diff, not by build/lint (a string
+attribute typo like this doesn't fail TypeScript or ESLint) — fixed by
+rewording to avoid the apostrophe entirely rather than fighting quote
+escaping.
+
+Tested live with a disposable account/character (Human Fighter, Soldier
+background, deleted after): confirmed the new form copy renders
+correctly (no literal `&apos;`/`&#39;` text, real apostrophes display
+correctly in the JSX-text helper paragraph); built "Goblin Slayer
+Sword" on a Longsword base with Attack/Damage bonus left at 0 and Notes
+set to "+1d6 damage vs goblins"; confirmed the Equipment list's
+existing inline bonus/notes line still rendered correctly (regression
+check, untouched by this change); equipped it and confirmed the Attacks
+card showed "Goblin Slayer Sword — 1d8 +4 Slashing — Sap" with
+"+1d6 damage vs goblins" directly underneath in gold italic, Attack +6
+(no change from the base Longsword's own +6, confirming the flat bonus
+fields and the conditional note are correctly independent of each
+other). No console errors.

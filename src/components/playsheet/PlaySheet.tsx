@@ -400,6 +400,7 @@ export default function PlaySheet({
         damageBonus: sheet.modifiers.dex,
         damageType: "Bludgeoning",
         mastery: null,
+        notes: null,
       }
     : null;
   const weapons = [
@@ -3334,6 +3335,9 @@ export default function PlaySheet({
                       {weapon.damageType ? ` ${weapon.damageType}` : ""}
                       {weapon.mastery ? ` — ${weapon.mastery.name}` : ""}
                     </div>
+                    {weapon.notes && (
+                      <div className="mt-0.5 text-xs text-tavern-gold-light italic">{weapon.notes}</div>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
