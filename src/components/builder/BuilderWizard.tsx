@@ -48,6 +48,11 @@ export default function BuilderWizard({
   const [personality, setPersonality] = useState<PersonalityAnswers | null>(null);
   const [step, setStep] = useState<StepId>("species");
   const [loaded, setLoaded] = useState(false);
+  // True only when a *meaningful* saved draft was found on mount and the
+  // player hasn't yet said whether to continue it or start over — gates
+  // the whole wizard behind a choice instead of silently resuming (or
+  // silently overwriting) whatever they were partway through last time.
+  const [hasUnresolvedDraft, setHasUnresolvedDraft] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -57,8 +62,12 @@ export default function BuilderWizard({
         // `loaded` gate below so SSR/client markup never mismatches. Merged
         // over EMPTY_DRAFT so a draft saved before a schema change (e.g. the
         // level/hpRolls fields) still gets valid defaults for the new keys.
+        const parsed = { ...EMPTY_DRAFT, ...JSON.parse(saved) };
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setDraft({ ...EMPTY_DRAFT, ...JSON.parse(saved) });
+        setDraft(parsed);
+        if (parsed.speciesIndex || parsed.classIndex || parsed.name.trim()) {
+          setHasUnresolvedDraft(true);
+        }
       } catch {
         // ignore corrupt saved draft
       }
@@ -96,10 +105,15 @@ export default function BuilderWizard({
     setDraft(EMPTY_DRAFT);
     setPersonality(null);
     setStep("species");
+    setHasUnresolvedDraft(false);
   }
 
   const selectedSpecies = species.find((s) => s.index === draft.speciesIndex) ?? null;
   const selectedClass = classes.find((c) => c.index === draft.classIndex) ?? null;
+
+  const draftSummary = [draft.name.trim(), selectedSpecies?.name, selectedClass?.name]
+    .filter(Boolean)
+    .join(" — ");
 
   const canAdvance: Record<StepId, boolean> = {
     species: Boolean(draft.speciesIndex) && (!selectedSpecies?.hasSubspecies || Boolean(draft.subspeciesIndex)),
@@ -124,6 +138,36 @@ export default function BuilderWizard({
   }
 
   if (!loaded) return null;
+
+  if (hasUnresolvedDraft) {
+    return (
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="flex flex-col items-center rounded-xl border border-tavern-border bg-tavern-card p-6 py-10 text-center sm:p-8">
+          <h2 className="font-heading text-2xl font-bold text-tavern-gold">Unfinished Character</h2>
+          <p className="mt-3 max-w-md text-tavern-muted">
+            {draftSummary
+              ? `You have an unfinished character in progress: ${draftSummary}.`
+              : "You have an unfinished character in progress."}{" "}
+            Continue where you left off, or start fresh?
+          </p>
+          <div className="mt-6 flex gap-4">
+            <button
+              onClick={() => setHasUnresolvedDraft(false)}
+              className="rounded-lg bg-tavern-oxblood px-6 py-2.5 font-heading text-sm font-bold tracking-widest text-tavern-parchment uppercase transition-colors hover:bg-tavern-oxblood-light"
+            >
+              Continue
+            </button>
+            <button
+              onClick={restart}
+              className="rounded-lg border border-tavern-border px-6 py-2.5 font-heading text-sm font-bold tracking-widest text-tavern-muted uppercase hover:border-tavern-gold-light hover:text-tavern-gold-light"
+            >
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -167,6 +211,7 @@ export default function BuilderWizard({
             equipment={equipment}
             skills={skills}
             onRestart={restart}
+            onSaved={restart}
             isSignedIn={isSignedIn}
           />
         )}

@@ -29,3 +29,41 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Themed scrollbars app-wide — replaces the default gray OS scrollbar
+   with the gold-on-dark palette everywhere. .scrollbar-hide above still
+   wins where used (a class selector beats this universal one). */
+* {
+  scrollbar-color: var(--color-tavern-gold) var(--color-tavern-bg);
+  scrollbar-width: thin;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--color-tavern-bg);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-tavern-gold);
+  border: 2px solid var(--color-tavern-bg);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-tavern-gold-light);
+}
+
+/* Hides native number-input spin buttons app-wide — the bare gray OS
+   arrows clash with the theme everywhere they appear. NumberStepper
+   (src/components/NumberStepper.tsx) adds its own themed +/- controls
+   on top for fields where incrementing/decrementing is the natural
+   interaction; fields where it isn't (entering a one-off damage/heal
+   amount) are just left as plain numeric entry, no spinner at all. */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

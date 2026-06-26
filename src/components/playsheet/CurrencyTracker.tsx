@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CURRENCY_ORDER, type Currency } from "@/lib/currency";
+import NumberStepper from "@/components/NumberStepper";
 
 function CurrencyBox({
   label,
@@ -27,17 +28,25 @@ function CurrencyBox({
     setDraft(String(value));
   }
 
+  function step(delta: number) {
+    const next = Math.max(0, (parseInt(draft, 10) || 0) + delta);
+    setDraft(String(next));
+    onCommit(next);
+  }
+
   return (
     <div className="rounded-lg border border-tavern-border bg-tavern-bg p-2 text-center">
       <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">{label}</div>
-      <input
-        type="number"
-        value={draft}
-        disabled={!isOwner}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => onCommit(Math.max(0, parseInt(draft, 10) || 0))}
-        className="mt-1 w-full bg-transparent text-center font-heading text-lg font-bold text-tavern-gold-light focus:outline-none disabled:opacity-80"
-      />
+      <div className="mt-1">
+        <NumberStepper
+          value={draft}
+          disabled={!isOwner}
+          onChange={setDraft}
+          onStep={step}
+          onBlur={() => onCommit(Math.max(0, parseInt(draft, 10) || 0))}
+          inputClassName="font-heading text-lg font-bold text-tavern-gold-light"
+        />
+      </div>
     </div>
   );
 }

@@ -40,6 +40,7 @@ import {
 } from "@/app/characters/actions";
 import { resolveInventoryEquipment, type InventoryItem } from "@/lib/inventory";
 import { deriveStartingCurrency, type Currency } from "@/lib/currency";
+import { equipmentDetailLines } from "@/lib/equipment-details";
 import InventoryManager from "./InventoryManager";
 import CurrencyTracker from "./CurrencyTracker";
 import type {
@@ -3370,27 +3371,49 @@ export default function PlaySheet({
           <p className="mt-1 text-xs text-tavern-muted">
             Tap to equip or unequip. Armor and shields affect your AC live.
           </p>
-          <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {sheet.ownedEquipment
               .filter((item) => !item.isMoney && item.index)
               .map((item, i) => {
                 const isEquipped = equippedSet.has(item.index!);
+                const detailsKey = `equip:${item.index}-${i}`;
+                const expanded = expandedFeatures.has(detailsKey);
+                const details = equipmentDetailLines(equipmentByIndex.get(item.index!));
                 return (
-                  <button
-                    key={`${item.index}-${i}`}
-                    onClick={() => toggleEquipped(item.index!)}
-                    className={`flex items-center justify-between rounded-md border px-3 py-1.5 text-left text-sm ${
-                      isEquipped
-                        ? "border-tavern-gold bg-tavern-bg text-tavern-text"
-                        : "border-tavern-border text-tavern-muted"
+                  <div
+                    key={detailsKey}
+                    className={`rounded-md border ${
+                      isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
                     }`}
                   >
-                    <span>
-                      {item.count > 1 ? `${item.count}× ` : ""}
-                      {item.name}
-                    </span>
-                    <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
-                  </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => toggleEquipped(item.index!)}
+                        className={`flex flex-1 items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
+                          isEquipped ? "text-tavern-text" : "text-tavern-muted"
+                        }`}
+                      >
+                        <span>
+                          {item.count > 1 ? `${item.count}× ` : ""}
+                          {item.name}
+                        </span>
+                        <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
+                      </button>
+                      {details.length > 0 && (
+                        <button
+                          onClick={() => toggleFeature(detailsKey)}
+                          className="px-2 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                        >
+                          {expanded ? "▲" : "▼"}
+                        </button>
+                      )}
+                    </div>
+                    {expanded && details.length > 0 && (
+                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                        {details.join("\n")}
+                      </p>
+                    )}
+                  </div>
                 );
               })}
           </div>
@@ -3409,18 +3432,21 @@ export default function PlaySheet({
                     item.damageBonus ? `${formatModifier(item.damageBonus)} Damage` : null,
                     item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
                   ].filter(Boolean);
+                  const detailsKey = `inv:${item.id}`;
+                  const expanded = expandedFeatures.has(detailsKey);
+                  const baseDetails = equipmentDetailLines(base);
                   return (
                     <div
                       key={item.id}
-                      className="rounded-md border border-tavern-border p-2.5"
+                      className={`rounded-md border p-2.5 ${
+                        isEquipped ? "border-tavern-gold bg-tavern-bg" : "border-tavern-border"
+                      }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <button
                           onClick={() => toggleEquipped(item.id)}
-                          className={`flex flex-1 items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-left text-sm ${
-                            isEquipped
-                              ? "border-tavern-gold bg-tavern-bg text-tavern-text"
-                              : "border-tavern-border text-tavern-muted"
+                          className={`flex flex-1 items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm ${
+                            isEquipped ? "text-tavern-text" : "text-tavern-muted"
                           }`}
                         >
                           <span>
@@ -3431,28 +3457,43 @@ export default function PlaySheet({
                             {isEquipped ? "Equipped" : "Stowed"}
                           </span>
                         </button>
-                        {isOwner && (
-                          <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
+                          {baseDetails.length > 0 && (
                             <button
-                              onClick={() => setEditingInventoryItem(item)}
-                              className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                              onClick={() => toggleFeature(detailsKey)}
+                              className="px-1 text-xs text-tavern-muted hover:text-tavern-gold-light"
                             >
-                              Edit
+                              {expanded ? "▲" : "▼"}
                             </button>
-                            <button
-                              onClick={() => handleRemoveInventoryItem(item.id)}
-                              className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )}
+                          )}
+                          {isOwner && (
+                            <>
+                              <button
+                                onClick={() => setEditingInventoryItem(item)}
+                                className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleRemoveInventoryItem(item.id)}
+                                className="text-xs text-tavern-muted hover:text-tavern-oxblood-light"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                       {(bonusParts.length > 0 || item.notes) && (
                         <p className="mt-1.5 text-xs text-tavern-muted">
                           {bonusParts.join(", ")}
                           {bonusParts.length > 0 && item.notes ? " — " : ""}
                           {item.notes}
+                        </p>
+                      )}
+                      {expanded && baseDetails.length > 0 && (
+                        <p className="mt-1.5 border-t border-tavern-border pt-1.5 text-xs whitespace-pre-line text-tavern-muted">
+                          {baseDetails.join("\n")}
                         </p>
                       )}
                     </div>

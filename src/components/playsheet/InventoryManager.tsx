@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { EquipmentLookupItem } from "@/lib/srd";
 import { categorizeBaseItem, emptyInventoryItem, type InventoryItem } from "@/lib/inventory";
+import NumberStepper from "@/components/NumberStepper";
 
 interface InventoryManagerProps {
   equipmentLookup: Map<string, EquipmentLookupItem>;
@@ -140,35 +141,39 @@ export default function InventoryManager({
 
           <label className="mt-2 block text-xs text-tavern-muted">
             Quantity
-            <input
-              type="number"
-              min={1}
-              max={999}
-              value={draft.count}
-              onChange={(e) => setDraft((d) => ({ ...d, count: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
-              className="mt-1 w-24 rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text"
-            />
+            <div className="mt-1 w-24">
+              <NumberStepper
+                value={String(draft.count)}
+                onChange={(v) => setDraft((d) => ({ ...d, count: Math.max(1, parseInt(v, 10) || 1) }))}
+                onStep={(delta) => setDraft((d) => ({ ...d, count: Math.max(1, d.count + delta) }))}
+                inputClassName="text-sm text-tavern-text"
+              />
+            </div>
           </label>
 
           {category === "weapon" && (
             <div className="mt-2 flex gap-3">
               <label className="block text-xs text-tavern-muted">
                 Attack bonus
-                <input
-                  type="number"
-                  value={draft.attackBonus}
-                  onChange={(e) => setDraft((d) => ({ ...d, attackBonus: parseInt(e.target.value, 10) || 0 }))}
-                  className="mt-1 w-20 rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text"
-                />
+                <div className="mt-1 w-20">
+                  <NumberStepper
+                    value={String(draft.attackBonus)}
+                    onChange={(v) => setDraft((d) => ({ ...d, attackBonus: parseInt(v, 10) || 0 }))}
+                    onStep={(delta) => setDraft((d) => ({ ...d, attackBonus: d.attackBonus + delta }))}
+                    inputClassName="text-sm text-tavern-text"
+                  />
+                </div>
               </label>
               <label className="block text-xs text-tavern-muted">
                 Damage bonus
-                <input
-                  type="number"
-                  value={draft.damageBonus}
-                  onChange={(e) => setDraft((d) => ({ ...d, damageBonus: parseInt(e.target.value, 10) || 0 }))}
-                  className="mt-1 w-20 rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text"
-                />
+                <div className="mt-1 w-20">
+                  <NumberStepper
+                    value={String(draft.damageBonus)}
+                    onChange={(v) => setDraft((d) => ({ ...d, damageBonus: parseInt(v, 10) || 0 }))}
+                    onStep={(delta) => setDraft((d) => ({ ...d, damageBonus: d.damageBonus + delta }))}
+                    inputClassName="text-sm text-tavern-text"
+                  />
+                </div>
               </label>
             </div>
           )}
@@ -176,12 +181,14 @@ export default function InventoryManager({
           {(category === "armor" || category === "shield") && (
             <label className="mt-2 block text-xs text-tavern-muted">
               AC bonus
-              <input
-                type="number"
-                value={draft.acBonus}
-                onChange={(e) => setDraft((d) => ({ ...d, acBonus: parseInt(e.target.value, 10) || 0 }))}
-                className="mt-1 w-20 rounded-md border border-tavern-border bg-tavern-card px-3 py-1.5 text-sm text-tavern-text"
-              />
+              <div className="mt-1 w-20">
+                <NumberStepper
+                  value={String(draft.acBonus)}
+                  onChange={(v) => setDraft((d) => ({ ...d, acBonus: parseInt(v, 10) || 0 }))}
+                  onStep={(delta) => setDraft((d) => ({ ...d, acBonus: d.acBonus + delta }))}
+                  inputClassName="text-sm text-tavern-text"
+                />
+              </div>
             </label>
           )}
 

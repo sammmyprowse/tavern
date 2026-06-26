@@ -94,6 +94,7 @@ export default function SpeciesStep({ species, subspecies, draft, onUpdate }: Sp
                   }`}
                 >
                   <div className="font-heading font-bold text-tavern-text">{sub.name}</div>
+                  {sub.description && <p className="mt-1 text-xs text-tavern-muted italic">{sub.description}</p>}
                   <ul className="mt-1 space-y-0.5 text-xs text-tavern-muted">
                     {sub.traits.map((t) => (
                       <li key={t.index}>

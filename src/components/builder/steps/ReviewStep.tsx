@@ -25,6 +25,7 @@ interface ReviewStepProps {
   equipment: EquipmentLookupItem[];
   skills: SkillInfo[];
   onRestart: () => void;
+  onSaved: () => void;
   isSignedIn: boolean;
 }
 
@@ -39,6 +40,7 @@ export default function ReviewStep({
   equipment,
   skills,
   onRestart,
+  onSaved,
   isSignedIn,
 }: ReviewStepProps) {
   const router = useRouter();
@@ -50,6 +52,12 @@ export default function ReviewStep({
     setSaveError(null);
     const result = await saveCharacter(draft, personality);
     if (result.success && result.characterId) {
+      // Clear the in-progress draft before navigating away — previously
+      // only the (rarely-reached, since save redirects away immediately)
+      // "Start Over" button did this, so every saved character left its
+      // draft behind in localStorage, silently waiting to confuse the
+      // next character-builder visit.
+      onSaved();
       // Straight to the new character's play sheet — no reason to make the
       // player click through to My Characters and find it themselves.
       router.push(`/characters/${result.characterId}`);

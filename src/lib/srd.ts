@@ -1,6 +1,11 @@
 import { supabase } from "./supabase";
 import type { AbilityKey, ArmorClassData } from "./character";
-import { SPECIES_DESCRIPTIONS, CLASS_DESCRIPTIONS, OFFICIAL_BACKGROUND_DESCRIPTIONS } from "./flavor-text";
+import {
+  SPECIES_DESCRIPTIONS,
+  CLASS_DESCRIPTIONS,
+  OFFICIAL_BACKGROUND_DESCRIPTIONS,
+  LINEAGE_DESCRIPTIONS,
+} from "./flavor-text";
 
 export interface SpeciesOption {
   index: string;
@@ -23,6 +28,7 @@ export interface SubspeciesOption {
   // null for every other subspecies (Gnomish/Elven Lineage, etc. don't have
   // a single damage type).
   damageType: { index: string; name: string } | null;
+  description: string | null;
 }
 
 export interface SkillOptionRef {
@@ -91,6 +97,8 @@ export interface EquipmentLookupItem {
   twoHandedDamage: WeaponDamage | null;
   properties: { index: string; name: string }[];
   mastery: { index: string; name: string } | null;
+  weight: number | null;
+  cost: { qty: number; unit: string } | null;
   // Only ever set on synthetic entries built by resolveInventoryEquipment
   // (see src/lib/inventory.ts) for a player's custom/found item — real
   // catalog entries from getEquipmentLookup() never set these, so every
@@ -216,6 +224,7 @@ export async function getSubspeciesList(): Promise<SubspeciesOption[]> {
       speciesIndex: s.species_index ?? "",
       traits: d.traits ?? [],
       damageType: d.damage_type ?? null,
+      description: LINEAGE_DESCRIPTIONS[s.index] ?? null,
     };
   });
 }
@@ -334,7 +343,7 @@ export async function getAbilityScoresList(): Promise<AbilityScoreInfo[]> {
 export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupItem>> {
   const { data } = await supabase
     .from("equipment")
-    .select("index, name, categories, data")
+    .select("index, name, categories, weight, cost_qty, cost_unit, data")
     .eq("ruleset", "2024");
 
   const map = new Map<string, EquipmentLookupItem>();
@@ -362,6 +371,8 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
         : null,
       properties: d.properties ?? [],
       mastery: d.mastery ?? null,
+      weight: item.weight != null ? Number(item.weight) : null,
+      cost: item.cost_qty != null && item.cost_unit ? { qty: Number(item.cost_qty), unit: item.cost_unit } : null,
     });
   }
   return map;

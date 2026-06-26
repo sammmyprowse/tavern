@@ -60,6 +60,39 @@ export const CLASS_DESCRIPTIONS: Record<string, string> = {
   wizard: "Magic as a science: studied, recorded, and perfected, with a spellbook full of solutions to nearly any problem.",
 };
 
+// Same gap, same treatment, one level down — subspecies/lineage options
+// (Draconic Ancestor, Elven Lineage, etc.) have no description field in
+// the raw data either. Grounded in the classic, widely-known color/type
+// associations (black dragons and acid swamps, frost giants and cold
+// endurance, etc.) rather than invented from nothing, but still original
+// phrasing, not a paraphrase of specific book text.
+export const LINEAGE_DESCRIPTIONS: Record<string, string> = {
+  "draconic-ancestor-black": "Hails from acid-scarred swamps and bogs, with a corrosive breath to match.",
+  "draconic-ancestor-blue": "Hails from sun-scoured deserts, calling down lightning like distant thunderheads.",
+  "draconic-ancestor-brass": "Hails from sweltering deserts, talkative and fond of a good, long story.",
+  "draconic-ancestor-bronze": "Hails from coastal waters, drawn to storms and the open sea.",
+  "draconic-ancestor-copper": "Hails from rocky hills and canyons, sharp-tongued and quick with a joke.",
+  "draconic-ancestor-gold": "Hails from a noble, honor-bound line, holding themselves to the highest standard.",
+  "draconic-ancestor-green": "Hails from dense forests, as cunning and patient as the woods themselves.",
+  "draconic-ancestor-red": "Hails from volcanic peaks, proud and fierce, with fire in their blood.",
+  "draconic-ancestor-silver": "Hails from high mountain peaks, fiercely protective of those they call kin.",
+  "draconic-ancestor-white": "Hails from frozen wastes, blunt and instinctual, built for survival over subtlety.",
+  "elven-lineage-drow": "Descended from the Underdark's elves, at home in darkness and shadow.",
+  "elven-lineage-high-elf": "Descended from elves steeped in arcane study, with a cantrip always close at hand.",
+  "elven-lineage-wood-elf": "Descended from elves of the deep forest, swift and at home in the wild.",
+  "gnomish-lineage-forest-gnome": "Hails from woodland warrens, with a natural rapport for small forest creatures.",
+  "gnomish-lineage-rock-gnome": "Hails from hillside burrows, endlessly tinkering with gadgets and gears.",
+  "giant-ancestry-clouds-jaunt": "Carries the cloud giants' gift for closing distance in the blink of an eye.",
+  "giant-ancestry-fires-burn": "Carries the fire giants' resilience, searing back at whatever burns them.",
+  "giant-ancestry-frosts-chill": "Carries the frost giants' endurance, shrugging off cold that would stop others cold.",
+  "giant-ancestry-hills-tumble": "Carries the hill giants' sheer bulk, turning a hard fall into someone else's problem.",
+  "giant-ancestry-stones-endurance": "Carries the stone giants' toughness, soaking up a hit before it really lands.",
+  "giant-ancestry-storms-thunder": "Carries the storm giants' command of thunder, answering force with force.",
+  "fiendish-legacy-abyssal": "Bloodline traces to the Abyss, with a demonic temper simmering close to the surface.",
+  "fiendish-legacy-chthonic": "Bloodline traces to the realms of the dead, touched by necrotic power.",
+  "fiendish-legacy-infernal": "Bloodline traces to the Nine Hells, carrying a devil's fire and cunning.",
+};
+
 // The 12 homebrew backgrounds already carry real description text inside
 // their own data (written when they were authored) — getBackgroundsList
 // reads that directly. The 4 official SRD backgrounds have the same gap

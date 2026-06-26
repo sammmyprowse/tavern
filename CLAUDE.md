@@ -2192,3 +2192,87 @@ persisted to the database (not just local state) and survived a full
 page reload; toggled the character public and viewed signed-out to
 confirm the inputs show the real value but are genuinely disabled, not
 just visually styled to look disabled. No console errors.
+
+## Five small fixes round
+1. **Lineage descriptions.** Same gap as species/class/background before
+   — no description field anywhere in the raw subspecies data (Draconic
+   Ancestor, Elven Lineage, Giant Ancestry, etc.). `LINEAGE_DESCRIPTIONS`
+   in `flavor-text.ts` covers all 24 lineages, grounded in classic,
+   widely-known color/type associations (black dragons ↔ acid swamps,
+   frost giants ↔ cold endurance) rather than invented from nothing —
+   still original phrasing, not paraphrased book text. Wired into
+   `SubspeciesOption.description` the same way species/class/background
+   already work.
+2. **Themed number steppers + scrollbars.** User attached a screenshot
+   of the native gray spin-button arrows on a currency box clashing with
+   the theme. Native spinners can't be reliably recolored cross-browser
+   (the arrow glyph itself isn't a colorable CSS property in most
+   engines, and Firefox doesn't expose the pseudo-elements for styling
+   at all) — hid them globally instead
+   (`input[type=number]::-webkit-inner/outer-spin-button` +
+   `-moz-appearance: textfield` in `globals.css`) and built
+   `src/components/NumberStepper.tsx`, a fused input + custom ▲/▼ pair
+   (gold background, grey arrow, matching what was asked for) used
+   everywhere a persistent counter benefits from quick increment/
+   decrement: the 5 currency boxes and InventoryManager's Quantity/
+   Attack/Damage/AC bonus fields. Deliberately *not* applied to the
+   Damage/Heal/Lay-on-Hands inputs on the HP card — those are "type a
+   one-off amount and click Apply" fields, not counters, so they just
+   lost their spinner with no replacement (a cleaner look for that kind
+   of field anyway). Also added a global gold-on-dark `::-webkit-
+   scrollbar` rule so every scrollable area in the app picks up the
+   theme automatically, not just ones touched individually —
+   `.scrollbar-hide` (used by the section nav) still wins where present
+   since a class selector beats the universal one.
+3. **Draft not clearing after save — a real, longstanding bug.**
+   Confirmed by reading `ReviewStep.tsx`'s `handleSave`: on success it
+   only ever called `router.push(...)`, never anything that touched
+   localStorage. The only code path that cleared the draft was
+   `restart()`, bound to the "Start Over" button — which a player who
+   just successfully saved and got redirected away would never click.
+   Every character saved this entire project left its draft behind,
+   silently waiting to confuse the next builder visit (explains why
+   manual `localStorage.removeItem` was needed before nearly every test
+   character built this session). Fixed with a new `onSaved` prop on
+   `ReviewStep`, wired to the existing `restart()` in `BuilderWizard.tsx`
+   — called right before the redirect.
+4. **Resume-or-restart prompt.** Builder used to silently resume
+   whatever was in localStorage with zero acknowledgement, the same
+   silent-resume behavior that made bug #3 invisible for so long. Now,
+   if a draft with a real species/class/name is found on mount,
+   `BuilderWizard` shows an "Unfinished Character" interstitial
+   (mirroring the Personality step's gate-screen pattern) naming what it
+   found (e.g. "Elf") before either resuming or clearing via the same
+   `restart()`. A draft that's still entirely default doesn't trigger
+   this — nothing to ask about.
+5. **Equipment/inventory item details.** Extended `EquipmentLookupItem`
+   with `weight`/`cost` (real dedicated columns on the `equipment`
+   table, just never selected before) and added
+   `src/lib/equipment-details.ts`'s `equipmentDetailLines()` — one
+   shared formatter producing damage/AC/properties/mastery/weight/cost
+   lines, used identically by both the starting-equipment list and the
+   found/custom list (passing the `InventoryItem` too for custom items
+   adds a bonus/notes line on top). Each equipment row's existing
+   equip/unequip click target was left untouched — a *separate* ▼/▲
+   button reveals the details panel, avoiding any conflict between "tap
+   to equip" and "tap to see details" on the same row.
+
+Tested live end-to-end with a disposable account (deleted after): saw
+the Elven Lineage descriptions render correctly for all three options;
+reloaded mid-draft and confirmed the resume prompt appears naming "Elf",
+then separately confirmed both Continue (keeps the draft) and Start
+Fresh (clears it, verified via localStorage) work; built and saved a
+full character and confirmed `tavern_character_draft` was reset to
+`EMPTY_DRAFT` in localStorage immediately after, not just after a
+manual Start Over; on the resulting play sheet, confirmed Chain Mail's
+and Greatsword's expanded details show their exact real stats (AC 16/
+55 lb/75 GP; 2d6 Slashing/Heavy+Two-Handed/Graze/6 lb/50 GP) and that a
+freshly-added custom Dagger's details show correctly too (1d4 Piercing/
+Finesse+Light+Thrown/Nick/1 lb/2 GP); confirmed the gold-themed stepper
+buttons visually replace the native spinner and that clicking them with
+real spacing between clicks correctly accumulates (confirmed in the
+database, not just the UI) — three clicks fired in the same synchronous
+tick under-counted, which is the same already-documented React-batching
+artifact from earlier scroll-spy/select testing this session, not a
+product bug; the themed scrollbar is visible in every screenshot from
+this pass. No console errors.
