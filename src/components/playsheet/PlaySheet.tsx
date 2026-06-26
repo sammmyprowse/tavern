@@ -9,6 +9,7 @@ import {
   fixedAverageHpGain,
   MAX_LEVEL,
   ORDER_CHOICES,
+  GIANT_ANCESTRY_OPTIONS,
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
   METAMAGIC_OPTIONS,
@@ -32,6 +33,7 @@ import {
   levelDownCharacter,
   chooseSubclass,
   chooseOriginOrder,
+  chooseGiantAncestry,
   chooseFeat,
   chooseExpertise,
   setKnownCantrips,
@@ -185,6 +187,7 @@ interface PlayState {
   // on a Short OR Long Rest (confirmed "finish a Short or Long Rest").
   expendedBreathWeapon: number;
   usedDraconicFlight: boolean;
+  expendedGiantAncestry: number;
   expendedStonecunning: number;
   expendedAdrenalineRush: number;
   usedLargeForm: boolean;
@@ -321,6 +324,7 @@ export default function PlaySheet({
   const [subclassPending, setSubclassPending] = useState(false);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<string | null>(null);
   const [orderPending, setOrderPending] = useState(false);
+  const [ancestryPending, setAncestryPending] = useState(false);
   const [choiceError, setChoiceError] = useState<string | null>(null);
   const [featPickerLevel, setFeatPickerLevel] = useState<number | null>(null);
   const [selectedFeatIndex, setSelectedFeatIndex] = useState<string | null>(null);
@@ -376,6 +380,7 @@ export default function PlaySheet({
     usedUncannyMetabolism: false,
     expendedBreathWeapon: 0,
     usedDraconicFlight: false,
+    expendedGiantAncestry: 0,
     expendedStonecunning: 0,
     expendedAdrenalineRush: 0,
     usedLargeForm: false,
@@ -521,6 +526,9 @@ export default function PlaySheet({
   const orderOptions = ORDER_CHOICES[sheet.classIndex] ?? null;
   const needsOrderChoice = !!orderOptions && !currentDraft.orderChoice;
   const chosenOrder = orderOptions?.find((o) => o.key === currentDraft.orderChoice) ?? null;
+
+  const needsGiantAncestryChoice = sheet.speciesIndex === "goliath" && !currentDraft.giantAncestryChoice;
+  const chosenAncestry = GIANT_ANCESTRY_OPTIONS.find((o) => o.key === currentDraft.giantAncestryChoice) ?? null;
 
   const needsSubclassChoice =
     sheet.level >= 3 && !currentDraft.subclassIndex && subclassOptions.length > 0;
@@ -902,6 +910,7 @@ export default function PlaySheet({
       usedUncannyMetabolism: false,
       expendedBreathWeapon: 0,
       usedDraconicFlight: false,
+      expendedGiantAncestry: 0,
       expendedStonecunning: 0,
       expendedAdrenalineRush: 0,
       usedLargeForm: false,
@@ -1217,6 +1226,18 @@ export default function PlaySheet({
     setPlay((prev) => ({ ...prev, usedLargeForm: true }));
   }
 
+  function useGiantAncestry() {
+    if (!sheet || play.expendedGiantAncestry >= sheet.giantAncestryUsesMax) return;
+    setPlay((prev) => ({ ...prev, expendedGiantAncestry: prev.expendedGiantAncestry + 1 }));
+  }
+
+  function restoreGiantAncestry() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedGiantAncestry: Math.max(0, prev.expendedGiantAncestry - 1),
+    }));
+  }
+
   // Stonecunning (Dwarf): "As a Bonus Action, you gain Tremorsense... You
   // can use this Bonus Action a number of times equal to your Proficiency
   // Bonus." No roll, just a stepper — Tremorsense itself isn't a numeric
@@ -1373,6 +1394,18 @@ export default function PlaySheet({
       setChoiceError(result.error ?? "Couldn't save choice.");
     }
     setOrderPending(false);
+  }
+
+  async function handleChooseGiantAncestry(choiceKey: string) {
+    setAncestryPending(true);
+    setChoiceError(null);
+    const result = await chooseGiantAncestry(characterId, choiceKey);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save choice.");
+    }
+    setAncestryPending(false);
   }
 
   function openFeatPicker(level: number) {
@@ -1835,6 +1868,30 @@ export default function PlaySheet({
                   key={opt.key}
                   onClick={() => handleChooseOrder(opt.key)}
                   disabled={orderPending}
+                  className="block w-full rounded-md border border-tavern-border p-3 text-left hover:border-tavern-gold-light disabled:opacity-50"
+                >
+                  <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
+                  <p className="mt-1 text-xs text-tavern-muted">{opt.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isOwner && needsGiantAncestryChoice && (
+          <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+            <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+              Choose your Giant Ancestry
+            </p>
+            <p className="mt-1 text-xs text-tavern-muted">
+              Pick one benefit you can invoke as a Bonus Action ({sheet.proficiencyBonus}× per Long Rest).
+            </p>
+            <div className="mt-2 space-y-2">
+              {GIANT_ANCESTRY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => handleChooseGiantAncestry(opt.key)}
+                  disabled={ancestryPending}
                   className="block w-full rounded-md border border-tavern-border p-3 text-left hover:border-tavern-gold-light disabled:opacity-50"
                 >
                   <span className="font-heading font-bold text-tavern-text">{opt.name}</span>
@@ -2808,6 +2865,40 @@ export default function PlaySheet({
               >
                 {play.usedLargeForm ? "Used" : "Use"}
               </button>
+            </div>
+          )}
+
+          {sheet.giantAncestryUsesMax > 0 && chosenAncestry && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Giant Ancestry — {chosenAncestry.name}
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  {chosenAncestry.description} Regains all uses on a Long Rest.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={useGiantAncestry}
+                  disabled={play.expendedGiantAncestry >= sheet.giantAncestryUsesMax}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Use
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={restoreGiantAncestry}
+                    disabled={play.expendedGiantAncestry === 0}
+                    className="rounded border border-tavern-border px-1.5 py-0.5 text-xs text-tavern-muted hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.giantAncestryUsesMax - play.expendedGiantAncestry}/{sheet.giantAncestryUsesMax}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 

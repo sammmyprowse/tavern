@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase-server";
 import {
   MAX_LEVEL,
   ORDER_CHOICES,
+  GIANT_ANCESTRY_OPTIONS,
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
@@ -449,6 +450,36 @@ export async function chooseOriginOrder(
   }
 
   const nextDraft: CharacterDraft = { ...draft, orderChoice: choiceKey };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+export interface ChooseGiantAncestryResult {
+  success: boolean;
+  error?: string;
+  draft?: CharacterDraft;
+}
+
+export async function chooseGiantAncestry(
+  characterId: string,
+  choiceKey: string,
+): Promise<ChooseGiantAncestryResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (draft.speciesIndex !== "goliath") {
+    return { success: false, error: "Only Goliaths can choose a Giant Ancestry benefit." };
+  }
+  if (!GIANT_ANCESTRY_OPTIONS.some((o) => o.key === choiceKey)) {
+    return { success: false, error: "Invalid choice." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, giantAncestryChoice: choiceKey };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };

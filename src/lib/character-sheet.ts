@@ -136,6 +136,8 @@ export interface CharacterSheet {
   largeFormAvailable: boolean;
   relentlessEnduranceAvailable: boolean;
   naturalArmorAC: number | null;
+  // Giant Ancestry (Goliath) — uses = Proficiency Bonus per Long Rest.
+  giantAncestryUsesMax: number;
 }
 
 export function buildCharacterSheet(
@@ -319,6 +321,7 @@ export function buildCharacterSheet(
     // flat override, not an additive bonus. null for every other species,
     // matching computeArmorClass's flatUnarmoredAC param shape.
     naturalArmorAC: species.index === "tortle" ? 17 : null,
+    giantAncestryUsesMax: species.index === "goliath" ? proficiencyBonus : 0,
   };
 }
 

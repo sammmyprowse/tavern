@@ -65,6 +65,9 @@ export interface CharacterDraft {
   // you finish a Long Rest, you can practice weapon drills and change one
   // of those weapon choices." See WEAPON_MASTERY_KNOWN_BY_CLASS for counts.
   weaponMasteryChoices: string[];
+  // Giant Ancestry (Goliath) — key into GIANT_ANCESTRY_OPTIONS. null until chosen
+  // on the play sheet (same deferred-choice pattern as orderChoice).
+  giantAncestryChoice: string | null;
   // Languages chosen at character creation — 2 picks for every character.
   // Thieves' Cant (Rogue) and Druidic (Druid) are automatic class grants,
   // not counted against these 2, and never in this array.
@@ -150,6 +153,54 @@ export interface OrderChoiceOption {
 // anywhere in the SRD tables — only as prose inside one `features` row
 // (cleric-divine-order / druid-primal-order). Text below is verbatim from
 // that SRD row, just split into selectable options instead of one paragraph.
+export interface GiantAncestryOption {
+  key: string;
+  name: string;
+  description: string;
+}
+
+// Giant Ancestry (Goliath, level 1) — choose one of the 6 benefits below; the
+// choice is permanent, uses = Proficiency Bonus, all regained on Long Rest.
+// Text is verbatim from the traits table row (data.description, trimmed).
+export const GIANT_ANCESTRY_OPTIONS: GiantAncestryOption[] = [
+  {
+    key: "clouds-jaunt",
+    name: "Cloud's Jaunt (Cloud Giant)",
+    description:
+      "As a Bonus Action, you magically teleport up to 30 feet to an unoccupied space you can see.",
+  },
+  {
+    key: "fires-burn",
+    name: "Fire's Burn (Fire Giant)",
+    description:
+      "When you hit a target with an attack roll and deal damage to it, you can also deal 1d10 Fire damage to that target.",
+  },
+  {
+    key: "frosts-chill",
+    name: "Frost's Chill (Frost Giant)",
+    description:
+      "When you hit a target with an attack roll and deal damage to it, you can also deal 1d6 Cold damage to that target and reduce its Speed by 10 feet until the start of your next turn.",
+  },
+  {
+    key: "hills-tumble",
+    name: "Hill's Tumble (Hill Giant)",
+    description:
+      "When you hit a Large or smaller creature with an attack roll and deal damage to it, you can give that target the Prone condition.",
+  },
+  {
+    key: "stones-endurance",
+    name: "Stone's Endurance (Stone Giant)",
+    description:
+      "When you take damage, you can take a Reaction to roll 1d12. Add your Constitution modifier to the number rolled and reduce the damage by that total.",
+  },
+  {
+    key: "storms-thunder",
+    name: "Storm's Thunder (Storm Giant)",
+    description:
+      "When you take damage from a creature within 60 feet of you, you can take a Reaction to deal 1d8 Thunder damage to that creature.",
+  },
+];
+
 export const ORDER_CHOICES: Record<string, OrderChoiceOption[]> = {
   cleric: [
     {
@@ -206,6 +257,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   metamagicChoices: [],
   fightingStyleChoices: [],
   weaponMasteryChoices: [],
+  giantAncestryChoice: null,
   languageChoices: [],
   classEquipmentChoice: 0,
   backgroundEquipmentChoice: 0,
