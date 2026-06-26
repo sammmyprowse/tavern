@@ -94,6 +94,7 @@ interface PlaySheetProps {
   masteryProperties: MasteryPropertyInfo[];
   traitDescriptions: Record<string, string>;
   classSpells: SpellOption[];
+  lineageCantripSpells: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
   avatarUrl: string | null;
@@ -200,6 +201,9 @@ interface PlayState {
   // at-will and need no tracking.
   usedLineageSpell3: boolean;
   usedLineageSpell5: boolean;
+  // Chosen lineage cantrip (High Elf: swappable from Wizard list on Long Rest).
+  // null = use the default from the trait (e.g. Prestidigitation for High Elf).
+  lineageCantrip: string | null;
   // Starting equipment has no "delete" concept in the build itself (it's
   // derived fresh from class/background every render, not stored as
   // removable state) — this is the play-state-only equivalent of deleting
@@ -228,6 +232,7 @@ export default function PlaySheet({
   masteryProperties,
   traitDescriptions,
   classSpells,
+  lineageCantripSpells,
   isOwner,
   isPublic,
   avatarUrl,
@@ -339,6 +344,7 @@ export default function PlaySheet({
   const [selectedExpertiseSkills, setSelectedExpertiseSkills] = useState<string[]>([]);
   const [expertisePending, setExpertisePending] = useState(false);
   const [cantripPickerOpen, setCantripPickerOpen] = useState(false);
+  const [lineageCantripPickerOpen, setLineageCantripPickerOpen] = useState(false);
   const [selectedCantrips, setSelectedCantrips] = useState<string[]>([]);
   const [preparedPickerOpen, setPreparedPickerOpen] = useState(false);
   const [selectedPrepared, setSelectedPrepared] = useState<string[]>([]);
@@ -393,6 +399,7 @@ export default function PlaySheet({
     usedRelentlessEndurance: false,
     usedLineageSpell3: false,
     usedLineageSpell5: false,
+    lineageCantrip: null,
     removedStartingIndexes: [],
   };
 
@@ -2300,7 +2307,7 @@ export default function PlaySheet({
               {collapsedSections.has("hp") ? "▸" : "▾"}
             </button>
           </div>
-          {!collapsedSections.has("hp") && (
+          {(!collapsedSections.has("hp") || lineageCantripPickerOpen) && (
             <>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input
@@ -2975,10 +2982,11 @@ export default function PlaySheet({
             </div>
           )}
 
-          {sheet.lineageSpells.length > 0 && (() => {
+          {(sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null) && (() => {
             const cantrips = sheet.lineageSpells.filter((s) => s.unlockLevel === 1);
             const leveled = sheet.lineageSpells.filter((s) => s.unlockLevel > 1 && sheet.level >= s.unlockLevel);
-            if (cantrips.length === 0 && leveled.length === 0) return null;
+            if (cantrips.length === 0 && leveled.length === 0 && !sheet.lineageCantripTrait) return null;
+            const currentCantrip = play.lineageCantrip ?? sheet.lineageCantripTrait?.defaultCantrip ?? null;
             return (
               <div className="mt-4 rounded-md border border-tavern-border p-3">
                 <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
@@ -2992,6 +3000,53 @@ export default function PlaySheet({
                 {cantrips.length > 0 && (
                   <div className="mt-2 text-xs text-tavern-muted">
                     {cantrips.length === 1 ? "Cantrip" : "Cantrips"}: {cantrips.map((s) => s.name).join(", ")} — at-will
+                  </div>
+                )}
+                {sheet.lineageCantripTrait !== null && (
+                  <div className="mt-2">
+                    {!lineageCantripPickerOpen ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-tavern-muted">
+                          Cantrip: <span className="text-tavern-text">{currentCantrip}</span> — at-will
+                        </div>
+                        {isOwner && (
+                          <button
+                            onClick={() => setLineageCantripPickerOpen(true)}
+                            className="rounded-md border border-tavern-border px-2 py-1 text-xs text-tavern-gold-light hover:border-tavern-gold-light"
+                          >
+                            Change
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="mb-2 text-xs font-bold text-tavern-gold-light">Choose Cantrip</div>
+                        <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                          {lineageCantripSpells.map((s) => (
+                            <button
+                              key={s.index}
+                              onClick={() => {
+                                setPlay((p) => ({ ...p, lineageCantrip: s.name }));
+                                setLineageCantripPickerOpen(false);
+                              }}
+                              className={`rounded-md border px-2 py-1.5 text-left text-xs ${
+                                s.name === currentCantrip
+                                  ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold"
+                                  : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
+                              }`}
+                            >
+                              {s.name}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setLineageCantripPickerOpen(false)}
+                          className="mt-2 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {leveled.map((s) => {
