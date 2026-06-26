@@ -40,7 +40,7 @@ export default function NumberStepper({
             type="button"
             tabIndex={-1}
             onClick={() => onStep(1)}
-            className="flex h-1/2 w-6 items-center justify-center bg-tavern-gold text-[8px] text-tavern-muted hover:bg-tavern-gold-light"
+            className="flex h-1/2 w-6 items-center justify-center bg-tavern-gold text-[8px] text-tavern-bg hover:bg-tavern-gold-light"
           >
             ▲
           </button>
@@ -48,7 +48,7 @@ export default function NumberStepper({
             type="button"
             tabIndex={-1}
             onClick={() => onStep(-1)}
-            className="flex h-1/2 w-6 items-center justify-center border-t border-tavern-bg/30 bg-tavern-gold text-[8px] text-tavern-muted hover:bg-tavern-gold-light"
+            className="flex h-1/2 w-6 items-center justify-center border-t border-tavern-bg/30 bg-tavern-gold text-[8px] text-tavern-bg hover:bg-tavern-gold-light"
           >
             ▼
           </button>

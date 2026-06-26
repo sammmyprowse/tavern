@@ -2338,14 +2338,16 @@ correctly: a Notes-only treatment of "+1d6 vs goblins" was a workaround,
 not a real mechanic. Four pieces in one round, all from the same
 feedback message, plus a NumberStepper color bug spotted along the way.
 
-**1. NumberStepper's ▼ button had the wrong text color** —
-`text-tavern-bg` instead of `text-tavern-muted` (a copy-paste typo from
-when the ▲ button was duplicated), making the down arrow render in a
-near-invisible dark-on-gold instead of matching the up arrow's muted
-gray-on-gold. One-line fix in `NumberStepper.tsx`, but it affected every
-stepper in the app at once (currency boxes, inventory quantity/bonus
-fields) — confirmed via `preview_inspect`'s computed `color` on both
-buttons before/after, not just eyeballing a screenshot.
+**1. NumberStepper's ▲ button had the wrong text color** — first
+misdiagnosed this backwards (changed ▼ to match ▲'s muted gray, when
+the user clarified ▼'s dark-on-gold was the one that already looked
+right and ▲ was the mismatched one). Both buttons now use
+`text-tavern-bg` — a strong dark arrow against the gold background —
+not `text-tavern-muted`'s washed-out gray. One-line fix in
+`NumberStepper.tsx`, affecting every stepper in the app at once
+(currency boxes, inventory quantity/bonus fields) — confirmed via
+`preview_inspect`'s computed `color` on both buttons, which now read
+the identical `rgb(15, 18, 21)`.
 
 **2. Conditional/dice-based bonus damage is now a real, structured
 mechanic — `InventoryItem.bonusDamageDice`/`bonusDamageCondition`, not
