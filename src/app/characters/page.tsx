@@ -30,7 +30,7 @@ export default async function Characters() {
   const [{ data: characters }, species, subspecies, classes] = await Promise.all([
     supabase
       .from("characters")
-      .select("id, name, draft, created_at, is_public")
+      .select("id, name, draft, created_at, is_public, avatar_url")
       // RLS also permits seeing public/party-shared characters that aren't mine —
       // "My Characters" specifically means owned by me, so filter explicitly
       // rather than relying on RLS visibility alone.
@@ -66,6 +66,7 @@ export default async function Characters() {
               id: c.id,
               name: c.name,
               isPublic: c.is_public,
+              avatarUrl: c.avatar_url ?? null,
               subtitle: `${sub ? sub.name : sp?.name ?? ""}${cls ? ` ${cls.name}` : ""}`,
             };
           })}

@@ -8,6 +8,7 @@ export interface CharacterListItem {
   id: string;
   name: string;
   isPublic: boolean;
+  avatarUrl: string | null;
   subtitle: string;
 }
 
@@ -33,16 +34,28 @@ export default function CharacterList({ characters: initial }: { characters: Cha
           key={c.id}
           className="rounded-lg border border-tavern-border bg-tavern-card p-4 hover:border-tavern-gold-light"
         >
-          <Link href={`/characters/${c.id}`} className="block">
-            <div className="flex items-center gap-2">
-              <div className="font-heading text-lg font-bold text-tavern-text">{c.name}</div>
-              {c.isPublic && (
-                <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
-                  Public
+          <Link href={`/characters/${c.id}`} className="flex items-center gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-tavern-gold/50 bg-tavern-bg">
+              {c.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.avatarUrl} alt={c.name} className="h-full w-full object-cover" />
+              ) : (
+                <span className="font-heading text-xl font-bold text-tavern-gold-light">
+                  {c.name.charAt(0).toUpperCase()}
                 </span>
               )}
             </div>
-            <div className="mt-1 text-sm text-tavern-muted">{c.subtitle}</div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="font-heading text-lg font-bold text-tavern-text">{c.name}</div>
+                {c.isPublic && (
+                  <span className="rounded-full border border-tavern-gold-light/40 px-2 py-0.5 text-[10px] tracking-wider text-tavern-gold-light uppercase">
+                    Public
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 text-sm text-tavern-muted">{c.subtitle}</div>
+            </div>
           </Link>
           <div className="mt-2 flex justify-end border-t border-tavern-border pt-2">
             <DeleteCharacterButton
