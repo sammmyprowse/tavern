@@ -59,6 +59,12 @@ export interface CharacterDraft {
   // like metamagicChoices since "Whenever you gain a [Class] level, you can
   // replace the feat you chose with a different Fighting Style feat."
   fightingStyleChoices: string[];
+  // Weapon Mastery (Barbarian/Fighter/Paladin/Ranger/Rogue, level 1) — real
+  // SRD feature, equipment-table indexes of the chosen weapon kinds. Freely
+  // overwritable like fightingStyleChoices/metamagicChoices, since "whenever
+  // you finish a Long Rest, you can practice weapon drills and change one
+  // of those weapon choices." See WEAPON_MASTERY_KNOWN_BY_CLASS for counts.
+  weaponMasteryChoices: string[];
 }
 
 export interface ExpertiseMilestone {
@@ -185,6 +191,7 @@ export const EMPTY_DRAFT: CharacterDraft = {
   preparedSpells: [],
   metamagicChoices: [],
   fightingStyleChoices: [],
+  weaponMasteryChoices: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -265,10 +272,17 @@ export function computeArmorClass(
   unarmoredDefenseBonus = 0,
   flatUnarmoredAC: number | null = null,
 ): number {
-  const shield = equipped.find((item) => item.index === "shield");
-  const bodyArmor = equipped.find(
-    (item) => item.armor_class && item.index !== "shield",
-  );
+  // Checked via the real "shields" category tag, not item.index === "shield"
+  // — a custom/found shield from the inventory system is keyed by its own
+  // generated id (see resolveInventoryEquipment), never the literal SRD
+  // index, but it inherits the base item's categories array unchanged, so
+  // this check correctly recognizes it either way. The index-string check
+  // it replaces silently never matched a custom shield at all (and could
+  // even mis-route it into the bodyArmor branch below, since its index is
+  // never literally "shield" either) — a real bug, not just a gap.
+  const isShield = (item: EquipmentItem) => item.categories?.includes("shields") ?? false;
+  const shield = equipped.find(isShield);
+  const bodyArmor = equipped.find((item) => item.armor_class && !isShield(item));
 
   let ac: number;
   if (bodyArmor?.armor_class) {
@@ -728,6 +742,31 @@ export const FIGHTING_STYLE_KNOWN_BY_CLASS: Record<string, (level: number) => nu
   paladin: paladinFightingStylesKnown,
   ranger: rangerFightingStylesKnown,
 };
+
+// Weapon Mastery (level 1): each class's own feature text confirms a base
+// count directly ("the mastery properties of two/three kinds of weapons of
+// your choice"). Barbarian and Fighter's text additionally references "the
+// Weapon Mastery column of the [Class] Features table" for higher-level
+// increases — that table isn't in this app's data anywhere (the 2024
+// mechanic has no 2014 precedent to cross-check, unlike Action Surge/
+// Indomitable), so those two stay a disclosed flat count at their confirmed
+// level-1 base, same treatment as Channel Divinity/Wild Shape/Rage. Paladin/
+// Ranger/Rogue's own text never references a scaling table at all — their
+// counts are genuinely flat forever, not a gap. A plain Record (not a
+// per-level function like FIGHTING_STYLE_KNOWN_BY_CLASS) since there's no
+// real table to encode for any of the five.
+export const WEAPON_MASTERY_KNOWN_BY_CLASS: Record<string, number> = {
+  barbarian: 2,
+  fighter: 3,
+  paladin: 2,
+  ranger: 2,
+  rogue: 2,
+};
+
+// Barbarian's text specifically restricts choices to "Simple or Martial
+// Melee weapons" — the other four classes' text just says "weapons of your
+// choice with which you have proficiency," no melee restriction.
+export const WEAPON_MASTERY_MELEE_ONLY_CLASSES = new Set(["barbarian"]);
 
 // Second Wind (Fighter, from level 1): "As a Bonus Action, you can use it to
 // regain Hit Points equal to 1d10 plus your Fighter level. You can use this

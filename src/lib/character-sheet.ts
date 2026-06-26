@@ -397,6 +397,15 @@ function isMonkWeapon(lookup: EquipmentLookupItem): boolean {
 // itself (there's nothing equipped to resolve) — the caller adds that
 // separately. All new params default to 0/false/null so every existing
 // call site keeps working unchanged.
+// masteredWeaponIndexes (Weapon Mastery, Barbarian/Fighter/Paladin/Ranger/
+// Rogue): a weapon's mastery property only shows if its base weapon type is
+// among the character's chosen masteries — null means "don't gate," which
+// applies to every class without the feature AND to a class that HAS it but
+// hasn't recorded a choice yet (existing characters created before this
+// feature shipped have an empty weaponMasteryChoices array; treating that
+// as "show unconditionally" rather than "show nothing" avoids silently
+// taking mastery away from every pre-existing character of these classes —
+// see PlaySheet.tsx for exactly when null vs. a real Set is passed).
 export function resolveWeapons(
   ownedEquipment: EquipmentBundleItem[],
   equipmentLookup: Map<string, EquipmentLookupItem>,
@@ -405,6 +414,7 @@ export function resolveWeapons(
   hasArcheryFightingStyle = false,
   rageDamageBonusWhileRaging = 0,
   monkMartialArtsDie: number | null = null,
+  masteredWeaponIndexes: Set<string> | null = null,
 ): ResolvedWeapon[] {
   const weapons: ResolvedWeapon[] = [];
   for (const item of ownedEquipment) {
@@ -442,7 +452,10 @@ export function resolveWeapons(
       damageBonus:
         modifiers[ability] + (ability === "str" ? rageDamageBonusWhileRaging : 0) + (lookup.damageBonus ?? 0),
       damageType: lookup.damage.damageType,
-      mastery: lookup.mastery,
+      mastery:
+        lookup.mastery && (!masteredWeaponIndexes || masteredWeaponIndexes.has(lookup.baseIndex ?? lookup.index))
+          ? lookup.mastery
+          : null,
       notes: lookup.notes ?? null,
       bonusDamageDice: lookup.bonusDamageDice ?? null,
       bonusDamageCondition: lookup.bonusDamageCondition ?? null,

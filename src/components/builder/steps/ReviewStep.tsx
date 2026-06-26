@@ -164,6 +164,16 @@ export default function ReviewStep({
             {sheet?.backgroundFeatName ? ` — ${sheet.backgroundFeatName}` : ""}
           </dd>
         </div>
+        {draft.weaponMasteryChoices.length > 0 && (
+          <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
+            <dt className="text-tavern-gold-light">Weapon Mastery</dt>
+            <dd className="text-right text-tavern-text">
+              {draft.weaponMasteryChoices
+                .map((idx) => equipmentByIndex.get(idx)?.name ?? idx)
+                .join(", ")}
+            </dd>
+          </div>
+        )}
         <div className="flex flex-wrap justify-between gap-1 border-b border-tavern-border pb-2">
           <dt className="text-tavern-gold-light">Starting Equipment</dt>
           <dd className="text-right text-tavern-text">

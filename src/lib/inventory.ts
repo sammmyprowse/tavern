@@ -86,6 +86,7 @@ export function resolveInventoryEquipment(
     augmentedLookup.set(item.id, {
       ...base,
       index: item.id,
+      baseIndex: item.baseIndex,
       name,
       armorClass: base.armorClass ? { ...base.armorClass, base: base.armorClass.base + item.acBonus } : null,
       attackBonus: item.attackBonus,

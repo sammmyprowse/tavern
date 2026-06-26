@@ -2708,3 +2708,152 @@ Homebrew)", and confirmed Features correctly showed Iron Stomach/Open
 Wound at level 3 with Frenzy absent — then caught the dedup bug,
 fixed it, and re-verified both the Bloodletter and Berserker cases
 post-fix as described above. No console errors.
+
+## Weapon Mastery, shield AC bug, mobile currency layout, ability randomize
+Four pieces of user feedback in one round: comparing against other D&D
+character builders, Fighter (and others) are missing class-specific
+builder questions like Weapon Mastery; the currency boxes are
+unreadable on a phone; a manually-added custom Shield did nothing to
+AC; and an ability-score randomize button would help.
+
+**Weapon Mastery — confirmed real, structured 2024 data covering
+exactly 5 classes.** Each class's own `features` row for "Weapon
+Mastery" gives a real base count directly: Barbarian 2, Fighter 3,
+Paladin/Ranger/Rogue 2 each. Barbarian's text restricts choices to
+Simple/Martial MELEE weapons specifically; the other four don't.
+Barbarian's and Fighter's text additionally reference "the Weapon
+Mastery column of the [Class] Features table" for higher-level
+increases — checked the 2014 `levels` table's `class_specific` field
+for a cross-check the way Action Surge/Indomitable got one during the
+Fighter pass, and confirmed there's nothing there at all (this is a
+2024-only mechanic with no 2014 precedent), so those two stay a
+disclosed flat count at their level-1 base — same treatment as Channel
+Divinity/Wild Shape/Rage. Paladin/Ranger/Rogue's own text never even
+references a scaling table, so their counts are genuinely flat
+forever, not a gap. New `WEAPON_MASTERY_KNOWN_BY_CLASS` (plain
+`Record<string, number>`, not a per-level function like
+`FIGHTING_STYLE_KNOWN_BY_CLASS` — there's no real table to encode for
+any of the five) and `WEAPON_MASTERY_MELEE_ONLY_CLASSES` in
+`character.ts`.
+
+**Shipped as a real builder step, not a play-sheet pending choice —
+the user's explicit ask, unlike every other class resource this
+project has built so far.** New `weapon-mastery` entry in
+`ProgressSteps.tsx`'s `StepId`/`STEPS`, inserted right after Class.
+`ProgressSteps` gained an optional `steps` prop (defaults to the full
+list) so `BuilderWizard.tsx` can pass a version with that step
+filtered out entirely for the 7 classes without the feature, rather
+than showing a screen with nothing to choose — `goNext`/`goBack`/
+`currentIndex` all operate over this filtered `relevantSteps` list
+instead of the raw `STEPS` constant. New
+`src/components/builder/steps/WeaponMasteryStep.tsx`: filters
+`equipment` to items with a `mastery` property set (and to
+`melee-weapons` category for Barbarian specifically), shows each
+weapon's real Mastery property name *and* its real description
+(`getWeaponMasteryProperties()`, a new `weapon_mastery_properties`
+table reader in `srd.ts`) inline so a new player can see what they're
+actually choosing, capped at the class's count. `ReviewStep.tsx`
+gained a matching summary line, shown only when any choices exist.
+
+**Made the choice actually do something, not just get collected and
+ignored — gates which weapon's mastery property shows on the Attacks
+card.** `resolveWeapons()` (`character-sheet.ts`) gained a
+`masteredWeaponIndexes: Set<string> | null` parameter; a weapon's
+`mastery` field is only populated in the result if its base type is in
+that set. `null` means "don't gate" — used for every class without the
+feature, but ALSO for a class that has it with an empty
+`weaponMasteryChoices` (an existing character created before this
+shipped), so the fix doesn't silently strip mastery from every
+pre-existing Barbarian/Fighter/Paladin/Ranger/Rogue the instant it
+ships. Needed one new passthrough field, `EquipmentLookupItem.baseIndex`
+— a custom/inventory weapon's synthetic lookup entry has its own
+`index` overridden to the player's generated item id (see
+`resolveInventoryEquipment`), so checking eligibility against
+`lookup.baseIndex ?? lookup.index` is what actually resolves to the
+real weapon type either way.
+
+**Added a retroactive picker on the play sheet too, mirroring Fighting
+Style's exact card shape** (`Weapon Mastery (N/max)` heading, an Edit
+toggle, the same select-up-to-N grid with expandable property
+descriptions) — this is how an existing character whose
+`weaponMasteryChoices` is empty gets to set it for the first time, the
+same "pending choice, but always re-editable" pattern Fighting Style/
+Metamagic already established. New `setWeaponMasteryChoices` Server
+Action, identical shape to `setFightingStyleChoices`.
+
+**Real, previously-latent crash this surfaced — not specific to
+Weapon Mastery, a systemic gap.** `src/app/characters/[id]/page.tsx`
+and `actions.ts`'s shared `loadOwnedDraft` both did a bare
+`character.draft as unknown as CharacterDraft` cast with no defaults
+merged in — unlike the builder wizard's own localStorage hydration,
+which has merged against `EMPTY_DRAFT` since the very first
+`level`/`hpRolls` field was added specifically to survive this exact
+trap (see "Stale-localStorage trap" above). A character saved before
+`weaponMasteryChoices` existed has a raw DB row simply missing that
+key; `currentDraft.weaponMasteryChoices.length` then throws outright
+for that character on load — confirmed live via a hand-inserted draft
+matching the exact shape of a real, currently-existing character.
+**This was never specific to this feature — any future `CharacterDraft`
+field addition would hit the same crash for every character saved
+before it shipped**, on both the play sheet page load AND every Server
+Action that touches the draft (`levelDownCharacter`'s own
+`.slice(...)` calls on several fields would have hit it identically).
+Fixed at both load boundaries with the same `{ ...EMPTY_DRAFT,
+...rawDraft }` merge the builder wizard already uses, rather than
+patching the one field that happened to surface it.
+
+**Shield AC bug — a genuine, separate, longstanding bug, not related
+to Weapon Mastery.** `computeArmorClass` (`character.ts`) detected a
+shield via `item.index === "shield"` — an exact match against the
+literal SRD index. A custom/found shield added through the inventory
+system is keyed by its own generated id instead (same `resolveInventoryEquipment`
+synthetic-entry mechanism as above), so it could never match — worse,
+since it also doesn't match `item.index !== "shield"`'s exclusion in
+the `bodyArmor` branch, a custom shield with no other armor equipped
+would get *miscategorized as body armor* and computed as if its base
+AC of 2 were the character's entire unarmored AC. Fixed by checking
+the real `"shields"` category tag instead (confirmed via the real
+`equipment` row: `categories: ["armor", "shields"]`), which survives
+the synthetic-entry spread untouched since it's never overridden there
+— works correctly for both the real SRD Shield and any custom variant
+of it.
+
+**Mobile currency layout** — `CurrencyTracker.tsx`'s grid was a flat
+`grid-cols-5`, leaving each of the 5 boxes too narrow on a phone for
+the NumberStepper's fixed-width arrow column to fit beside the number
+without overlapping it. Changed to `grid-cols-3 sm:grid-cols-5`,
+matching the same mobile-breakpoint pattern already used everywhere
+else in this app (Stats/Abilities grids).
+
+**Ability score randomize** — `AbilitiesStep.tsx` gained a "Randomize"
+button that Fisher-Yates shuffles the same six Standard Array values
+across the six abilities. This app only supports the Standard Array
+method (no point buy or rolled stats anywhere in the builder), so
+"randomize" means a random valid distribution of those fixed numbers,
+not generating new ones — no new ability-score-generation method was
+added.
+
+Tested live end-to-end with a disposable account (deleted after):
+walked a full Human Fighter through the actual builder — confirmed the
+new "Weapons" step appears in the progress bar only after picking a
+class with the feature, picked 3 of 3 (Longsword/Greatsword/Shortbow),
+confirmed a 4th option was disabled at the cap, confirmed Review showed
+the summary line, saved, and confirmed the Attacks card showed mastery
+("Graze"/"Vex") ONLY on the two chosen weapons actually equipped
+(Greatsword/Shortbow) while Flail/Javelin/Spear — which have real
+mastery properties too — correctly showed none. Separately hand-
+inserted an old-style draft missing `weaponMasteryChoices` entirely:
+confirmed it crashed before the `EMPTY_DRAFT`-merge fix and loaded
+cleanly after, confirmed it showed mastery unconditionally on every
+weapon (the intended fallback), then used the play sheet's own Edit
+picker to set 3 choices retroactively and confirmed the Attacks card
+immediately re-gated to just those three. Added a custom Shield via
+the inventory system on the Fighter character (Chain Mail already
+equipped, AC 16) and confirmed equipping it correctly brought AC to 18,
+not some miscategorized lower number. Resized the preview to a 375px
+phone viewport and confirmed the currency boxes render with the
+number fully legible and the stepper arrows no longer overlapping it.
+Tested Randomize twice in the Abilities step and confirmed two
+different valid permutations of the standard array. No console errors
+after the draft-merge fix landed (one real crash before it, exactly as
+described above).

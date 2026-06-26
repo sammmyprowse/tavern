@@ -12,6 +12,8 @@ import {
   ASI_LEVELS,
   EXPERTISE_SCHEDULE,
   METAMAGIC_OPTIONS,
+  WEAPON_MASTERY_KNOWN_BY_CLASS,
+  WEAPON_MASTERY_MELEE_ONLY_CLASSES,
   magicalCunningRegain,
   type AbilityKey,
   type AbilityBonusChoice,
@@ -36,6 +38,7 @@ import {
   setPreparedSpells,
   setMetamagicChoices,
   setFightingStyleChoices,
+  setWeaponMasteryChoices,
   setCharacterInventory,
   setCharacterCurrency,
   setCharacterMagicItems,
@@ -55,6 +58,7 @@ import type {
   SkillInfo,
   EquipmentLookupItem,
   MagicItemLookupEntry,
+  MasteryPropertyInfo,
   ClassFeature,
   SubclassOption,
   FeatOption,
@@ -83,6 +87,7 @@ interface PlaySheetProps {
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
   fightingStyleFeats: FeatOption[];
+  masteryProperties: MasteryPropertyInfo[];
   traitDescriptions: Record<string, string>;
   classSpells: SpellOption[];
   isOwner: boolean;
@@ -201,6 +206,7 @@ export default function PlaySheet({
   subclassOptions,
   generalFeats,
   fightingStyleFeats,
+  masteryProperties,
   traitDescriptions,
   classSpells,
   isOwner,
@@ -323,6 +329,9 @@ export default function PlaySheet({
   const [fightingStylePickerOpen, setFightingStylePickerOpen] = useState(false);
   const [selectedFightingStyle, setSelectedFightingStyle] = useState<string[]>([]);
   const [fightingStylePending, setFightingStylePending] = useState(false);
+  const [weaponMasteryPickerOpen, setWeaponMasteryPickerOpen] = useState(false);
+  const [selectedWeaponMastery, setSelectedWeaponMastery] = useState<string[]>([]);
+  const [weaponMasteryPending, setWeaponMasteryPending] = useState(false);
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -460,6 +469,13 @@ export default function PlaySheet({
         bonusDamageCondition: null,
       }
     : null;
+  // Empty weaponMasteryChoices means either "this class doesn't have the
+  // feature" or "an existing character created before it shipped never
+  // recorded a choice" — both cases fall back to null (show mastery
+  // unconditionally, the pre-existing behavior), rather than silently
+  // hiding every weapon's mastery the instant this feature shipped.
+  const masteredWeaponIndexes =
+    currentDraft.weaponMasteryChoices.length > 0 ? new Set(currentDraft.weaponMasteryChoices) : null;
   const weapons = [
     ...(monkUnarmedStrike ? [monkUnarmedStrike] : []),
     ...resolveWeapons(
@@ -470,6 +486,7 @@ export default function PlaySheet({
       hasArcheryFightingStyle,
       rageDamageBonusWhileRaging,
       monkMartialArtsDie,
+      masteredWeaponIndexes,
     ),
   ];
   // Unarmored Movement (Monk, from level 2): "+10 feet while you aren't
@@ -630,6 +647,15 @@ export default function PlaySheet({
   const knownFightingStyleDetails = currentDraft.fightingStyleChoices
     .map((index) => fightingStyleFeats.find((f) => f.index === index))
     .filter((f): f is FeatOption => Boolean(f));
+
+  const weaponMasteryMax = sheet ? WEAPON_MASTERY_KNOWN_BY_CLASS[sheet.classIndex] ?? 0 : 0;
+  const weaponMasteryMeleeOnly = sheet ? WEAPON_MASTERY_MELEE_ONLY_CLASSES.has(sheet.classIndex) : false;
+  const masterableWeapons = equipment
+    .filter((e) => e.mastery && (!weaponMasteryMeleeOnly || (e.categories ?? []).includes("melee-weapons")))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const knownWeaponMasteryDetails = currentDraft.weaponMasteryChoices
+    .map((index) => equipmentByIndex.get(index))
+    .filter((e): e is EquipmentLookupItem => Boolean(e));
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -1522,6 +1548,33 @@ export default function PlaySheet({
     setFightingStylePending(false);
   }
 
+  function openWeaponMasteryPicker() {
+    setSelectedWeaponMastery(currentDraft.weaponMasteryChoices);
+    setWeaponMasteryPickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function toggleWeaponMasterySelection(index: string, limit: number) {
+    setSelectedWeaponMastery((prev) => {
+      if (prev.includes(index)) return prev.filter((s) => s !== index);
+      if (prev.length >= limit) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function saveWeaponMastery() {
+    setWeaponMasteryPending(true);
+    setChoiceError(null);
+    const result = await setWeaponMasteryChoices(characterId, selectedWeaponMastery);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setWeaponMasteryPickerOpen(false);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save Weapon Mastery.");
+    }
+    setWeaponMasteryPending(false);
+  }
+
   function toggleFeature(index: string) {
     setExpandedFeatures((prev) => {
       const next = new Set(prev);
@@ -1625,6 +1678,7 @@ export default function PlaySheet({
             ...(sheet.fightingStyleKnownMax > 0
               ? [{ id: "fighting-style", label: "Fighting Style" }]
               : []),
+            ...(weaponMasteryMax > 0 ? [{ id: "weapon-mastery", label: "Weapon Mastery" }] : []),
             ...(sheet.spellcastingAbility ? [{ id: "spells", label: "Spells" }] : []),
             ...(speciesTraits.length > 0 ? [{ id: "species-traits", label: "Species Traits" }] : []),
             ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
@@ -2898,6 +2952,113 @@ export default function PlaySheet({
                   <button
                     onClick={() => setFightingStylePickerOpen(false)}
                     disabled={fightingStylePending}
+                    className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Weapon Mastery */}
+        {weaponMasteryMax > 0 && (
+          <div id="weapon-mastery" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Weapon Mastery ({knownWeaponMasteryDetails.length}/{weaponMasteryMax})
+              </h2>
+              {isOwner && !weaponMasteryPickerOpen && (
+                <button
+                  onClick={openWeaponMasteryPicker}
+                  className="text-xs text-tavern-gold-light hover:text-tavern-gold"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-tavern-muted">
+              You can use the mastery properties of these weapon kinds. Change one whenever you
+              finish a Long Rest.
+            </p>
+
+            {!weaponMasteryPickerOpen ? (
+              <div className="mt-2 space-y-1">
+                {knownWeaponMasteryDetails.map((w) => (
+                  <div
+                    key={w.index}
+                    className="flex items-center justify-between gap-2 rounded-md border border-tavern-border px-3 py-1.5 text-sm"
+                  >
+                    <span className="text-tavern-text">{w.name}</span>
+                    <span className="text-xs tracking-wide text-tavern-gold-light uppercase">
+                      {w.mastery?.name}
+                    </span>
+                  </div>
+                ))}
+                {knownWeaponMasteryDetails.length === 0 && (
+                  <p className="text-xs text-tavern-muted">No Weapon Mastery chosen yet.</p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                <p className="text-xs text-tavern-muted">
+                  Choose up to {weaponMasteryMax} ({selectedWeaponMastery.length} selected).
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {masterableWeapons.map((w) => {
+                    const key = `picker-weapon-mastery-${w.index}`;
+                    const expanded = expandedFeatures.has(key);
+                    const selected = selectedWeaponMastery.includes(w.index);
+                    const description = w.mastery
+                      ? masteryProperties.find((p) => p.index === w.mastery!.index)?.description
+                      : null;
+                    return (
+                      <div
+                        key={w.index}
+                        className={`rounded-md border ${
+                          selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
+                        }`}
+                      >
+                        <button
+                          onClick={() => toggleWeaponMasterySelection(w.index, weaponMasteryMax)}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
+                        >
+                          <span className="text-tavern-text">{w.name}</span>
+                          <span className="text-xs tracking-wide text-tavern-gold-light uppercase">
+                            {w.mastery?.name}
+                          </span>
+                        </button>
+                        {description && (
+                          <>
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
+                            >
+                              {expanded ? "Hide details" : "Show details"}
+                            </button>
+                            {expanded && (
+                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                                {description}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={saveWeaponMastery}
+                    disabled={weaponMasteryPending}
+                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setWeaponMasteryPickerOpen(false)}
+                    disabled={weaponMasteryPending}
                     className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
                   >
                     Cancel

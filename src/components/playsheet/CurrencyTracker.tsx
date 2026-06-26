@@ -61,7 +61,7 @@ interface CurrencyTrackerProps {
 export default function CurrencyTracker({ currency, isOwner, error, onCommit }: CurrencyTrackerProps) {
   return (
     <div className="mb-4">
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         {CURRENCY_ORDER.map(({ key, label }) => (
           <CurrencyBox
             key={key}

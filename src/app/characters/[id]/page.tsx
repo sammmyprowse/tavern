@@ -12,10 +12,11 @@ import {
   getSubclassesForClass,
   getGeneralFeatsList,
   getFightingStyleFeats,
+  getWeaponMasteryProperties,
   getSpellsForClass,
   getTraitDescriptions,
 } from "@/lib/srd";
-import type { CharacterDraft } from "@/lib/character";
+import { EMPTY_DRAFT, type CharacterDraft } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
@@ -42,6 +43,7 @@ export default async function CharacterPlaySheet({
     magicItemLookup,
     generalFeats,
     fightingStyleFeats,
+    masteryProperties,
     traitDescriptions,
   ] = await Promise.all([
     supabase.auth.getUser(),
@@ -61,6 +63,7 @@ export default async function CharacterPlaySheet({
     getMagicItemLookup(),
     getGeneralFeatsList(),
     getFightingStyleFeats(),
+    getWeaponMasteryProperties(),
     getTraitDescriptions(),
   ]);
 
@@ -85,7 +88,16 @@ export default async function CharacterPlaySheet({
   }
 
   const isOwner = userData.user?.id === character.user_id;
-  const draft = character.draft as unknown as CharacterDraft;
+  // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
+  // hydration already is — a character saved before some later CharacterDraft
+  // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
+  // raw DB row that's simply missing that key, and a bare cast leaves it
+  // `undefined` rather than that field's real default. Any code that calls
+  // an array method on it (e.g. `.length`) then throws for every character
+  // saved before that field shipped — confirmed live with a hand-inserted
+  // pre-Weapon-Mastery draft, the same trap CLAUDE.md already documents for
+  // the builder wizard's own localStorage path, just never fixed here too.
+  const draft = { ...EMPTY_DRAFT, ...(character.draft as unknown as CharacterDraft) };
   const [features, subclassOptions, classSpells] = draft.classIndex
     ? await Promise.all([
         getFeaturesForClass(draft.classIndex),
@@ -109,6 +121,7 @@ export default async function CharacterPlaySheet({
       subclassOptions={subclassOptions}
       generalFeats={generalFeats}
       fightingStyleFeats={fightingStyleFeats}
+      masteryProperties={masteryProperties}
       traitDescriptions={traitDescriptions}
       classSpells={classSpells}
       isOwner={isOwner}

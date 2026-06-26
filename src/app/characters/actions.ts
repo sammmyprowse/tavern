@@ -9,6 +9,7 @@ import {
   EXPERTISE_SCHEDULE,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
   CANTRIPS_KNOWN_BY_CLASS,
+  EMPTY_DRAFT,
   metamagicKnownMax,
   type AbilityBonusChoice,
   type CharacterDraft,
@@ -44,7 +45,13 @@ async function loadOwnedDraft(characterId: string) {
     ok: true as const,
     supabase,
     userId: userData.user.id,
-    draft: character.draft as unknown as CharacterDraft,
+    // Merged against EMPTY_DRAFT — a character saved before some later
+    // CharacterDraft field existed has a raw DB row simply missing that
+    // key. Without this, e.g. levelDownCharacter's
+    // `draft.weaponMasteryChoices.slice(...)` throws for any character
+    // saved before that field shipped, the same crash this fixes on the
+    // play sheet's own loader in src/app/characters/[id]/page.tsx.
+    draft: { ...EMPTY_DRAFT, ...(character.draft as unknown as CharacterDraft) },
   };
 }
 
@@ -650,6 +657,32 @@ export async function setFightingStyleChoices(
   }
 
   const nextDraft: CharacterDraft = { ...draft, fightingStyleChoices: featIndexes };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+// Same freely-overwritable shape as setFightingStyleChoices — also
+// "whenever you finish a Long Rest, you can change one of those weapon
+// choices," not a permanent log. Lets an existing character created before
+// this feature shipped set it retroactively too, same as any other
+// pending-choice action.
+export async function setWeaponMasteryChoices(
+  characterId: string,
+  weaponIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(weaponIndexes) || weaponIndexes.length > 10) {
+    return { success: false, error: "Invalid Weapon Mastery selection." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, weaponMasteryChoices: weaponIndexes };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };

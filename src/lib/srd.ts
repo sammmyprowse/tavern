@@ -119,6 +119,12 @@ export interface EquipmentLookupItem {
   bonusDamageDice?: string;
   bonusDamageCondition?: string;
   notes?: string;
+  // The real underlying weapon's own index — only set on synthetic entries,
+  // whose own `index` above is the player's custom item id instead (see
+  // resolveInventoryEquipment). Callers checking "what weapon TYPE is this"
+  // (e.g. Weapon Mastery eligibility) should read `baseIndex ?? index`,
+  // since a real catalog entry's own index already IS its base type.
+  baseIndex?: string;
 }
 
 export interface SkillInfo {
@@ -620,6 +626,21 @@ export async function getFightingStyleFeats(): Promise<FeatOption[]> {
       if (a.isHomebrew !== b.isHomebrew) return a.isHomebrew ? 1 : -1;
       return a.name.localeCompare(b.name);
     });
+}
+
+export interface MasteryPropertyInfo {
+  index: string;
+  name: string;
+  description: string;
+}
+
+export async function getWeaponMasteryProperties(): Promise<MasteryPropertyInfo[]> {
+  const { data } = await supabase.from("weapon_mastery_properties").select("index, name, data");
+
+  return (data ?? []).map((p) => {
+    const d = p.data as { description?: string };
+    return { index: p.index, name: p.name, description: d.description ?? "" };
+  });
 }
 
 export async function getSkillsList(): Promise<SkillInfo[]> {

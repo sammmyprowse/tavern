@@ -38,14 +38,41 @@ export default function AbilitiesStep({ abilityScores, skills, draft, onUpdate }
     }));
   }
 
+  // Shuffles the same standard-array values across the six abilities —
+  // this app only supports the Standard Array assignment method (no point
+  // buy or rolled stats), so "randomize" means a random valid distribution
+  // of those fixed six numbers, not generating new ones.
+  function randomize() {
+    const shuffled = [...STANDARD_ARRAY];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const next = {} as Record<AbilityKey, number>;
+    ABILITY_ORDER.forEach((ability, i) => {
+      next[ability] = shuffled[i];
+    });
+    onUpdate({ baseAbilityScores: next });
+  }
+
   const allAssigned = ABILITY_ORDER.every((a) => draft.baseAbilityScores[a] !== null);
 
   return (
     <div>
-      <h2 className="font-heading text-2xl font-bold text-tavern-gold">Assign Ability Scores</h2>
-      <p className="mt-1 text-tavern-muted">
-        Assign the standard array — {STANDARD_ARRAY.join(", ")} — to your six abilities.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-tavern-gold">Assign Ability Scores</h2>
+          <p className="mt-1 text-tavern-muted">
+            Assign the standard array — {STANDARD_ARRAY.join(", ")} — to your six abilities.
+          </p>
+        </div>
+        <button
+          onClick={randomize}
+          className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+        >
+          Randomize
+        </button>
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {ABILITY_ORDER.map((ability) => {

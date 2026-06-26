@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import ProgressSteps, { STEPS, type StepId } from "./ProgressSteps";
 import SpeciesStep from "./steps/SpeciesStep";
 import ClassStep from "./steps/ClassStep";
+import WeaponMasteryStep from "./steps/WeaponMasteryStep";
 import AbilitiesStep from "./steps/AbilitiesStep";
 import BackgroundStep from "./steps/BackgroundStep";
 import PersonalityStep from "./steps/PersonalityStep";
 import ReviewStep from "./steps/ReviewStep";
-import { EMPTY_DRAFT, type CharacterDraft, type DraftUpdate } from "@/lib/character";
+import { EMPTY_DRAFT, WEAPON_MASTERY_KNOWN_BY_CLASS, type CharacterDraft, type DraftUpdate } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type {
   SpeciesOption,
@@ -18,6 +19,7 @@ import type {
   AbilityScoreInfo,
   EquipmentLookupItem,
   SkillInfo,
+  MasteryPropertyInfo,
 } from "@/lib/srd";
 
 const STORAGE_KEY = "tavern_character_draft";
@@ -32,6 +34,7 @@ interface BuilderWizardProps {
   abilityScores: AbilityScoreInfo[];
   equipment: EquipmentLookupItem[];
   skills: SkillInfo[];
+  masteryProperties: MasteryPropertyInfo[];
 }
 
 export default function BuilderWizard({
@@ -43,6 +46,7 @@ export default function BuilderWizard({
   abilityScores,
   equipment,
   skills,
+  masteryProperties,
 }: BuilderWizardProps) {
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
   const [personality, setPersonality] = useState<PersonalityAnswers | null>(null);
@@ -115,6 +119,13 @@ export default function BuilderWizard({
     .filter(Boolean)
     .join(" — ");
 
+  // Only 5 of 12 classes have Weapon Mastery (Barbarian/Fighter/Paladin/
+  // Ranger/Rogue) — the step is skipped entirely for the other 7 rather
+  // than showing a screen with nothing to choose.
+  const weaponMasteryCount = selectedClass ? WEAPON_MASTERY_KNOWN_BY_CLASS[selectedClass.index] ?? 0 : 0;
+  const hasWeaponMastery = weaponMasteryCount > 0;
+  const relevantSteps = STEPS.filter((s) => s.id !== "weapon-mastery" || hasWeaponMastery);
+
   const canAdvance: Record<StepId, boolean> = {
     species: Boolean(draft.speciesIndex) && (!selectedSpecies?.hasSubspecies || Boolean(draft.subspeciesIndex)),
     class:
@@ -122,19 +133,20 @@ export default function BuilderWizard({
       (selectedClass?.proficiencyChoices ?? []).every(
         (pc) => draft.skillChoices.filter((s) => pc.options.some((o) => o.index === s)).length >= pc.choose,
       ),
+    "weapon-mastery": draft.weaponMasteryChoices.length >= weaponMasteryCount,
     abilities: Object.values(draft.baseAbilityScores).every((v) => v !== null),
     background: Boolean(draft.backgroundIndex) && Boolean(draft.backgroundAbilityBonus),
     personality: true,
     review: true,
   };
 
-  const currentIndex = STEPS.findIndex((s) => s.id === step);
+  const currentIndex = relevantSteps.findIndex((s) => s.id === step);
 
   function goNext() {
-    if (currentIndex < STEPS.length - 1) setStep(STEPS[currentIndex + 1].id);
+    if (currentIndex < relevantSteps.length - 1) setStep(relevantSteps[currentIndex + 1].id);
   }
   function goBack() {
-    if (currentIndex > 0) setStep(STEPS[currentIndex - 1].id);
+    if (currentIndex > 0) setStep(relevantSteps[currentIndex - 1].id);
   }
 
   if (!loaded) return null;
@@ -171,7 +183,7 @@ export default function BuilderWizard({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <ProgressSteps current={step} />
+      <ProgressSteps current={step} steps={relevantSteps} />
 
       <div className="rounded-xl border border-tavern-border bg-tavern-card p-6 sm:p-8">
         {step === "species" && (
@@ -184,6 +196,15 @@ export default function BuilderWizard({
         )}
         {step === "class" && (
           <ClassStep classes={classes} skills={skills} draft={draft} onUpdate={updateDraft} />
+        )}
+        {step === "weapon-mastery" && (
+          <WeaponMasteryStep
+            classIndex={draft.classIndex}
+            equipment={equipment}
+            masteryProperties={masteryProperties}
+            draft={draft}
+            onUpdate={updateDraft}
+          />
         )}
         {step === "abilities" && (
           <AbilitiesStep

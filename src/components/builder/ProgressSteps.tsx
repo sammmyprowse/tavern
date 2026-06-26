@@ -1,20 +1,37 @@
-export type StepId = "species" | "class" | "abilities" | "background" | "personality" | "review";
+export type StepId =
+  | "species"
+  | "class"
+  | "weapon-mastery"
+  | "abilities"
+  | "background"
+  | "personality"
+  | "review";
 
 export const STEPS: { id: StepId; label: string }[] = [
   { id: "species", label: "Species" },
   { id: "class", label: "Class" },
+  { id: "weapon-mastery", label: "Weapons" },
   { id: "abilities", label: "Abilities" },
   { id: "background", label: "Background" },
   { id: "personality", label: "Personality" },
   { id: "review", label: "Review" },
 ];
 
-export default function ProgressSteps({ current }: { current: StepId }) {
-  const currentIndex = STEPS.findIndex((s) => s.id === current);
+// `steps` defaults to the full list — BuilderWizard passes a filtered list
+// when the selected class doesn't have Weapon Mastery, so that step's chip
+// doesn't show at all instead of leading somewhere with nothing to choose.
+export default function ProgressSteps({
+  current,
+  steps = STEPS,
+}: {
+  current: StepId;
+  steps?: { id: StepId; label: string }[];
+}) {
+  const currentIndex = steps.findIndex((s) => s.id === current);
 
   return (
     <ol className="mb-10 flex items-center justify-center gap-2 sm:gap-4">
-      {STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const isDone = i < currentIndex;
         const isActive = i === currentIndex;
         return (
@@ -39,9 +56,7 @@ export default function ProgressSteps({ current }: { current: StepId }) {
                 {step.label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
-              <div className="mb-5 h-px w-4 bg-tavern-border sm:w-10" />
-            )}
+            {i < steps.length - 1 && <div className="mb-5 h-px w-4 bg-tavern-border sm:w-10" />}
           </li>
         );
       })}
