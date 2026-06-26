@@ -15,6 +15,11 @@ export interface InventoryItem {
   attackBonus: number;
   damageBonus: number;
   acBonus: number;
+  // Conditional/dice-based extra damage (e.g. "1d6" only "vs goblins") —
+  // a real mechanic, not freeform text: rollable on its own from the
+  // Attacks card, separate from the always-on attackBonus/damageBonus.
+  bonusDamageDice: string | null;
+  bonusDamageCondition: string | null;
   notes: string | null;
 }
 
@@ -27,6 +32,8 @@ export function emptyInventoryItem(baseIndex: string): InventoryItem {
     attackBonus: 0,
     damageBonus: 0,
     acBonus: 0,
+    bonusDamageDice: null,
+    bonusDamageCondition: null,
     notes: null,
   };
 }
@@ -83,6 +90,8 @@ export function resolveInventoryEquipment(
       armorClass: base.armorClass ? { ...base.armorClass, base: base.armorClass.base + item.acBonus } : null,
       attackBonus: item.attackBonus,
       damageBonus: item.damageBonus,
+      bonusDamageDice: item.bonusDamageDice ?? undefined,
+      bonusDamageCondition: item.bonusDamageCondition ?? undefined,
       notes: item.notes ?? undefined,
     });
   }

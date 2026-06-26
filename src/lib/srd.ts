@@ -99,6 +99,13 @@ export interface EquipmentLookupItem {
   mastery: { index: string; name: string } | null;
   weight: number | null;
   cost: { qty: number; unit: string } | null;
+  // What the item actually DOES, for things whose stats alone don't say
+  // (gear/tools/kits/packs) — real SRD prose, not paraphrased. Weapons/
+  // armor are self-explanatory from their own stats and never set this.
+  description: string | null;
+  // Tool-specific actions with a DC, e.g. Thieves' Tools' "Pick a lock
+  // (DC 15 DEX)" — real structured SRD data (data.utilize), not prose.
+  utilize: { name: string; ability: string; dc: number }[] | null;
   // Only ever set on synthetic entries built by resolveInventoryEquipment
   // (see src/lib/inventory.ts) for a player's custom/found item — real
   // catalog entries from getEquipmentLookup() never set these, so every
@@ -106,6 +113,11 @@ export interface EquipmentLookupItem {
   // working unchanged (lookup.attackBonus ?? 0 is always 0 for them).
   attackBonus?: number;
   damageBonus?: number;
+  // Conditional/dice-based extra damage (e.g. "1d6" "vs goblins") — a
+  // separate roll from attackBonus/damageBonus since it's not always-on
+  // and not a flat number. See ResolvedWeapon.bonusDamageDice.
+  bonusDamageDice?: string;
+  bonusDamageCondition?: string;
   notes?: string;
 }
 
@@ -355,6 +367,8 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       two_handed_damage?: { damage_dice: string; damage_type?: { name: string } };
       properties?: { index: string; name: string }[];
       mastery?: { index: string; name: string };
+      description?: string;
+      utilize?: { name: string; dc: { dc_type: { name: string }; dc_value: number } }[];
     };
     map.set(item.index, {
       index: item.index,
@@ -374,6 +388,10 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       mastery: d.mastery ?? null,
       weight: item.weight != null ? Number(item.weight) : null,
       cost: item.cost_qty != null && item.cost_unit ? { qty: Number(item.cost_qty), unit: item.cost_unit } : null,
+      description: d.description ?? null,
+      utilize: d.utilize?.length
+        ? d.utilize.map((u) => ({ name: u.name, ability: u.dc.dc_type.name, dc: u.dc.dc_value }))
+        : null,
     });
   }
   return map;

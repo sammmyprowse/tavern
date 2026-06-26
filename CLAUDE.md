@@ -2331,3 +2331,104 @@ card showed "Goblin Slayer Sword — 1d8 +4 Slashing — Sap" with
 (no change from the base Longsword's own +6, confirming the flat bonus
 fields and the conditional note are correctly independent of each
 other). No console errors.
+
+## Conditional bonus damage as a real mechanic; variant-toggle; item descriptions
+User follow-up after the Notes-based fix above, pushing back on it
+correctly: a Notes-only treatment of "+1d6 vs goblins" was a workaround,
+not a real mechanic. Four pieces in one round, all from the same
+feedback message, plus a NumberStepper color bug spotted along the way.
+
+**1. NumberStepper's ▼ button had the wrong text color** —
+`text-tavern-bg` instead of `text-tavern-muted` (a copy-paste typo from
+when the ▲ button was duplicated), making the down arrow render in a
+near-invisible dark-on-gold instead of matching the up arrow's muted
+gray-on-gold. One-line fix in `NumberStepper.tsx`, but it affected every
+stepper in the app at once (currency boxes, inventory quantity/bonus
+fields) — confirmed via `preview_inspect`'s computed `color` on both
+buttons before/after, not just eyeballing a screenshot.
+
+**2. Conditional/dice-based bonus damage is now a real, structured
+mechanic — `InventoryItem.bonusDamageDice`/`bonusDamageCondition`, not
+freeform Notes text.** `bonusDamageDice` stores plain `NdM` notation
+(e.g. `"1d6"`), composed by the UI from a die-size button row (d4-d12,
+same control shape as the Dice Log's tap-a-die tray) plus a
+`NumberStepper` count — never freehand-typed, so it's always valid
+notation, no parsing/validation code needed. `bonusDamageCondition`
+stays free text (`"vs goblins"`) since the condition itself is
+inherently descriptive and DM-defined; no fixed enum would cover it.
+Threaded through the exact same synthetic-lookup-entry path
+`attackBonus`/`damageBonus`/`notes` already use (`EquipmentLookupItem`→
+`resolveInventoryEquipment`→`ResolvedWeapon` in `character-sheet.ts`),
+so `resolveWeapons` needed zero new logic, just two more passthrough
+fields.
+
+**Rolling it follows the established Sneak Attack/Brutal Strike
+shape** — a standalone "Bonus 1d6" button on the weapon's Attacks-card
+row (only rendered when `bonusDamageDice` is set), calling a new
+`rollBonusDamage()` in `PlaySheet.tsx` that logs a clearly-separate dice
+entry: label `"{weapon} Bonus Damage (vs goblins)"`, detail
+`"1d6 [roll] — add to {weapon}'s normal Damage roll"`. Deliberately NOT
+auto-summed with the normal Damage roll — this app has no enemy/target
+state to check "vs goblins" against, so the player decides when the
+condition applies and adds the two numbers themselves, same reasoning
+as Sneak Attack's trigger conditions not being tracked either. The
+weapon row also shows a gold-italic "+1d6 bonus damage vs goblins" line
+unconditionally (so the player knows the button's there without
+clicking it first), and the Found/Custom equipment row's inline summary
++ `equipmentDetailLines()` both gained a matching line.
+
+**3. InventoryManager's custom-item fields are now hidden behind a
+"+ Add Special Variant" toggle, collapsed by default.** Direct user
+ask: people shouldn't be tempted to add a buffed version of an item
+when the DM actually gave them a plain one. Only Quantity shows by
+default (a totally normal thing to set on an ordinary item); Custom
+name, Attack/Damage/AC bonus, Conditional Bonus Damage, and Notes all
+move inside the collapsible section. `hasSpecialData(item)` decides the
+toggle's initial state when EDITING an existing item — already-special
+items open expanded (so editing never hides bonuses the player already
+set), plain ones still open collapsed. Confirmed live: a fresh add
+shows just Quantity + the toggle; editing "Goblin Slayer Sword"
+(customName + bonus damage already set) opened with Special Variant
+already expanded and every field correctly pre-filled.
+
+**4. Equipment items now show what they actually DO, not just their
+stats — sourced from real SRD data that was already in the database,
+unused.** User's example: "Dungeoneer's Pack, no idea what it does."
+Checked `jsonb_object_keys` on the `equipment` table before assuming a
+homebrew pass was needed (same discipline as every other content-gap
+check this project) — 81 of 182 items already have a `data.description`
+field with real explanatory prose (Dungeoneer's Pack's full contents
+list, Healer's Kit's stabilize action, Climber's Kit's anchor mechanic),
+and 36 have `data.utilize` (tools' DC'd actions, e.g. Thieves' Tools'
+"Pick a lock (DC 15 DEX)"). Both were being fetched into `data` already
+but never selected out — same shape as the weight/cost gap from the
+prior round. `EquipmentLookupItem` gained `description`/`utilize`;
+`equipmentDetailLines()` now renders description (or utilize) FIRST,
+above the dry stat lines, since "what does it do" matters more than
+weight/cost for this category of item. Weapons/armor never set this
+field — their own stats already answer the question. Only 13 of 182
+items have neither description nor stats (ammunition, spellcasting
+foci) — too few to justify a homebrew pass, so they get one of two
+generic, factual, non-narrative fallback lines keyed by category
+(`CATEGORY_FALLBACK_NOTE`) instead — explicitly not the same
+homebrew-disclosure treatment as backgrounds/feats/species, since
+these are mechanical facts ("ammunition is expended when fired"), not
+narrative flavor.
+
+Tested live with a disposable account/character (Human Fighter, Soldier
+background, deleted after): confirmed both ▲/▼ stepper buttons compute
+to the identical `rgb(154, 144, 128)` text color via `preview_inspect`;
+confirmed Dungeoneer's Pack and Healer's Kit both show their real
+description text (contents list / stabilize action) when expanded;
+built "Goblin Slayer Sword" through the restructured form — confirmed
+the default view shows only Quantity, expanded the variant toggle,
+picked d6 + count 1 + "vs goblins" via the composer (not free text),
+saved, and confirmed the DB row has real `bonusDamageDice: "1d6"` /
+`bonusDamageCondition: "vs goblins"` fields, not text buried in
+`notes`; equipped it and confirmed the Attacks card showed a third
+"Bonus 1d6" button alongside Attack/Damage, clicked it, and confirmed
+the dice log entry read "Goblin Slayer Sword Bonus Damage (vs
+goblins)... 1d6 [6] — add to Goblin Slayer Sword's normal Damage roll";
+reopened Edit and confirmed the Special Variant section opened already
+expanded with every field (name, d6, count, condition) correctly
+pre-filled. No console errors.

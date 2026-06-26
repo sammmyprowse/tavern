@@ -363,6 +363,8 @@ export interface ResolvedWeapon {
   damageType: string | null;
   mastery: { index: string; name: string } | null;
   notes: string | null;
+  bonusDamageDice: string | null;
+  bonusDamageCondition: string | null;
 }
 
 const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
@@ -442,6 +444,8 @@ export function resolveWeapons(
       damageType: lookup.damage.damageType,
       mastery: lookup.mastery,
       notes: lookup.notes ?? null,
+      bonusDamageDice: lookup.bonusDamageDice ?? null,
+      bonusDamageCondition: lookup.bonusDamageCondition ?? null,
     });
   }
   return weapons;

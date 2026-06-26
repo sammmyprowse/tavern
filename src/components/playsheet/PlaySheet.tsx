@@ -401,6 +401,8 @@ export default function PlaySheet({
         damageType: "Bludgeoning",
         mastery: null,
         notes: null,
+        bonusDamageDice: null,
+        bonusDamageCondition: null,
       }
     : null;
   const weapons = [
@@ -600,6 +602,21 @@ export default function PlaySheet({
       label: `${weapon.name} Damage`,
       detail: `${weapon.damageDice} [${result.rolls.join(", ")}] ${formatModifier(weapon.damageBonus)}${weapon.damageType ? ` ${weapon.damageType}` : ""}`,
       total: result.total + weapon.damageBonus,
+    });
+  }
+
+  // Conditional bonus damage (e.g. "1d6 vs goblins") is a separate roll,
+  // not auto-added to rollDamage — the app has no enemy/target state to
+  // check the condition against, so the player decides when it applies
+  // and adds this on top of the normal Damage roll themselves. Same shape
+  // as Sneak Attack/Brutal Strike's standalone "Roll Xd6" buttons.
+  function rollBonusDamage(weapon: ReturnType<typeof resolveWeapons>[number]) {
+    if (!weapon.bonusDamageDice) return;
+    const result = rollDice(weapon.bonusDamageDice);
+    pushLog({
+      label: `${weapon.name} Bonus Damage${weapon.bonusDamageCondition ? ` (${weapon.bonusDamageCondition})` : ""}`,
+      detail: `${weapon.bonusDamageDice} [${result.rolls.join(", ")}] — add to ${weapon.name}'s normal Damage roll`,
+      total: result.total,
     });
   }
 
@@ -3335,8 +3352,14 @@ export default function PlaySheet({
                       {weapon.damageType ? ` ${weapon.damageType}` : ""}
                       {weapon.mastery ? ` — ${weapon.mastery.name}` : ""}
                     </div>
+                    {weapon.bonusDamageDice && (
+                      <div className="mt-0.5 text-xs text-tavern-gold-light italic">
+                        +{weapon.bonusDamageDice} bonus damage
+                        {weapon.bonusDamageCondition ? ` ${weapon.bonusDamageCondition}` : ""}
+                      </div>
+                    )}
                     {weapon.notes && (
-                      <div className="mt-0.5 text-xs text-tavern-gold-light italic">{weapon.notes}</div>
+                      <div className="mt-0.5 text-xs text-tavern-muted italic">{weapon.notes}</div>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -3352,6 +3375,14 @@ export default function PlaySheet({
                     >
                       Damage
                     </button>
+                    {weapon.bonusDamageDice && (
+                      <button
+                        onClick={() => rollBonusDamage(weapon)}
+                        className="rounded-md border border-tavern-gold-light/60 px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                      >
+                        Bonus {weapon.bonusDamageDice}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -3435,6 +3466,9 @@ export default function PlaySheet({
                     item.attackBonus ? `${formatModifier(item.attackBonus)} Attack` : null,
                     item.damageBonus ? `${formatModifier(item.damageBonus)} Damage` : null,
                     item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                    item.bonusDamageDice
+                      ? `+${item.bonusDamageDice}${item.bonusDamageCondition ? ` ${item.bonusDamageCondition}` : ""}`
+                      : null,
                   ].filter(Boolean);
                   const detailsKey = `inv:${item.id}`;
                   const expanded = expandedFeatures.has(detailsKey);
