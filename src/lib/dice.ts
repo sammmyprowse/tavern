@@ -8,37 +8,47 @@ export interface D20RollResult {
   total: number;
   isNat20: boolean;
   isNat1: boolean;
+  // Halfling Luck: defined when the first chosen die was 1 and was rerolled.
+  // `rolls` contains only the original dice; `luckyReroll` is the reroll value.
+  luckyReroll?: number;
 }
 
 function rollOneD20(): number {
   return 1 + Math.floor(Math.random() * 20);
 }
 
-export function rollD20(modifier: number, mode: RollMode = "normal"): D20RollResult {
+// lucky=true implements Halfling Luck: if the chosen die result is 1, reroll
+// once and use the new value (even if it's also a 1 — the real rule).
+export function rollD20(modifier: number, mode: RollMode = "normal", lucky = false): D20RollResult {
+  let chosen: number;
+  let rolls: number[];
+
   if (mode === "normal") {
     const roll = rollOneD20();
-    return {
-      mode,
-      rolls: [roll],
-      chosen: roll,
-      modifier,
-      total: roll + modifier,
-      isNat20: roll === 20,
-      isNat1: roll === 1,
-    };
+    chosen = roll;
+    rolls = [roll];
+  } else {
+    const roll1 = rollOneD20();
+    const roll2 = rollOneD20();
+    chosen = mode === "advantage" ? Math.max(roll1, roll2) : Math.min(roll1, roll2);
+    rolls = [roll1, roll2];
   }
 
-  const roll1 = rollOneD20();
-  const roll2 = rollOneD20();
-  const chosen = mode === "advantage" ? Math.max(roll1, roll2) : Math.min(roll1, roll2);
+  let luckyReroll: number | undefined;
+  if (lucky && chosen === 1) {
+    luckyReroll = rollOneD20();
+    chosen = luckyReroll;
+  }
+
   return {
     mode,
-    rolls: [roll1, roll2],
+    rolls,
     chosen,
     modifier,
     total: chosen + modifier,
     isNat20: chosen === 20,
     isNat1: chosen === 1,
+    luckyReroll,
   };
 }
 

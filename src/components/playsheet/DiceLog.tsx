@@ -10,6 +10,7 @@ interface DiceLogProps {
   onCritRoll: (entry: DiceLogEntry) => void;
   onRoll: (entry: Omit<DiceLogEntry, "id">) => void;
   onClear: () => void;
+  lucky?: boolean;
 }
 
 const RAW_DICE = [4, 6, 8, 10, 12, 20, 100];
@@ -21,6 +22,7 @@ export default function DiceLog({
   onCritRoll,
   onRoll,
   onClear,
+  lucky = false,
 }: DiceLogProps) {
   const [hidden, setHidden] = useState(false);
 
@@ -29,13 +31,19 @@ export default function DiceLog({
   // Mode toggle (Advantage/Disadvantage is specifically a d20 mechanic in
   // 5e — it doesn't apply to damage or other dice), rolling twice and
   // showing both results the same way every other d20 roll in this app
-  // does. Every other die is a single flat roll.
+  // does. Every other die is a single flat roll. Halfling Luck also only
+  // applies to d20 rolls (checks, saves, attacks).
   function rollRawDie(sides: number) {
     if (sides === 20) {
-      const result = rollD20(0, rollMode);
+      const result = rollD20(0, rollMode, lucky);
+      let detail = result.rolls.length > 1 ? `[${result.rolls.join(", ")}]` : "";
+      if (result.luckyReroll !== undefined) {
+        const base = result.rolls.length > 1 ? `[${result.rolls.join(", ")}]` : `[${result.rolls[0]}]`;
+        detail = `${base} → ${result.luckyReroll} (Lucky)`;
+      }
       onRoll({
         label: "d20",
-        detail: result.rolls.length > 1 ? `[${result.rolls.join(", ")}]` : "",
+        detail,
         total: result.total,
         isNat20: result.isNat20,
         isNat1: result.isNat1,

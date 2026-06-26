@@ -529,6 +529,7 @@ export default function PlaySheet({
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
+  const isHalfling = sheet.speciesIndex === "halfling";
 
   const orderOptions = ORDER_CHOICES[sheet.classIndex] ?? null;
   const needsOrderChoice = !!orderOptions && !currentDraft.orderChoice;
@@ -688,14 +689,21 @@ export default function PlaySheet({
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
   }
 
+  function d20Detail(result: ReturnType<typeof rollD20>, modifier: number): string {
+    const mod = formatModifier(modifier);
+    if (result.luckyReroll !== undefined) {
+      return `d20 [${result.rolls.join(", ")} → ${result.luckyReroll}] ${mod} (Lucky)`;
+    }
+    return result.rolls.length > 1
+      ? `d20 [${result.rolls.join(", ")}] ${mod}`
+      : `d20 ${mod}`;
+  }
+
   function rollCheck(label: string, modifier: number) {
-    const result = rollD20(modifier, play.rollMode);
+    const result = rollD20(modifier, play.rollMode, isHalfling);
     pushLog({
       label,
-      detail:
-        result.rolls.length > 1
-          ? `d20 [${result.rolls.join(", ")}] ${formatModifier(modifier)}`
-          : `d20 ${formatModifier(modifier)}`,
+      detail: d20Detail(result, modifier),
       total: result.total,
       isNat20: result.isNat20,
       isNat1: result.isNat1,
@@ -703,13 +711,10 @@ export default function PlaySheet({
   }
 
   function rollAttack(weapon: ReturnType<typeof resolveWeapons>[number]) {
-    const result = rollD20(weapon.attackBonus, play.rollMode);
+    const result = rollD20(weapon.attackBonus, play.rollMode, isHalfling);
     pushLog({
       label: `${weapon.name} Attack`,
-      detail:
-        result.rolls.length > 1
-          ? `d20 [${result.rolls.join(", ")}] ${formatModifier(weapon.attackBonus)}`
-          : `d20 ${formatModifier(weapon.attackBonus)}`,
+      detail: d20Detail(result, weapon.attackBonus),
       total: result.total,
       isNat20: result.isNat20,
       isNat1: result.isNat1,
@@ -4218,6 +4223,7 @@ export default function PlaySheet({
         onCritRoll={handleCritRoll}
         onRoll={pushLog}
         onClear={() => setDiceLog([])}
+        lucky={isHalfling}
       />
     </div>
   );
