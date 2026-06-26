@@ -195,6 +195,11 @@ interface PlayState {
   // time you'd be reduced to 0 each Long Rest — checked automatically by
   // applyDamage below, not a button the player clicks.
   usedRelentlessEndurance: boolean;
+  // Lineage spellcasting (Elf/Gnome/Tiefling): 1 free cast per Long Rest for
+  // the always-prepared spells at character levels 3 and 5. Cantrips are
+  // at-will and need no tracking.
+  usedLineageSpell3: boolean;
+  usedLineageSpell5: boolean;
   // Starting equipment has no "delete" concept in the build itself (it's
   // derived fresh from class/background every render, not stored as
   // removable state) — this is the play-state-only equivalent of deleting
@@ -385,6 +390,8 @@ export default function PlaySheet({
     expendedAdrenalineRush: 0,
     usedLargeForm: false,
     usedRelentlessEndurance: false,
+    usedLineageSpell3: false,
+    usedLineageSpell5: false,
     removedStartingIndexes: [],
   };
 
@@ -915,6 +922,8 @@ export default function PlaySheet({
       expendedAdrenalineRush: 0,
       usedLargeForm: false,
       usedRelentlessEndurance: false,
+      usedLineageSpell3: false,
+      usedLineageSpell5: false,
     }));
   }
 
@@ -2901,6 +2910,50 @@ export default function PlaySheet({
               </div>
             </div>
           )}
+
+          {sheet.lineageSpells.length > 0 && (() => {
+            const cantrips = sheet.lineageSpells.filter((s) => s.unlockLevel === 1);
+            const leveled = sheet.lineageSpells.filter((s) => s.unlockLevel > 1 && sheet.level >= s.unlockLevel);
+            if (cantrips.length === 0 && leveled.length === 0) return null;
+            return (
+              <div className="mt-4 rounded-md border border-tavern-border p-3">
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Lineage Spells
+                </div>
+                {sheet.lineageSpellSaveDC !== null && (
+                  <div className="mt-1 text-xs text-tavern-muted">
+                    Spell Save DC {sheet.lineageSpellSaveDC} · Spell Attack +{sheet.lineageSpellAttackBonus}
+                  </div>
+                )}
+                {cantrips.length > 0 && (
+                  <div className="mt-2 text-xs text-tavern-muted">
+                    {cantrips.length === 1 ? "Cantrip" : "Cantrips"}: {cantrips.map((s) => s.name).join(", ")} — at-will
+                  </div>
+                )}
+                {leveled.map((s) => {
+                  const isUsed = s.unlockLevel === 3 ? play.usedLineageSpell3 : play.usedLineageSpell5;
+                  const markUsed = s.unlockLevel === 3
+                    ? () => setPlay((p) => ({ ...p, usedLineageSpell3: true }))
+                    : () => setPlay((p) => ({ ...p, usedLineageSpell5: true }));
+                  return (
+                    <div key={s.traitIndex} className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <span className="text-sm font-bold text-tavern-text">{s.name}</span>
+                        <div className="text-xs text-tavern-muted">Always prepared · 1× free per Long Rest</div>
+                      </div>
+                      <button
+                        onClick={markUsed}
+                        disabled={isUsed}
+                        className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        {isUsed ? "Used" : "Cast Free"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {isDying && (
             <div className="mt-4 rounded-lg border border-tavern-oxblood bg-tavern-oxblood/10 p-3">

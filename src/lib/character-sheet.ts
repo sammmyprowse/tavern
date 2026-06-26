@@ -138,6 +138,13 @@ export interface CharacterSheet {
   naturalArmorAC: number | null;
   // Giant Ancestry (Goliath) — uses = Proficiency Bonus per Long Rest.
   giantAncestryUsesMax: number;
+  // Lineage spellcasting (Elf/Gnome/Tiefling): cantrip at character level 1,
+  // always-prepared spells at character levels 3 and 5 (1 free cast per Long
+  // Rest each). Detected by the "lineage-spell-" prefix on subspecies trait
+  // indexes. spellcasting ability is INT for Elf/Gnome, CHA for Tiefling.
+  lineageSpells: { name: string; traitIndex: string; unlockLevel: number }[];
+  lineageSpellSaveDC: number | null;
+  lineageSpellAttackBonus: number | null;
 }
 
 export function buildCharacterSheet(
@@ -322,6 +329,22 @@ export function buildCharacterSheet(
     // matching computeArmorClass's flatUnarmoredAC param shape.
     naturalArmorAC: species.index === "tortle" ? 17 : null,
     giantAncestryUsesMax: species.index === "goliath" ? proficiencyBonus : 0,
+    ...(() => {
+      const LINEAGE_ABILITY: Partial<Record<string, AbilityKey>> = {
+        elf: "int",
+        gnome: "int",
+        tiefling: "cha",
+      };
+      const lsa = LINEAGE_ABILITY[species.index] ?? null;
+      const spells = (subspecies?.traits ?? [])
+        .filter((t) => t.index.startsWith("lineage-spell-"))
+        .map((t) => ({ name: t.name, traitIndex: t.index, unlockLevel: t.level ?? 1 }));
+      return {
+        lineageSpells: spells,
+        lineageSpellSaveDC: lsa ? 8 + proficiencyBonus + modifiers[lsa] : null,
+        lineageSpellAttackBonus: lsa ? proficiencyBonus + modifiers[lsa] : null,
+      };
+    })(),
   };
 }
 
