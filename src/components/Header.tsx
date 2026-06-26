@@ -26,7 +26,6 @@ export default async function Header() {
           >
             Parties
           </Link>
-          <span className="text-sm text-tavern-muted">{data.user.email}</span>
           <form action={signOut}>
             <button
               type="submit"
