@@ -352,6 +352,7 @@ export default function PlaySheet({
   const [weaponMasteryPickerOpen, setWeaponMasteryPickerOpen] = useState(false);
   const [selectedWeaponMastery, setSelectedWeaponMastery] = useState<string[]>([]);
   const [weaponMasteryPending, setWeaponMasteryPending] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
     .map((i) => i.index)
@@ -701,6 +702,18 @@ export default function PlaySheet({
   const knownWeaponMasteryDetails = currentDraft.weaponMasteryChoices
     .map((index) => equipmentByIndex.get(index))
     .filter((e): e is EquipmentLookupItem => Boolean(e));
+
+  const collapsibleSectionIds = [
+    "hp", "skills",
+    ...(sheet.fightingStyleKnownMax > 0 ? ["fighting-style"] : []),
+    ...(weaponMasteryMax > 0 ? ["weapon-mastery"] : []),
+    ...(sheet.spellcastingAbility ? ["spells"] : []),
+    ...(speciesTraits.length > 0 ? ["species-traits"] : []),
+    ...(unlockedFeatures.length > 0 ? ["features"] : []),
+    ...(weapons.length > 0 ? ["attacks"] : []),
+    "equipment",
+  ];
+  const allSectionsCollapsed = collapsibleSectionIds.every((id) => collapsedSections.has(id));
 
   function pushLog(entry: Omit<DiceLogEntry, "id">) {
     setDiceLog((prev) => [{ ...entry, id: prev.length + Date.now() }, ...prev].slice(0, 50));
@@ -1695,6 +1708,15 @@ export default function PlaySheet({
     });
   }
 
+  function toggleSection(id: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function rollDeathSave() {
     const roll = rollFlatDie(20);
     pushLog({
@@ -1798,6 +1820,21 @@ export default function PlaySheet({
             ...(personality || isOwner ? [{ id: "personality", label: "Personality" }] : []),
           ]}
         />
+
+        <div className="mt-2 flex justify-end">
+          <button
+            onClick={() => {
+              if (allSectionsCollapsed) {
+                setCollapsedSections(new Set());
+              } else {
+                setCollapsedSections(new Set(collapsibleSectionIds));
+              }
+            }}
+            className="text-xs text-tavern-muted hover:text-tavern-gold-light"
+          >
+            {allSectionsCollapsed ? "Expand All" : "Collapse All"}
+          </button>
+        </div>
 
         {isOwner && (
           <div className="mt-4">
@@ -2249,7 +2286,7 @@ export default function PlaySheet({
 
         {/* HP / resources */}
         <div id="hp" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-          <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <div className="font-heading text-xs tracking-wider text-tavern-muted uppercase">
                 Hit Points
@@ -2259,35 +2296,43 @@ export default function PlaySheet({
                 {play.tempHp > 0 && <span className="text-tavern-muted"> (+{play.tempHp})</span>}
               </div>
             </div>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={damageInput}
-                onChange={(e) => setDamageInput(e.target.value)}
-                placeholder="Damage"
-                className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-tavern-text"
-              />
-              <button
-                onClick={applyDamage}
-                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-sm font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
-              >
-                Hurt
-              </button>
-              <input
-                type="number"
-                value={healInput}
-                onChange={(e) => setHealInput(e.target.value)}
-                placeholder="Heal"
-                className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-tavern-text"
-              />
-              <button
-                onClick={applyHeal}
-                className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white hover:bg-emerald-600"
-              >
-                Heal
-              </button>
-            </div>
+            <button
+              onClick={() => toggleSection("hp")}
+              className="mt-1 shrink-0 text-sm text-tavern-muted hover:text-tavern-gold-light"
+            >
+              {collapsedSections.has("hp") ? "▸" : "▾"}
+            </button>
           </div>
+          {!collapsedSections.has("hp") && (
+            <>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  value={damageInput}
+                  onChange={(e) => setDamageInput(e.target.value)}
+                  placeholder="Damage"
+                  className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-tavern-text"
+                />
+                <button
+                  onClick={applyDamage}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-sm font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Hurt
+                </button>
+                <input
+                  type="number"
+                  value={healInput}
+                  onChange={(e) => setHealInput(e.target.value)}
+                  placeholder="Heal"
+                  className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-tavern-text"
+                />
+                <button
+                  onClick={applyHeal}
+                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white hover:bg-emerald-600"
+                >
+                  Heal
+                </button>
+              </div>
 
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-tavern-bg">
             <div
@@ -2996,6 +3041,8 @@ export default function PlaySheet({
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Ability scores + saves */}
@@ -3040,31 +3087,41 @@ export default function PlaySheet({
 
         {/* Skills */}
         <div id="skills" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-          <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-            Skills
-          </h2>
-          <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            {sheet.skills.map((skill) => (
-              <button
-                key={skill.index}
-                onClick={() => rollCheck(skill.name, skill.bonus)}
-                className={`flex items-center justify-between rounded-md px-3 py-1.5 text-left text-sm hover:bg-tavern-bg ${
-                  skill.proficient ? "text-tavern-text" : "text-tavern-muted"
-                }`}
-              >
-                <span>
-                  {skill.proficient && (
-                    <span className="mr-1.5 text-tavern-gold-light">
-                      {skill.expertise ? "••" : "•"}
-                    </span>
-                  )}
-                  {skill.name}{" "}
-                  <span className="text-xs opacity-60">({skill.ability.toUpperCase()})</span>
-                </span>
-                <span className="font-heading font-bold">{formatModifier(skill.bonus)}</span>
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => toggleSection("skills")}
+            className="flex w-full items-center justify-between"
+          >
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Skills
+            </h2>
+            <span className="text-xs text-tavern-muted">
+              {collapsedSections.has("skills") ? "▸" : "▾"}
+            </span>
+          </button>
+          {!collapsedSections.has("skills") && (
+            <div className="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {sheet.skills.map((skill) => (
+                <button
+                  key={skill.index}
+                  onClick={() => rollCheck(skill.name, skill.bonus)}
+                  className={`flex items-center justify-between rounded-md px-3 py-1.5 text-left text-sm hover:bg-tavern-bg ${
+                    skill.proficient ? "text-tavern-text" : "text-tavern-muted"
+                  }`}
+                >
+                  <span>
+                    {skill.proficient && (
+                      <span className="mr-1.5 text-tavern-gold-light">
+                        {skill.expertise ? "••" : "•"}
+                      </span>
+                    )}
+                    {skill.name}{" "}
+                    <span className="text-xs opacity-60">({skill.ability.toUpperCase()})</span>
+                  </span>
+                  <span className="font-heading font-bold">{formatModifier(skill.bonus)}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Languages */}
@@ -3107,12 +3164,25 @@ export default function PlaySheet({
         {/* Fighting Style — not gated on spellcastingAbility, unlike Spells
             below: Fighter/Paladin/Ranger all grant this regardless of
             whether the class casts spells. */}
-        {sheet.fightingStyleKnownMax > 0 && (
-          <div id="fighting-style" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+        {sheet.fightingStyleKnownMax > 0 && (() => {
+          const fsPending = isOwner && knownFightingStyleDetails.length < sheet.fightingStyleKnownMax;
+          return (
+          <div
+            id="fighting-style"
+            className={`mt-6 rounded-xl border bg-tavern-card p-5 ${fsPending ? "border-tavern-gold/60" : "border-tavern-border"}`}
+          >
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-                Fighting Style ({knownFightingStyleDetails.length}/{sheet.fightingStyleKnownMax})
-              </h2>
+              <button
+                onClick={() => toggleSection("fighting-style")}
+                className="flex items-center gap-1.5 text-left"
+              >
+                <span className={`text-[10px] leading-none ${fsPending ? "text-tavern-gold-light" : "text-tavern-muted"}`}>
+                  {collapsedSections.has("fighting-style") ? "▸" : "▾"}
+                </span>
+                <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Fighting Style ({knownFightingStyleDetails.length}/{sheet.fightingStyleKnownMax})
+                </h2>
+              </button>
               {isOwner && !fightingStylePickerOpen && (
                 <button
                   onClick={openFightingStylePicker}
@@ -3122,12 +3192,18 @@ export default function PlaySheet({
                 </button>
               )}
             </div>
+            {fsPending && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-tavern-gold/40 bg-tavern-gold/5 px-3 py-1.5 text-xs font-bold text-tavern-gold-light">
+                ✦ New Fighting Style Selections Available
+              </div>
+            )}
+            {(!collapsedSections.has("fighting-style") || fightingStylePickerOpen) && (
             <p className="mt-1 text-xs text-tavern-muted">
               Only 4 of the real PHB&apos;s Fighting Styles (Archery, Defense, Great Weapon
               Fighting, Two-Weapon Fighting) are in the free SRD. Archery and Defense apply
               automatically above; the other two are situational and applied manually in play.
-            </p>
-
+            </p>)}
+            {(!collapsedSections.has("fighting-style") || fightingStylePickerOpen) && <>
             {!fightingStylePickerOpen ? (
               <div className="mt-2 space-y-1">
                 {knownFightingStyleDetails.map((f) => {
@@ -3209,16 +3285,31 @@ export default function PlaySheet({
                 </div>
               </div>
             )}
+            </>}
           </div>
-        )}
+          );
+        })()}
 
         {/* Weapon Mastery */}
-        {weaponMasteryMax > 0 && (
-          <div id="weapon-mastery" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+        {weaponMasteryMax > 0 && (() => {
+          const wmPending = isOwner && knownWeaponMasteryDetails.length < weaponMasteryMax;
+          return (
+          <div
+            id="weapon-mastery"
+            className={`mt-6 rounded-xl border bg-tavern-card p-5 ${wmPending ? "border-tavern-gold/60" : "border-tavern-border"}`}
+          >
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-                Weapon Mastery ({knownWeaponMasteryDetails.length}/{weaponMasteryMax})
-              </h2>
+              <button
+                onClick={() => toggleSection("weapon-mastery")}
+                className="flex items-center gap-1.5 text-left"
+              >
+                <span className={`text-[10px] leading-none ${wmPending ? "text-tavern-gold-light" : "text-tavern-muted"}`}>
+                  {collapsedSections.has("weapon-mastery") ? "▸" : "▾"}
+                </span>
+                <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Weapon Mastery ({knownWeaponMasteryDetails.length}/{weaponMasteryMax})
+                </h2>
+              </button>
               {isOwner && !weaponMasteryPickerOpen && (
                 <button
                   onClick={openWeaponMasteryPicker}
@@ -3228,11 +3319,17 @@ export default function PlaySheet({
                 </button>
               )}
             </div>
+            {wmPending && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-tavern-gold/40 bg-tavern-gold/5 px-3 py-1.5 text-xs font-bold text-tavern-gold-light">
+                ✦ New Weapon Mastery Selections Available
+              </div>
+            )}
+            {(!collapsedSections.has("weapon-mastery") || weaponMasteryPickerOpen) && (
             <p className="mt-1 text-xs text-tavern-muted">
               You can use the mastery properties of these weapon kinds. Change one whenever you
               finish a Long Rest.
-            </p>
-
+            </p>)}
+            {(!collapsedSections.has("weapon-mastery") || weaponMasteryPickerOpen) && <>
             {!weaponMasteryPickerOpen ? (
               <div className="mt-2 space-y-1">
                 {knownWeaponMasteryDetails.map((w) => {
@@ -3326,15 +3423,26 @@ export default function PlaySheet({
                 </div>
               </div>
             )}
+            </>}
           </div>
-        )}
+          );
+        })()}
 
         {/* Spells */}
         {sheet.spellcastingAbility && (
           <div id="spells" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Spells
-            </h2>
+            <button
+              onClick={() => toggleSection("spells")}
+              className="flex w-full items-center justify-between"
+            >
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Spells
+              </h2>
+              <span className="text-xs text-tavern-muted">
+                {collapsedSections.has("spells") ? "▸" : "▾"}
+              </span>
+            </button>
+            {(!collapsedSections.has("spells") || cantripPickerOpen || preparedPickerOpen || metamagicPickerOpen) && (<>
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
                 <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
@@ -3774,15 +3882,20 @@ export default function PlaySheet({
                 )}
               </div>
             )}
+            </>)}
           </div>
         )}
 
         {/* Species Traits */}
         {speciesTraits.length > 0 && (
           <div id="species-traits" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Species Traits
-            </h2>
+            <button onClick={() => toggleSection("species-traits")} className="flex w-full items-center justify-between">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Species Traits
+              </h2>
+              <span className="text-xs text-tavern-muted">{collapsedSections.has("species-traits") ? "▸" : "▾"}</span>
+            </button>
+            {!collapsedSections.has("species-traits") && (
             <div className="mt-3 space-y-1">
               {speciesTraits.map((trait) => {
                 const expanded = expandedFeatures.has(trait.index);
@@ -3808,15 +3921,20 @@ export default function PlaySheet({
                 );
               })}
             </div>
+            )}
           </div>
         )}
 
         {/* Features */}
         {unlockedFeatures.length > 0 && (
           <div id="features" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Features
-            </h2>
+            <button onClick={() => toggleSection("features")} className="flex w-full items-center justify-between">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Features
+              </h2>
+              <span className="text-xs text-tavern-muted">{collapsedSections.has("features") ? "▸" : "▾"}</span>
+            </button>
+            {!collapsedSections.has("features") && (
             <div className="mt-3 space-y-1">
               {unlockedFeatures.map((feature) => {
                 const expanded = expandedFeatures.has(feature.index);
@@ -3840,15 +3958,20 @@ export default function PlaySheet({
                 );
               })}
             </div>
+            )}
           </div>
         )}
 
         {/* Attacks */}
         {weapons.length > 0 && (
           <div id="attacks" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Attacks
-            </h2>
+            <button onClick={() => toggleSection("attacks")} className="flex w-full items-center justify-between">
+              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+                Attacks
+              </h2>
+              <span className="text-xs text-tavern-muted">{collapsedSections.has("attacks") ? "▸" : "▾"}</span>
+            </button>
+            {!collapsedSections.has("attacks") && (<>
             {sheet.sneakAttackDice && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
                 <div>
@@ -3969,14 +4092,19 @@ export default function PlaySheet({
                 </div>
               ))}
             </div>
+            </>)}
           </div>
         )}
 
         {/* Equipment */}
         <div id="equipment" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-          <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-            Equipment
-          </h2>
+          <button onClick={() => toggleSection("equipment")} className="flex w-full items-center justify-between">
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Equipment
+            </h2>
+            <span className="text-xs text-tavern-muted">{collapsedSections.has("equipment") ? "▸" : "▾"}</span>
+          </button>
+          {!collapsedSections.has("equipment") && (<>
           <div className="mt-3">
             <CurrencyTracker
               currency={currency}
@@ -4231,6 +4359,7 @@ export default function PlaySheet({
               }}
             />
           )}
+          </>)}
         </div>
 
         <CharacterPersonality
