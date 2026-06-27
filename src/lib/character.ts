@@ -996,3 +996,20 @@ export function wholenessOfBodyMax(wisModifier: number): number {
 export function breathWeaponDice(level: number): number {
   return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
 }
+
+// Maps subspecies index → the class whose cantrip list to use for the
+// lineage cantrip picker (e.g. High Elf's Prestidigitation → Wizard list).
+export const LINEAGE_CANTRIP_CLASS: Record<string, string> = {
+  "elven-lineage-high-elf": "wizard",
+};
+
+// Maps trait index → the cantrip's default name and which class list the
+// player picks from. Mirrors LINEAGE_CANTRIP_CLASS but keyed by the trait
+// that grants the ability (used in character-sheet.ts and PlaySheet.tsx
+// to surface the interactive picker next to the right trait).
+export const SWAPPABLE_CANTRIP_TRAITS: Record<
+  string,
+  { defaultCantrip: string; cantripClass: string }
+> = {
+  "high-elf-cantrip-versatility": { defaultCantrip: "Prestidigitation", cantripClass: "wizard" },
+};

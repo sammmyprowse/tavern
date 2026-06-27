@@ -38,6 +38,7 @@ import {
   spellSaveDC as computeSpellSaveDC,
   sneakAttackDice,
   CANTRIPS_KNOWN_BY_CLASS,
+  SWAPPABLE_CANTRIP_TRAITS,
   type AbilityKey,
   type CharacterDraft,
   type EquipmentItem,
@@ -91,6 +92,7 @@ export interface CharacterSheet {
   backgroundFeatName: string | null;
   backgroundFeatIndex: string | null;
   backgroundFeatDescription: string | null;
+  lineageCantripTrait: { traitIndex: string; defaultCantrip: string; cantripClass: string } | null;
   finalScores: Record<AbilityKey, number>;
   modifiers: Record<AbilityKey, number>;
   proficiencyBonus: number;
@@ -343,10 +345,18 @@ export function buildCharacterSheet(
       const spells = (subspecies?.traits ?? [])
         .filter((t) => t.index.startsWith("lineage-spell-"))
         .map((t) => ({ name: t.name, traitIndex: t.index, unlockLevel: t.level ?? 1 }));
+      const swappable =
+        (subspecies?.traits ?? [])
+          .map((t) => {
+            const info = SWAPPABLE_CANTRIP_TRAITS[t.index];
+            return info ? { traitIndex: t.index, ...info } : null;
+          })
+          .find(Boolean) ?? null;
       return {
         lineageSpells: spells,
         lineageSpellSaveDC: lsa ? 8 + proficiencyBonus + modifiers[lsa] : null,
         lineageSpellAttackBonus: lsa ? proficiencyBonus + modifiers[lsa] : null,
+        lineageCantripTrait: swappable ?? null,
       };
     })(),
   };

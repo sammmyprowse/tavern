@@ -17,7 +17,7 @@ import {
   getSpellsForClass,
   getTraitDescriptions,
 } from "@/lib/srd";
-import { EMPTY_DRAFT, type CharacterDraft } from "@/lib/character";
+import { EMPTY_DRAFT, LINEAGE_CANTRIP_CLASS, type CharacterDraft } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
@@ -109,6 +109,15 @@ export default async function CharacterPlaySheet({
       ])
     : [[], [], []];
 
+  const lineageCantripClass = draft.subspeciesIndex
+    ? (LINEAGE_CANTRIP_CLASS[draft.subspeciesIndex] ?? null)
+    : null;
+  const lineageCantripSpells = lineageCantripClass
+    ? lineageCantripClass === draft.classIndex
+      ? classSpells.filter((s) => s.level === 0)
+      : (await getSpellsForClass(lineageCantripClass)).filter((s) => s.level === 0)
+    : [];
+
   return (
     <PlaySheet
       characterId={character.id}
@@ -128,6 +137,7 @@ export default async function CharacterPlaySheet({
       masteryProperties={masteryProperties}
       traitDescriptions={traitDescriptions}
       classSpells={classSpells}
+      lineageCantripSpells={lineageCantripSpells}
       isOwner={isOwner}
       isPublic={character.is_public}
       avatarUrl={character.avatar_url}
