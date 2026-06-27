@@ -781,6 +781,44 @@ export default function PlaySheet({
     });
   }
 
+  function rollSpellAttack(spellName: string, attackBonus: number) {
+    const result = rollD20(attackBonus, play.rollMode, isHalfling);
+    pushLog({
+      label: `${spellName} Spell Attack`,
+      detail: d20Detail(result, attackBonus),
+      total: result.total,
+      isNat20: result.isNat20,
+      isNat1: result.isNat1,
+    });
+  }
+
+  function rollSpellDamage(spellName: string, damageDice: string, damageType: string | null) {
+    const result = rollDice(damageDice);
+    pushLog({
+      label: `${spellName} Damage`,
+      detail: `${damageDice} [${result.rolls.join(", ")}]${damageType ? ` ${damageType}` : ""}`,
+      total: result.total,
+    });
+  }
+
+  function castSpell(spellName: string) {
+    pushLog({
+      label: `Cast ${spellName}`,
+      detail: "Resolve effect per spell description",
+      total: 0,
+    });
+  }
+
+  // For cantrips: pick the damage dice for this character's level from the
+  // scaling table (e.g. Firebolt: 1d10 at 1–4, 2d10 at 5–10, etc.).
+  function getCantripDamageDice(spell: { damageDice: string | null; cantripScaling: Record<string, string> | null }): string | null {
+    if (!spell.cantripScaling) return spell.damageDice;
+    const tiers = Object.keys(spell.cantripScaling).map(Number).sort((a, b) => a - b);
+    const applicable = tiers.filter((t) => t <= (sheet?.level ?? 1));
+    const tier = applicable.length > 0 ? applicable[applicable.length - 1] : tiers[0];
+    return spell.cantripScaling[String(tier)] ?? spell.damageDice;
+  }
+
   function handleCritRoll(entry: DiceLogEntry) {
     if (!entry.critDamageNotation) return;
     const result = rollDice(entry.critDamageNotation);
@@ -3651,23 +3689,60 @@ export default function PlaySheet({
                 </div>
 
                 {!cantripPickerOpen ? (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-2">
                     {knownCantripDetails.map((s) => {
                       const key = `spell-${s.index}`;
                       const expanded = expandedFeatures.has(key);
+                      const damageDice = getCantripDamageDice(s);
+                      const attackBonus = sheet.spellAttackBonus ?? 0;
+                      const saveDC = sheet.spellSaveDC ?? 0;
                       return (
-                        <div key={key} className="rounded-md border border-tavern-border">
-                          <button
-                            onClick={() => toggleFeature(key)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                          >
-                            <span className="text-tavern-text">{s.name}</span>
-                            <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                              {s.school}
-                            </span>
-                          </button>
+                        <div key={key} className="rounded-md border border-tavern-border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="flex-1 text-left"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                                <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                              </div>
+                              <div className="mt-0.5 text-xs text-tavern-muted">
+                                Cantrip{s.school ? ` · ${s.school}` : ""}
+                                {s.concentration ? " · Concentration" : ""}
+                                {s.ritual ? " · Ritual" : ""}
+                                {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
+                              </div>
+                            </button>
+                            <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                              {s.attackType && (
+                                <button
+                                  onClick={() => rollSpellAttack(s.name, attackBonus)}
+                                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                                >
+                                  Attack {formatModifier(attackBonus)}
+                                </button>
+                              )}
+                              {damageDice && (
+                                <button
+                                  onClick={() => rollSpellDamage(s.name, damageDice, s.damageType)}
+                                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                                >
+                                  Damage
+                                </button>
+                              )}
+                              {!s.attackType && !damageDice && (
+                                <button
+                                  onClick={() => castSpell(s.name)}
+                                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                                >
+                                  Cast
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           {expanded && s.description && (
-                            <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                            <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
                               {s.description}
                             </p>
                           )}
@@ -3757,23 +3832,57 @@ export default function PlaySheet({
                 </div>
 
                 {!preparedPickerOpen ? (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-2">
                     {preparedSpellDetails.map((s) => {
                       const key = `spell-${s.index}`;
                       const expanded = expandedFeatures.has(key);
+                      const attackBonus = sheet.spellAttackBonus ?? 0;
+                      const saveDC = sheet.spellSaveDC ?? 0;
                       return (
-                        <div key={key} className="rounded-md border border-tavern-border">
-                          <button
-                            onClick={() => toggleFeature(key)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                          >
-                            <span className="text-tavern-text">{s.name}</span>
-                            <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                              Lvl {s.level} &middot; {s.school}
-                            </span>
-                          </button>
+                        <div key={key} className="rounded-md border border-tavern-border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <button
+                              onClick={() => toggleFeature(key)}
+                              className="flex-1 text-left"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                                <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                              </div>
+                              <div className="mt-0.5 text-xs text-tavern-muted">
+                                Level {s.level}{s.school ? ` · ${s.school}` : ""}
+                                {s.concentration ? " · Concentration" : ""}
+                                {s.ritual ? " · Ritual" : ""}
+                                {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
+                              </div>
+                            </button>
+                            <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                              {s.attackType && (
+                                <button
+                                  onClick={() => rollSpellAttack(s.name, attackBonus)}
+                                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                                >
+                                  Attack {formatModifier(attackBonus)}
+                                </button>
+                              )}
+                              {s.damageDice && (
+                                <button
+                                  onClick={() => rollSpellDamage(s.name, s.damageDice!, s.damageType)}
+                                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                                >
+                                  Damage
+                                </button>
+                              )}
+                              <button
+                                onClick={() => castSpell(s.name)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Cast
+                              </button>
+                            </div>
+                          </div>
                           {expanded && s.description && (
-                            <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
+                            <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
                               {s.description}
                             </p>
                           )}
@@ -3850,86 +3959,221 @@ export default function PlaySheet({
               const leveled = sheet.lineageSpells.filter((s) => s.unlockLevel > 1 && sheet.level >= s.unlockLevel);
               if (cantrips.length === 0 && leveled.length === 0 && !sheet.lineageCantripTrait) return null;
               const currentCantrip = play.lineageCantrip ?? sheet.lineageCantripTrait?.defaultCantrip ?? null;
+              const lineageAttackBonus = sheet.lineageSpellAttackBonus ?? 0;
+              const lineageSaveDC = sheet.lineageSpellSaveDC ?? 0;
+              // Look up full spell details from the lineage class spell list
+              const findSpell = (name: string) => lineageCantripSpells.find((s) => s.name === name) ?? null;
+              const cantripOptions = lineageCantripSpells.filter((s) => s.level === 0);
               return (
-                <div className="mt-4 rounded-md border border-tavern-border p-3">
-                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                    Lineage Spells
+                <div className="mt-4 space-y-2 rounded-md border border-tavern-border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                      Lineage Spells
+                    </div>
+                    {sheet.lineageSpellSaveDC !== null && (
+                      <div className="text-xs text-tavern-muted">
+                        DC {lineageSaveDC} · Attack {formatModifier(lineageAttackBonus)}
+                      </div>
+                    )}
                   </div>
-                  {sheet.lineageSpellSaveDC !== null && (
-                    <div className="mt-1 text-xs text-tavern-muted">
-                      Spell Save DC {sheet.lineageSpellSaveDC} · Spell Attack +{sheet.lineageSpellAttackBonus}
-                    </div>
-                  )}
-                  {cantrips.length > 0 && (
-                    <div className="mt-2 text-xs text-tavern-muted">
-                      {cantrips.length === 1 ? "Cantrip" : "Cantrips"}: {cantrips.map((s) => s.name).join(", ")} — at-will
-                    </div>
-                  )}
-                  {sheet.lineageCantripTrait !== null && (
-                    <div className="mt-2">
-                      {!lineageCantripPickerOpen ? (
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-xs text-tavern-muted">
-                            Cantrip: <span className="text-tavern-text">{currentCantrip}</span> — at-will
-                          </div>
-                          {isOwner && (
-                            <button
-                              onClick={() => setLineageCantripPickerOpen(true)}
-                              className="rounded-md border border-tavern-border px-2 py-1 text-xs text-tavern-gold-light hover:border-tavern-gold-light"
-                            >
-                              Change
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="mb-2 text-xs font-bold text-tavern-gold-light">Choose Cantrip</div>
-                          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                            {lineageCantripSpells.map((s) => (
-                              <button
-                                key={s.index}
-                                onClick={() => {
-                                  setPlay((p) => ({ ...p, lineageCantrip: s.name }));
-                                  setLineageCantripPickerOpen(false);
-                                }}
-                                className={`rounded-md border px-2 py-1.5 text-left text-xs ${
-                                  s.name === currentCantrip
-                                    ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold"
-                                    : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
-                                }`}
-                              >
-                                {s.name}
-                              </button>
-                            ))}
-                          </div>
-                          <button
-                            onClick={() => setLineageCantripPickerOpen(false)}
-                            className="mt-2 text-xs text-tavern-muted hover:text-tavern-gold-light"
-                          >
-                            Cancel
+                  {cantrips.map((s) => {
+                    const spell = findSpell(s.name);
+                    const key = `lineage-cantrip-fixed-${s.traitIndex}`;
+                    const expanded = expandedFeatures.has(key);
+                    const damageDice = spell ? getCantripDamageDice(spell) : null;
+                    return (
+                      <div key={key} className="rounded-md border border-tavern-border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <button onClick={() => toggleFeature(key)} className="flex-1 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                              <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                            </div>
+                            <div className="mt-0.5 text-xs text-tavern-muted">
+                              Cantrip · At-will
+                              {spell?.concentration ? " · Concentration" : ""}
+                              {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
+                            </div>
                           </button>
+                          <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                            {spell?.attackType && (
+                              <button
+                                onClick={() => rollSpellAttack(s.name, lineageAttackBonus)}
+                                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                              >
+                                Attack {formatModifier(lineageAttackBonus)}
+                              </button>
+                            )}
+                            {damageDice && (
+                              <button
+                                onClick={() => rollSpellDamage(s.name, damageDice, spell?.damageType ?? null)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Damage
+                              </button>
+                            )}
+                            {!spell?.attackType && !damageDice && (
+                              <button
+                                onClick={() => castSpell(s.name)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Cast
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
+                        {expanded && spell?.description && (
+                          <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
+                            {spell.description}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {sheet.lineageCantripTrait !== null && !lineageCantripPickerOpen && (() => {
+                    const spell = currentCantrip ? findSpell(currentCantrip) : null;
+                    const key = `lineage-cantrip-swap-${sheet.lineageCantripTrait.traitIndex}`;
+                    const expanded = expandedFeatures.has(key);
+                    const damageDice = spell ? getCantripDamageDice(spell) : null;
+                    return (
+                      <div className="rounded-md border border-tavern-border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <button onClick={() => toggleFeature(key)} className="flex-1 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-heading font-bold text-tavern-text">{currentCantrip}</span>
+                              <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                            </div>
+                            <div className="mt-0.5 text-xs text-tavern-muted">
+                              Cantrip · At-will
+                              {spell?.concentration ? " · Concentration" : ""}
+                              {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
+                            </div>
+                          </button>
+                          <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                            {spell?.attackType && (
+                              <button
+                                onClick={() => rollSpellAttack(currentCantrip!, lineageAttackBonus)}
+                                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                              >
+                                Attack {formatModifier(lineageAttackBonus)}
+                              </button>
+                            )}
+                            {damageDice && (
+                              <button
+                                onClick={() => rollSpellDamage(currentCantrip!, damageDice, spell?.damageType ?? null)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Damage
+                              </button>
+                            )}
+                            {!spell?.attackType && !damageDice && (
+                              <button
+                                onClick={() => castSpell(currentCantrip!)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Cast
+                              </button>
+                            )}
+                            {isOwner && (
+                              <button
+                                onClick={() => setLineageCantripPickerOpen(true)}
+                                className="rounded-md border border-tavern-border px-2 py-1.5 text-xs text-tavern-muted hover:border-tavern-gold-light hover:text-tavern-gold-light"
+                              >
+                                Change
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {expanded && spell?.description && (
+                          <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
+                            {spell.description}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {sheet.lineageCantripTrait !== null && lineageCantripPickerOpen && (
+                    <div className="rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                      <p className="mb-2 text-xs font-bold text-tavern-gold-light">Choose Cantrip</p>
+                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                        {cantripOptions.map((s) => (
+                          <button
+                            key={s.index}
+                            onClick={() => {
+                              setPlay((p) => ({ ...p, lineageCantrip: s.name }));
+                              setLineageCantripPickerOpen(false);
+                            }}
+                            className={`rounded-md border px-2 py-1.5 text-left text-xs ${
+                              s.name === currentCantrip
+                                ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold"
+                                : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
+                            }`}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setLineageCantripPickerOpen(false)}
+                        className="mt-2 text-xs text-tavern-muted hover:text-tavern-gold-light"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   )}
                   {leveled.map((s) => {
+                    const spell = findSpell(s.name);
                     const isUsed = s.unlockLevel === 3 ? play.usedLineageSpell3 : play.usedLineageSpell5;
                     const markUsed = s.unlockLevel === 3
-                      ? () => setPlay((p) => ({ ...p, usedLineageSpell3: true }))
-                      : () => setPlay((p) => ({ ...p, usedLineageSpell5: true }));
+                      ? () => { setPlay((p) => ({ ...p, usedLineageSpell3: true })); castSpell(s.name); }
+                      : () => { setPlay((p) => ({ ...p, usedLineageSpell5: true })); castSpell(s.name); };
+                    const key = `lineage-spell-${s.traitIndex}`;
+                    const expanded = expandedFeatures.has(key);
                     return (
-                      <div key={s.traitIndex} className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <span className="text-sm font-bold text-tavern-text">{s.name}</span>
-                          <div className="text-xs text-tavern-muted">Always prepared · 1× free per Long Rest</div>
+                      <div key={key} className="rounded-md border border-tavern-border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <button onClick={() => toggleFeature(key)} className="flex-1 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                              <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                            </div>
+                            <div className="mt-0.5 text-xs text-tavern-muted">
+                              Level {spell?.level ?? s.unlockLevel} · Always prepared · 1× free per Long Rest
+                              {spell?.concentration ? " · Concentration" : ""}
+                              {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
+                            </div>
+                          </button>
+                          <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                            {spell?.attackType && (
+                              <button
+                                onClick={() => rollSpellAttack(s.name, lineageAttackBonus)}
+                                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                              >
+                                Attack {formatModifier(lineageAttackBonus)}
+                              </button>
+                            )}
+                            {spell?.damageDice && (
+                              <button
+                                onClick={() => rollSpellDamage(s.name, spell.damageDice!, spell.damageType)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Damage
+                              </button>
+                            )}
+                            <button
+                              onClick={markUsed}
+                              disabled={isUsed}
+                              className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              {isUsed ? "Used" : "Cast Free"}
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={markUsed}
-                          disabled={isUsed}
-                          className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
-                        >
-                          {isUsed ? "Used" : "Cast Free"}
-                        </button>
+                        {expanded && spell?.description && (
+                          <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
+                            {spell.description}
+                          </p>
+                        )}
                       </div>
                     );
                   })}

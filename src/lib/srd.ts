@@ -512,6 +512,11 @@ export interface SpellOption {
   concentration: boolean;
   ritual: boolean;
   description: string | null;
+  attackType: "melee" | "ranged" | null;
+  dcType: string | null;
+  damageDice: string | null;
+  damageType: string | null;
+  cantripScaling: Record<string, string> | null;
 }
 
 // Spell data only exists in the 2014 ruleset (2024 SRD hasn't published
@@ -531,7 +536,19 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
       return classes.some((c) => c.index === classIndex);
     })
     .map((s) => {
-      const d = s.data as { desc?: string[] };
+      const d = s.data as {
+        desc?: string[];
+        attack_type?: string;
+        dc?: { dc_type?: { index?: string } };
+        damage?: {
+          damage_type?: { index?: string };
+          damage_at_character_level?: Record<string, string>;
+          damage_at_slot_level?: Record<string, string>;
+        };
+      };
+      const cantripScaling = d.damage?.damage_at_character_level ?? null;
+      const slotScaling = d.damage?.damage_at_slot_level ?? null;
+      const rawAttack = d.attack_type ?? null;
       return {
         index: s.index,
         name: s.name,
@@ -540,6 +557,11 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
         concentration: s.concentration ?? false,
         ritual: s.ritual ?? false,
         description: d.desc ? d.desc.join("\n\n") : null,
+        attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
+        dcType: d.dc?.dc_type?.index ?? null,
+        damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
+        damageType: d.damage?.damage_type?.index ?? null,
+        cantripScaling,
       };
     })
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));

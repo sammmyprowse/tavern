@@ -112,10 +112,13 @@ export default async function CharacterPlaySheet({
   const lineageCantripClass = draft.subspeciesIndex
     ? (LINEAGE_CANTRIP_CLASS[draft.subspeciesIndex] ?? null)
     : null;
+  // Pass ALL spells from the lineage class (not just cantrips) so PlaySheet
+  // can look up descriptions for leveled lineage spells (e.g. Detect Magic,
+  // Misty Step). The cantrip picker in PlaySheet filters to level 0 itself.
   const lineageCantripSpells = lineageCantripClass
     ? lineageCantripClass === draft.classIndex
-      ? classSpells.filter((s) => s.level === 0)
-      : (await getSpellsForClass(lineageCantripClass)).filter((s) => s.level === 0)
+      ? classSpells
+      : await getSpellsForClass(lineageCantripClass)
     : [];
 
   return (
