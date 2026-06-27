@@ -567,6 +567,49 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
+// Fetch specific spells by their index slugs — no class membership filter.
+// Used to look up description/combat data for lineage spells (e.g. a
+// Tiefling's Fire Bolt, a Drow's Dancing Lights) without fetching an entire
+// class's spell list.
+export async function getSpellsByIndex(indexes: string[]): Promise<SpellOption[]> {
+  if (indexes.length === 0) return [];
+  const { data } = await supabase
+    .from("spells")
+    .select("index, name, level, school, concentration, ritual, data")
+    .eq("ruleset", "2014")
+    .in("index", indexes);
+
+  return (data ?? []).map((s) => {
+    const d = s.data as {
+      desc?: string[];
+      attack_type?: string;
+      dc?: { dc_type?: { index?: string } };
+      damage?: {
+        damage_type?: { index?: string };
+        damage_at_character_level?: Record<string, string>;
+        damage_at_slot_level?: Record<string, string>;
+      };
+    };
+    const cantripScaling = d.damage?.damage_at_character_level ?? null;
+    const slotScaling = d.damage?.damage_at_slot_level ?? null;
+    const rawAttack = d.attack_type ?? null;
+    return {
+      index: s.index,
+      name: s.name,
+      level: s.level ?? 0,
+      school: s.school,
+      concentration: s.concentration ?? false,
+      ritual: s.ritual ?? false,
+      description: d.desc ? d.desc.join("\n\n") : null,
+      attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
+      dcType: d.dc?.dc_type?.index ?? null,
+      damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
+      damageType: d.damage?.damage_type?.index ?? null,
+      cantripScaling,
+    };
+  });
+}
+
 export interface ClassFeature {
   index: string;
   name: string;

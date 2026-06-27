@@ -15,6 +15,7 @@ import {
   getFightingStyleFeats,
   getWeaponMasteryProperties,
   getSpellsForClass,
+  getSpellsByIndex,
   getTraitDescriptions,
 } from "@/lib/srd";
 import { EMPTY_DRAFT, LINEAGE_CANTRIP_CLASS, type CharacterDraft } from "@/lib/character";
@@ -109,17 +110,36 @@ export default async function CharacterPlaySheet({
       ])
     : [[], [], []];
 
+  // Fetch description/combat data for the specific spells this subspecies
+  // grants (Fire Bolt for Infernal Tiefling, Dancing Lights for Drow, etc.)
+  // by collecting their indexes directly from the subspecies trait list rather
+  // than fetching an entire class's spell catalog.
+  const characterSubspecies = subspecies.find((s) => s.index === draft.subspeciesIndex) ?? null;
+  const lineageSpellIndexes = (characterSubspecies?.traits ?? [])
+    .filter((t) => t.index.startsWith("lineage-spell-"))
+    .map((t) => t.index.replace(/^lineage-spell-/, ""));
+  const lineageSpellData = await getSpellsByIndex(lineageSpellIndexes);
+
+  // For subspecies with a swappable cantrip (currently only High Elf), also
+  // fetch all cantrips from that class so the picker can show the full list.
   const lineageCantripClass = draft.subspeciesIndex
     ? (LINEAGE_CANTRIP_CLASS[draft.subspeciesIndex] ?? null)
     : null;
-  // Pass ALL spells from the lineage class (not just cantrips) so PlaySheet
-  // can look up descriptions for leveled lineage spells (e.g. Detect Magic,
-  // Misty Step). The cantrip picker in PlaySheet filters to level 0 itself.
-  const lineageCantripSpells = lineageCantripClass
-    ? lineageCantripClass === draft.classIndex
-      ? classSpells
-      : await getSpellsForClass(lineageCantripClass)
+  const cantripPickerSpells = lineageCantripClass
+    ? (lineageCantripClass === draft.classIndex
+        ? classSpells
+        : await getSpellsForClass(lineageCantripClass)
+      ).filter((s) => s.level === 0)
     : [];
+
+  // Combine: specific lineage spell data + any cantrip picker options not
+  // already covered (e.g. a non-lineage-spell wizard cantrip the player
+  // switched to, which won't be in lineageSpellData by index).
+  const seenIndexes = new Set(lineageSpellData.map((s) => s.index));
+  const lineageCantripSpells = [
+    ...lineageSpellData,
+    ...cantripPickerSpells.filter((s) => !seenIndexes.has(s.index)),
+  ];
 
   return (
     <PlaySheet
