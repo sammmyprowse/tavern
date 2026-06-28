@@ -499,6 +499,7 @@ export default function PlaySheet({
         notes: null,
         bonusDamageDice: null,
         bonusDamageCondition: null,
+        range: "5 ft",
       }
     : null;
   // Empty weaponMasteryChoices means either "this class doesn't have the
@@ -679,10 +680,12 @@ export default function PlaySheet({
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
   // Spells of a level you have no slots for yet aren't preparable.
-  const maxSpellLevel = sheet.spellSlots.reduce(
-    (max, count, i) => (count > 0 ? i + 1 : max),
-    0,
-  );
+  // Exception: half-casters (Paladin, Ranger) have no slots at level 1 but
+  // do have a prepared-spell count, so fall back to showing level-1 spells
+  // so they can make picks before their first slots arrive at level 2.
+  const maxSpellLevel =
+    sheet.spellSlots.reduce((max, count, i) => (count > 0 ? i + 1 : max), 0) ||
+    (sheet.preparedSpellsCount > 0 && sheet.cantripsKnownCount === 0 ? 1 : 0);
   const preparedOptions = classSpells.filter((s) => s.level >= 1 && s.level <= maxSpellLevel);
   const knownCantripDetails = currentDraft.knownCantrips
     .map((index) => cantripOptions.find((s) => s.index === index))
@@ -714,7 +717,7 @@ export default function PlaySheet({
     ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null ? ["spells"] : []),
     ...(speciesTraits.length > 0 ? ["species-traits"] : []),
     ...(unlockedFeatures.length > 0 ? ["features"] : []),
-    ...(weapons.length > 0 ? ["attacks"] : []),
+    ...(weapons.length > 0 || sheet.classIndex === "paladin" ? ["attacks"] : []),
     "equipment",
   ];
   const allSectionsCollapsed = collapsibleSectionIds.every((id) => collapsedSections.has(id));
@@ -777,6 +780,25 @@ export default function PlaySheet({
     pushLog({
       label: `${weapon.name} Bonus Damage${weapon.bonusDamageCondition ? ` (${weapon.bonusDamageCondition})` : ""}`,
       detail: `${weapon.bonusDamageDice} [${result.rolls.join(", ")}] — add to ${weapon.name}'s normal Damage roll`,
+      total: result.total,
+    });
+  }
+
+  function rollDivineSmite(slotLevel: number) {
+    const diceCount = Math.min(slotLevel + 1, 5);
+    const result = rollDice(`${diceCount}d8`);
+    pushLog({
+      label: `Divine Smite (Slot Lv.${slotLevel})`,
+      detail: `${diceCount}d8 Radiant [${result.rolls.join(", ")}] — spend a level-${slotLevel} slot via Spell Slots`,
+      total: result.total,
+    });
+  }
+
+  function rollImprovedDivineSmite() {
+    const result = rollDice("1d8");
+    pushLog({
+      label: "Improved Divine Smite",
+      detail: `1d8 Radiant [${result.rolls.join(", ")}]`,
       total: result.total,
     });
   }
@@ -1857,7 +1879,7 @@ export default function PlaySheet({
             ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null ? [{ id: "spells", label: "Spells" }] : []),
             ...(speciesTraits.length > 0 ? [{ id: "species-traits", label: "Species Traits" }] : []),
             ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
-            ...(weapons.length > 0 ? [{ id: "attacks", label: "Attacks" }] : []),
+            ...(weapons.length > 0 || sheet.classIndex === "paladin" ? [{ id: "attacks", label: "Attacks" }] : []),
             { id: "equipment", label: "Equipment" },
             ...(personality || isOwner ? [{ id: "personality", label: "Personality" }] : []),
           ]}
@@ -3709,6 +3731,7 @@ export default function PlaySheet({
                               </div>
                               <div className="mt-0.5 text-xs text-tavern-muted">
                                 Cantrip{s.school ? ` · ${s.school}` : ""}
+                                {s.range ? ` · ${s.range}` : ""}
                                 {s.concentration ? " · Concentration" : ""}
                                 {s.ritual ? " · Ritual" : ""}
                                 {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
@@ -3851,6 +3874,7 @@ export default function PlaySheet({
                               </div>
                               <div className="mt-0.5 text-xs text-tavern-muted">
                                 Level {s.level}{s.school ? ` · ${s.school}` : ""}
+                                {s.range ? ` · ${s.range}` : ""}
                                 {s.concentration ? " · Concentration" : ""}
                                 {s.ritual ? " · Ritual" : ""}
                                 {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
@@ -3991,6 +4015,7 @@ export default function PlaySheet({
                             </div>
                             <div className="mt-0.5 text-xs text-tavern-muted">
                               Cantrip · At-will
+                              {spell?.range ? ` · ${spell.range}` : ""}
                               {spell?.concentration ? " · Concentration" : ""}
                               {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
                             </div>
@@ -4045,6 +4070,7 @@ export default function PlaySheet({
                             </div>
                             <div className="mt-0.5 text-xs text-tavern-muted">
                               Cantrip · At-will
+                              {spell?.range ? ` · ${spell.range}` : ""}
                               {spell?.concentration ? " · Concentration" : ""}
                               {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
                             </div>
@@ -4139,6 +4165,7 @@ export default function PlaySheet({
                             </div>
                             <div className="mt-0.5 text-xs text-tavern-muted">
                               Level {spell?.level ?? s.unlockLevel} · Always prepared · 1× free per Long Rest
+                              {spell?.range ? ` · ${spell.range}` : ""}
                               {spell?.concentration ? " · Concentration" : ""}
                               {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
                             </div>
@@ -4261,7 +4288,7 @@ export default function PlaySheet({
         )}
 
         {/* Attacks */}
-        {weapons.length > 0 && (
+        {(weapons.length > 0 || sheet.classIndex === "paladin") && (
           <div id="attacks" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <button onClick={() => toggleSection("attacks")} className="flex w-full items-center justify-between">
               <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
@@ -4338,6 +4365,55 @@ export default function PlaySheet({
                 </button>
               </div>
             )}
+            {sheet.classIndex === "paladin" && (
+              <div className="mt-3 rounded-md border border-tavern-border p-3">
+                <div className="mb-2">
+                  <div className="font-heading font-bold text-tavern-text">Divine Smite</div>
+                  <div className="text-xs text-tavern-muted">
+                    On a melee weapon hit, expend a spell slot for extra Radiant damage — 2d8 at
+                    slot level 1, +1d8 per level above 1st (max 5d8). Spend the slot via Spell Slots
+                    above.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[1, 2, 3, 4].map((slotLevel) => {
+                    const total = sheet.spellSlots[slotLevel - 1] ?? 0;
+                    if (total === 0) return null;
+                    const available = total - (play.expendedSlots[slotLevel - 1] ?? 0);
+                    const dice = Math.min(slotLevel + 1, 5);
+                    return (
+                      <button
+                        key={slotLevel}
+                        onClick={() => rollDivineSmite(slotLevel)}
+                        disabled={available === 0}
+                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-40"
+                      >
+                        {dice}d8 Lv.{slotLevel} ({available}/{total})
+                      </button>
+                    );
+                  })}
+                  {sheet.spellSlots.every((n) => n === 0) && (
+                    <span className="text-xs text-tavern-muted italic">Spell slots unlock at level 2.</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {sheet.classIndex === "paladin" && sheet.level >= 11 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading font-bold text-tavern-text">Improved Divine Smite</div>
+                  <div className="text-xs text-tavern-muted">
+                    Your melee weapon hits deal an extra 1d8 Radiant damage automatically.
+                  </div>
+                </div>
+                <button
+                  onClick={rollImprovedDivineSmite}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Roll 1d8
+                </button>
+              </div>
+            )}
             <div className="mt-3 space-y-2">
               {weapons.map((weapon, i) => (
                 <div
@@ -4350,6 +4426,7 @@ export default function PlaySheet({
                       {weapon.damageDice} {formatModifier(weapon.damageBonus)}
                       {weapon.damageType ? ` ${weapon.damageType}` : ""}
                       {weapon.mastery ? ` — ${weapon.mastery.name}` : ""}
+                      {weapon.range ? ` · ${weapon.range}` : ""}
                     </div>
                     {weapon.mastery && (() => {
                       const desc = masteryProperties.find((p) => p.index === weapon.mastery!.index)?.description;

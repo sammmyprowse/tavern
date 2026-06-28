@@ -132,6 +132,13 @@ export interface EquipmentLookupItem {
   // Tool-specific actions with a DC, e.g. Thieves' Tools' "Pick a lock
   // (DC 15 DEX)" — real structured SRD data (data.utilize), not prose.
   utilize: { name: string; ability: string; dc: number }[] | null;
+  // Weapon range data — extracted from data.range and data.throw_range.
+  // rangeNormal/rangeLong: primary range (5 for melee, 80/320 for shortbow, etc.)
+  // throwRangeNormal/throwRangeLong: thrown range for dual-use melee+thrown weapons
+  rangeNormal?: number;
+  rangeLong?: number;
+  throwRangeNormal?: number;
+  throwRangeLong?: number;
   // Only ever set on synthetic entries built by resolveInventoryEquipment
   // (see src/lib/inventory.ts) for a player's custom/found item — real
   // catalog entries from getEquipmentLookup() never set these, so every
@@ -429,6 +436,8 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       mastery?: { index: string; name: string };
       description?: string;
       utilize?: { name: string; dc: { dc_type: { name: string }; dc_value: number } }[];
+      range?: { normal?: number; long?: number };
+      throw_range?: { normal?: number; long?: number };
     };
     map.set(item.index, {
       index: item.index,
@@ -452,6 +461,10 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       utilize: d.utilize?.length
         ? d.utilize.map((u) => ({ name: u.name, ability: u.dc.dc_type.name, dc: u.dc.dc_value }))
         : null,
+      rangeNormal: d.range?.normal,
+      rangeLong: d.range?.long,
+      throwRangeNormal: d.throw_range?.normal,
+      throwRangeLong: d.throw_range?.long,
     });
   }
   return map;
@@ -512,6 +525,7 @@ export interface SpellOption {
   concentration: boolean;
   ritual: boolean;
   description: string | null;
+  range: string | null;
   attackType: "melee" | "ranged" | null;
   dcType: string | null;
   damageDice: string | null;
@@ -538,6 +552,7 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
     .map((s) => {
       const d = s.data as {
         desc?: string[];
+        range?: string;
         attack_type?: string;
         dc?: { dc_type?: { index?: string } };
         damage?: {
@@ -557,6 +572,7 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
         concentration: s.concentration ?? false,
         ritual: s.ritual ?? false,
         description: d.desc ? d.desc.join("\n\n") : null,
+        range: d.range?.replace(" feet", " ft") ?? null,
         attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
         dcType: d.dc?.dc_type?.index ?? null,
         damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
@@ -582,6 +598,7 @@ export async function getSpellsByIndex(indexes: string[]): Promise<SpellOption[]
   return (data ?? []).map((s) => {
     const d = s.data as {
       desc?: string[];
+      range?: string;
       attack_type?: string;
       dc?: { dc_type?: { index?: string } };
       damage?: {
@@ -601,6 +618,7 @@ export async function getSpellsByIndex(indexes: string[]): Promise<SpellOption[]
       concentration: s.concentration ?? false,
       ritual: s.ritual ?? false,
       description: d.desc ? d.desc.join("\n\n") : null,
+      range: d.range?.replace(" feet", " ft") ?? null,
       attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
       dcType: d.dc?.dc_type?.index ?? null,
       damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),

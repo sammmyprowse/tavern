@@ -407,6 +407,7 @@ export interface ResolvedWeapon {
   notes: string | null;
   bonusDamageDice: string | null;
   bonusDamageCondition: string | null;
+  range: string | null;
 }
 
 const RANGED_CATEGORIES = ["ranged-weapons", "ammunition"];
@@ -481,6 +482,15 @@ export function resolveWeapons(
       damageDice = `1d${Math.max(weaponDieSize, monkMartialArtsDie)}`;
     }
 
+    const hasReach = lookup.properties.some((p) => p.index === "reach");
+    const range = lookup.rangeLong
+      ? `${lookup.rangeNormal}/${lookup.rangeLong} ft`
+      : lookup.throwRangeNormal
+        ? `5 ft · throw ${lookup.throwRangeNormal}/${lookup.throwRangeLong} ft`
+        : hasReach
+          ? "10 ft"
+          : "5 ft";
+
     weapons.push({
       index: lookup.index,
       name: lookup.name,
@@ -501,6 +511,7 @@ export function resolveWeapons(
       notes: lookup.notes ?? null,
       bonusDamageDice: lookup.bonusDamageDice ?? null,
       bonusDamageCondition: lookup.bonusDamageCondition ?? null,
+      range,
     });
   }
   return weapons;
