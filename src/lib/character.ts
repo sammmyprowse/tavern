@@ -1066,10 +1066,9 @@ export const SPECIES_NATURAL_WEAPONS: Record<
 // the 2014-ruleset spell slug used to look up full details; a few 2024-only
 // spells (Chromatic Orb, Dragon's Breath, Charm Monster, Aura of Life,
 // Summon Dragon) aren't in the 2014 dataset and resolve to name-only rows.
-// Oath of Devotion is deliberately omitted — its source table is garbled in
-// the dataset, so its spells stay visible only via the Features list rather
-// than risk surfacing a wrong list. Homebrew subclasses grant their spells
-// in prose too and aren't transcribed here.
+// Paladin/Cleric/Warlock/Sorcerer subclasses grant these as oath/domain/
+// patron spells. Homebrew subclasses (below the official block) grant their
+// own thematic lists at full official depth, authored from real SRD spells.
 export const SUBCLASS_PREPARED_SPELLS: Record<
   string,
   { level: number; spells: { name: string; index: string }[] }[]
@@ -1132,6 +1131,31 @@ export const SUBCLASS_PREPARED_SPELLS: Record<
     { level: 9, spells: [
       { name: "Legend Lore", index: "legend-lore" },
       { name: "Summon Dragon", index: "summon-dragon" },
+    ] },
+  ],
+  // Oath of Devotion (Paladin) — half-caster oath spells at levels 3/5/9/13/17,
+  // transcribed from the authoritative 2024 SRD 5.2 Oath of Devotion Spells
+  // table (the dataset's own copy was garbled; the DB row was rebuilt to match).
+  "oath-of-devotion": [
+    { level: 3, spells: [
+      { name: "Protection from Evil and Good", index: "protection-from-evil-and-good" },
+      { name: "Shield of Faith", index: "shield-of-faith" },
+    ] },
+    { level: 5, spells: [
+      { name: "Aid", index: "aid" },
+      { name: "Zone of Truth", index: "zone-of-truth" },
+    ] },
+    { level: 9, spells: [
+      { name: "Beacon of Hope", index: "beacon-of-hope" },
+      { name: "Dispel Magic", index: "dispel-magic" },
+    ] },
+    { level: 13, spells: [
+      { name: "Freedom of Movement", index: "freedom-of-movement" },
+      { name: "Guardian of Faith", index: "guardian-of-faith" },
+    ] },
+    { level: 17, spells: [
+      { name: "Commune", index: "commune" },
+      { name: "Flame Strike", index: "flame-strike" },
     ] },
   ],
 };
