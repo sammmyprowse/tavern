@@ -1592,11 +1592,10 @@ pass than a quick addition:**
   pass rather than bundling in. The lineage CHOICE itself already works
   today via the existing generic subspecies picker (built for Draconic
   Ancestor); only the bonus spellcasting is deferred.
-- **Halfling's Luck** (auto-reroll a natural 1 on any d20 test) would need
-  changing the CORE dice-roll handlers used by every check/save/attack
-  across every class, and showing both rolls in the log — not species-
-  specific scope creep, deferred the same way Indomitable's reroll
-  (Fighter) was left manual rather than automatic.
+- **Halfling's Luck** — NOTE: this was later actually implemented (see the
+  "Audit fixes" section below). `isHalfling` is threaded into `rollD20()`
+  everywhere and the dice log shows "(Lucky)" when a natural 1 is rerolled.
+  This deferral note is kept for history but no longer accurate.
 
 Tested live: walked a Dragonborn (Draconic Ancestor: Red) through the
 ACTUAL builder end-to-end (not a hand-inserted character, to also exercise
@@ -2931,3 +2930,114 @@ headers, found/custom and magic item rows sitting at the end with no
 visual seam. Clicked Remove on a starting item (Healer's Kit),
 confirmed it disappeared, and confirmed it was still gone after a full
 page reload (localStorage, not lost on refresh). No console errors.
+
+## Audit fixes — species/class/background completeness pass
+A full audit cross-referenced every species/subspecies, class/subclass, and
+background against the 2024 rules to find mechanics that existed in the data
+or rules but weren't surfaced (or were computed wrong). Fixes, grouped:
+
+**Critical computed-value bugs (numbers were simply wrong):**
+- **Dwarven Toughness**: +1 HP per level was never applied. Now added in
+  `buildCharacterSheet`'s `maxHpValue` when the `dwarven-toughness` species
+  trait is present.
+- **Bard Jack of All Trades** (level 2+): half proficiency bonus (rounded
+  down) was missing from non-proficient skills. `buildCharacterSheet` now adds
+  `floor(profBonus/2)` to every non-proficient, non-expertise skill for Bards
+  ≥2 (`jackOfAllTrades` flag drives a one-line note in the Skills card).
+- **Feat effects**: Tough/Hardened (+2 HP per level, via `featHpBonus` in
+  character.ts — Tough is `2×level`, Hardened is `2×(level−takenLevel+1)` from
+  each feat's own text) and Alert (+proficiency bonus to Initiative) are now
+  computed. These were collected by the feat picker but never applied.
+
+**Skill-choice sources now tracked** (`CharacterDraft.humanSkillChoice` +
+`skilledChoices`, with `setHumanSkillChoice`/`setSkilledChoices` actions): a
+combined picker in the Skills card lets a Human (Skillful, 1 skill) and/or any
+character with the Skilled feat (3 per time taken) choose skill proficiencies,
+which then count toward bonuses, Expertise eligibility, and passive Perception.
+Same play-sheet "re-editable pending choice" pattern as Fighting Style/Expertise
+(no new builder step).
+
+**New class resources:**
+- **Wizard Arcane Recovery**: Wizard added to `hasShortRestResource` (Short
+  Rest button now appears); a "Recover" button greedily restores expended
+  slots up to `ceil(level/2)` slot-levels (highest first, none above 5th),
+  once per day (`usedArcaneRecovery`, reset on Long Rest).
+- **Sorcerer Innate Sorcery**: `innateSorceryMax` (2/Long Rest) counter in the
+  Spells card.
+
+**Subclass always-prepared spells**: `SUBCLASS_PREPARED_SPELLS` in character.ts
+transcribes the spell tables that the SRD jams into subclass feature prose, for
+the three official subclasses that grant them — Life Domain (Cleric), Fiend
+Patron (Warlock), Draconic Sorcery (Sorcerer). Surfaced as a "Subclass Spells
+(Always Prepared)" block in the Spells card with full details + Cast/Attack/
+Damage buttons; `subclassPreparedSpells` on the sheet filters to milestones
+reached, and page.tsx fetches detail data by slug into a new `subclassSpellData`
+prop. **Oath of Devotion (Paladin) is deliberately omitted** — its source
+table is garbled in the dataset, so its spells stay visible via the Features
+list only rather than risk a wrong list. Homebrew subclasses grant spells in
+prose too and aren't transcribed (documented gap). A few 2024-only spells
+(Chromatic Orb, Dragon's Breath, Charm Monster, Aura of Life, Summon Dragon)
+aren't in the 2014 spell dataset and render as name-only rows.
+
+**Species trait wiring** (all driven off base-species trait indexes, new sheet
+fields):
+- **Tiefling Otherworldly Presence → Thaumaturgy**: base-species at-will
+  cantrip (not a subspecies lineage spell), surfaced in the Lineage Spells
+  block via `SPECIES_CANTRIP_SPELL` map + a species-cantrip fetch in page.tsx.
+- **Natural weapons** (`SPECIES_NATURAL_WEAPONS`): Tabaxi/Tortle Claws (1d4
+  Slashing) and Satyr Ram's Headbutt (1d4 Bludgeoning + push note) synthesized
+  as their own Attacks row, same approach as Monk's Unarmed Strike (a Monk of
+  these species gets the larger of the natural die vs Martial Arts die, and
+  Dexterous Attacks). **Mechanics read from each homebrew trait's own
+  description, NOT the real published stat blocks** — e.g. these homebrew
+  versions are simpler than WotC's.
+- **Interactive once-per-rest traits**: Aasimar Healing Hands (heal `level`
+  HP, 1/Long Rest), Goblin Fury of the Small (+`level` damage, 1/Short or Long
+  Rest), Shifter Shifting (Temp HP = `level + CON`, 1/Short or Long Rest) —
+  resource blocks in the HP/resources card. Again, **homebrew values from the
+  trait text** (e.g. Healing Hands heals a flat `level` with no dice roll,
+  unlike the real Aasimar's `level`d4).
+- **Fairy/Owlin Fly Speed** (`flySpeed`): a stat chip (Fairy = walking Speed,
+  Owlin = 30). The "not in Heavy armor" caveat is shown in the trait text but
+  not enforced (no armor-weight tracking, same as Barbarian Fast Movement).
+
+**Heroic Inspiration**: a universal toggle chip under the stat bar (2024 core
+mechanic, DM-grantable). Human's Resourceful auto-grants it on each Long Rest
+(`heroicInspiration` in PlayState; longRest sets it true for Humans, leaves
+others' untouched so a DM grant isn't wiped).
+
+**Languages & Proficiencies card**: now always shown (was hidden when a
+character had no language/tool choices), always lists **Common**, and the tool
+proficiency label is a generic "Tool Proficiency:" instead of the hardcoded
+"Gaming Set:" (which was wrong for non-gaming tools).
+
+**Halfling Lucky** was found to be ALREADY implemented (the prior CLAUDE.md
+deferral note was stale) — `isHalfling` is threaded into every `rollD20()` and
+the dice log shows "(Lucky)".
+
+**Gnomish Lineage cantrips** were found to ALREADY work via the existing
+`lineage-spell-*` → at-will-cantrip path (Forest Gnome Minor Illusion, Rock
+Gnome Mending render correctly, same path as Tiefling's Chill Touch). The
+audit's claim that they needed `LINEAGE_CANTRIP_CLASS` entries was a
+misread — that constant is only for the *swappable* High Elf cantrip picker.
+**Documented minor content gap**: the real 2024 gnome lineages grant a SECOND
+cantrip/spell each (Forest: Speak with Animals; Rock: Prestidigitation) that
+isn't in the imported SRD subspecies data — not added here to avoid mutating
+SRD-imported rows with homebrew content.
+
+**Weapon/spell range** (separate earlier fix in this session, related): every
+weapon attack row and every spell row now shows range, from `data.range`/
+`data.throw_range` (equipment) and `data.range` (spells).
+
+Verified live against existing public characters (no console errors): Ophelia
+(Tiefling Chthonic Warlock/Fiend Patron L3) showed Thaumaturgy in Lineage
+Spells, the Fiend "Subclass Spells (Always Prepared)" block (Burning Hands/
+Command/Scorching Ray/Suggestion with details), and the Heroic Inspiration
+chip; Fredrick (Dwarf Wizard/Evoker L3) showed Arcane Recovery, the Short Rest
+button, and Dwarven Toughness HP. Builder UI wasn't changed (the new skill
+pickers live on the play sheet, same pattern as Expertise/Fighting Style).
+
+**Still deferred** (documented, not done): subclass spells for the 36 homebrew
+subclasses and Paladin Oath of Devotion; the gnome second-cantrip content gap;
+and the larger items the audit reconfirmed (Champion crit range, higher-level
+use-count scaling, Ranger Hunter's Prey/Defensive Tactics swap-on-rest, etc.).
