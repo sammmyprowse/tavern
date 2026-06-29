@@ -4550,7 +4550,7 @@ export default function PlaySheet({
                               <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
                             </div>
                             <div className="mt-0.5 text-xs text-tavern-muted">
-                              Cantrip · At-will
+                              {spell && spell.level > 0 ? `Level ${spell.level}` : "Cantrip"} · At-will
                               {spell?.range ? ` · ${spell.range}` : ""}
                               {spell?.concentration ? " · Concentration" : ""}
                               {spell?.dcType ? ` · DC ${lineageSaveDC} ${spell.dcType.toUpperCase()} save` : ""}
