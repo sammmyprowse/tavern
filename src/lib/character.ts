@@ -1158,6 +1158,97 @@ export const SUBCLASS_PREPARED_SPELLS: Record<
       { name: "Flame Strike", index: "flame-strike" },
     ] },
   ],
+
+  // ---- Homebrew subclasses ----
+  // Caster homebrew subclasses get full official-depth spell lists, matching
+  // what Life Domain / Fiend / Draconic / Oath of Devotion grant. All spells
+  // are real SRD spells (valid 2014 slugs). Milestone levels follow the
+  // official cadence: Cleric/Sorcerer/Warlock at 3/5/7/9, Paladin at
+  // 3/5/9/13/17. Wizard/Bard/Druid/Ranger homebrew subclasses intentionally
+  // get NO list — their official 2024 counterparts don't grant one either.
+
+  // Cleric domains (the War/Tempest/Trickery lists are themselves open SRD).
+  "war-domain": [
+    { level: 3, spells: [{ name: "Divine Favor", index: "divine-favor" }, { name: "Spiritual Weapon", index: "spiritual-weapon" }] },
+    { level: 5, spells: [{ name: "Haste", index: "haste" }, { name: "Spirit Guardians", index: "spirit-guardians" }] },
+    { level: 7, spells: [{ name: "Freedom of Movement", index: "freedom-of-movement" }, { name: "Stoneskin", index: "stoneskin" }] },
+    { level: 9, spells: [{ name: "Flame Strike", index: "flame-strike" }, { name: "Hold Monster", index: "hold-monster" }] },
+  ],
+  "storm-domain": [
+    { level: 3, spells: [{ name: "Fog Cloud", index: "fog-cloud" }, { name: "Thunderwave", index: "thunderwave" }] },
+    { level: 5, spells: [{ name: "Call Lightning", index: "call-lightning" }, { name: "Sleet Storm", index: "sleet-storm" }] },
+    { level: 7, spells: [{ name: "Control Water", index: "control-water" }, { name: "Ice Storm", index: "ice-storm" }] },
+    { level: 9, spells: [{ name: "Cone of Cold", index: "cone-of-cold" }, { name: "Insect Plague", index: "insect-plague" }] },
+  ],
+  "trickery-domain": [
+    { level: 3, spells: [{ name: "Disguise Self", index: "disguise-self" }, { name: "Mirror Image", index: "mirror-image" }] },
+    { level: 5, spells: [{ name: "Blink", index: "blink" }, { name: "Dispel Magic", index: "dispel-magic" }] },
+    { level: 7, spells: [{ name: "Dimension Door", index: "dimension-door" }, { name: "Polymorph", index: "polymorph" }] },
+    { level: 9, spells: [{ name: "Dominate Person", index: "dominate-person" }, { name: "Modify Memory", index: "modify-memory" }] },
+  ],
+
+  // Warlock patrons.
+  "fey-patron": [
+    { level: 3, spells: [{ name: "Faerie Fire", index: "faerie-fire" }, { name: "Calm Emotions", index: "calm-emotions" }] },
+    { level: 5, spells: [{ name: "Blink", index: "blink" }, { name: "Plant Growth", index: "plant-growth" }] },
+    { level: 7, spells: [{ name: "Dominate Beast", index: "dominate-beast" }, { name: "Greater Invisibility", index: "greater-invisibility" }] },
+    { level: 9, spells: [{ name: "Dominate Person", index: "dominate-person" }, { name: "Seeming", index: "seeming" }] },
+  ],
+  "celestial-patron": [
+    { level: 3, spells: [{ name: "Cure Wounds", index: "cure-wounds" }, { name: "Guiding Bolt", index: "guiding-bolt" }] },
+    { level: 5, spells: [{ name: "Daylight", index: "daylight" }, { name: "Revivify", index: "revivify" }] },
+    { level: 7, spells: [{ name: "Death Ward", index: "death-ward" }, { name: "Guardian of Faith", index: "guardian-of-faith" }] },
+    { level: 9, spells: [{ name: "Flame Strike", index: "flame-strike" }, { name: "Greater Restoration", index: "greater-restoration" }] },
+  ],
+  "voidborn-patron": [
+    { level: 3, spells: [{ name: "Hideous Laughter", index: "hideous-laughter" }, { name: "Detect Thoughts", index: "detect-thoughts" }] },
+    { level: 5, spells: [{ name: "Clairvoyance", index: "clairvoyance" }, { name: "Sending", index: "sending" }] },
+    { level: 7, spells: [{ name: "Black Tentacles", index: "black-tentacles" }, { name: "Confusion", index: "confusion" }] },
+    { level: 9, spells: [{ name: "Dominate Person", index: "dominate-person" }, { name: "Telekinesis", index: "telekinesis" }] },
+  ],
+
+  // Sorcerer origins.
+  "wildspark-sorcery": [
+    { level: 3, spells: [{ name: "Color Spray", index: "color-spray" }, { name: "Blur", index: "blur" }] },
+    { level: 5, spells: [{ name: "Haste", index: "haste" }, { name: "Slow", index: "slow" }] },
+    { level: 7, spells: [{ name: "Confusion", index: "confusion" }, { name: "Polymorph", index: "polymorph" }] },
+    { level: 9, spells: [{ name: "Telekinesis", index: "telekinesis" }, { name: "Seeming", index: "seeming" }] },
+  ],
+  "stormborn-sorcery": [
+    { level: 3, spells: [{ name: "Thunderwave", index: "thunderwave" }, { name: "Gust of Wind", index: "gust-of-wind" }] },
+    { level: 5, spells: [{ name: "Call Lightning", index: "call-lightning" }, { name: "Fly", index: "fly" }] },
+    { level: 7, spells: [{ name: "Ice Storm", index: "ice-storm" }, { name: "Control Water", index: "control-water" }] },
+    { level: 9, spells: [{ name: "Cone of Cold", index: "cone-of-cold" }, { name: "Telekinesis", index: "telekinesis" }] },
+  ],
+  "starborn-sorcery": [
+    { level: 3, spells: [{ name: "Faerie Fire", index: "faerie-fire" }, { name: "Detect Thoughts", index: "detect-thoughts" }] },
+    { level: 5, spells: [{ name: "Sending", index: "sending" }, { name: "Clairvoyance", index: "clairvoyance" }] },
+    { level: 7, spells: [{ name: "Arcane Eye", index: "arcane-eye" }, { name: "Banishment", index: "banishment" }] },
+    { level: 9, spells: [{ name: "Telepathic Bond", index: "telepathic-bond" }, { name: "Scrying", index: "scrying" }] },
+  ],
+
+  // Paladin oaths (half-caster cadence: 3/5/9/13/17).
+  "oath-of-the-stormguard": [
+    { level: 3, spells: [{ name: "Divine Favor", index: "divine-favor" }, { name: "Thunderwave", index: "thunderwave" }] },
+    { level: 5, spells: [{ name: "Gust of Wind", index: "gust-of-wind" }, { name: "Shatter", index: "shatter" }] },
+    { level: 9, spells: [{ name: "Call Lightning", index: "call-lightning" }, { name: "Sleet Storm", index: "sleet-storm" }] },
+    { level: 13, spells: [{ name: "Control Water", index: "control-water" }, { name: "Ice Storm", index: "ice-storm" }] },
+    { level: 17, spells: [{ name: "Cone of Cold", index: "cone-of-cold" }, { name: "Insect Plague", index: "insect-plague" }] },
+  ],
+  "oath-of-the-wanderer": [
+    { level: 3, spells: [{ name: "Longstrider", index: "longstrider" }, { name: "Expeditious Retreat", index: "expeditious-retreat" }] },
+    { level: 5, spells: [{ name: "Pass without Trace", index: "pass-without-trace" }, { name: "Locate Object", index: "locate-object" }] },
+    { level: 9, spells: [{ name: "Haste", index: "haste" }, { name: "Water Walk", index: "water-walk" }] },
+    { level: 13, spells: [{ name: "Freedom of Movement", index: "freedom-of-movement" }, { name: "Locate Creature", index: "locate-creature" }] },
+    { level: 17, spells: [{ name: "Commune with Nature", index: "commune-with-nature" }, { name: "Tree Stride", index: "tree-stride" }] },
+  ],
+  "oath-of-judgment": [
+    { level: 3, spells: [{ name: "Bane", index: "bane" }, { name: "Hunter's Mark", index: "hunters-mark" }] },
+    { level: 5, spells: [{ name: "Hold Person", index: "hold-person" }, { name: "Zone of Truth", index: "zone-of-truth" }] },
+    { level: 9, spells: [{ name: "Bestow Curse", index: "bestow-curse" }, { name: "Fear", index: "fear" }] },
+    { level: 13, spells: [{ name: "Banishment", index: "banishment" }, { name: "Compulsion", index: "compulsion" }] },
+    { level: 17, spells: [{ name: "Hold Monster", index: "hold-monster" }, { name: "Dispel Evil and Good", index: "dispel-evil-and-good" }] },
+  ],
 };
 
 // Base-species traits that grant an at-will cantrip from the species itself
