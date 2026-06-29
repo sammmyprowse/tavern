@@ -721,3 +721,49 @@ export async function setWeaponMasteryChoices(
   revalidatePath(`/characters/${characterId}`);
   return { success: true, draft: nextDraft };
 }
+
+// Human's Skillful trait — proficiency in one skill of choice. A single bare
+// skill index, or null. Same owner-gated overwrite shape as the choices above.
+export async function setHumanSkillChoice(
+  characterId: string,
+  skillIndex: string | null,
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (skillIndex !== null && typeof skillIndex !== "string") {
+    return { success: false, error: "Invalid skill selection." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, humanSkillChoice: skillIndex };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
+// The Skilled feat — proficiency in (up to 3 per time taken) skills of choice.
+// Freely overwritable bare skill indexes, same shape as the other pickers.
+export async function setSkilledChoices(
+  characterId: string,
+  skillIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(skillIndexes) || skillIndexes.length > 12) {
+    return { success: false, error: "Invalid Skilled selection." };
+  }
+
+  const nextDraft: CharacterDraft = { ...draft, skilledChoices: skillIndexes };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}

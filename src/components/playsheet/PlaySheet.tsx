@@ -41,6 +41,8 @@ import {
   setMetamagicChoices,
   setFightingStyleChoices,
   setWeaponMasteryChoices,
+  setHumanSkillChoice,
+  setSkilledChoices,
   setCharacterInventory,
   setCharacterCurrency,
   setCharacterMagicItems,
@@ -373,6 +375,10 @@ export default function PlaySheet({
   const [weaponMasteryPickerOpen, setWeaponMasteryPickerOpen] = useState(false);
   const [selectedWeaponMastery, setSelectedWeaponMastery] = useState<string[]>([]);
   const [weaponMasteryPending, setWeaponMasteryPending] = useState(false);
+  const [bonusSkillPickerOpen, setBonusSkillPickerOpen] = useState(false);
+  const [selectedHumanSkill, setSelectedHumanSkill] = useState<string | null>(null);
+  const [selectedSkilled, setSelectedSkilled] = useState<string[]>([]);
+  const [bonusSkillPending, setBonusSkillPending] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const allOwnedIndexes = (sheet?.ownedEquipment ?? [])
@@ -708,6 +714,13 @@ export default function PlaySheet({
   const expertiseEligibleSkills = sheet.skills.filter(
     (s) => s.proficient && !currentDraft.expertiseChoices.includes(s.index),
   );
+
+  // Bonus skill proficiencies: Human's Skillful (1) and the Skilled feat (3
+  // per time taken). The picker shows when either source applies.
+  const isHuman = sheet.speciesIndex === "human";
+  const skilledCount =
+    currentDraft.featChoices.filter((fc) => fc.featIndex === "skilled").length * 3;
+  const hasBonusSkillChoice = isHuman || skilledCount > 0;
 
   // Drives the Short Rest button's visibility. Grows by one OR clause per
   // class that adds a short-rest-recoverable resource (Bard always has
@@ -1914,6 +1927,49 @@ export default function PlaySheet({
     setWeaponMasteryPending(false);
   }
 
+  // Combined picker for the two "choose extra skill proficiencies" sources:
+  // Human's Skillful (one skill) and the Skilled feat (3 per time taken).
+  // Both persist to their own draft field but share one panel since they're
+  // the same kind of choice and a Human who also took Skilled sets both here.
+  function openBonusSkillPicker() {
+    setSelectedHumanSkill(currentDraft.humanSkillChoice);
+    setSelectedSkilled(currentDraft.skilledChoices);
+    setBonusSkillPickerOpen(true);
+    setChoiceError(null);
+  }
+
+  function toggleSkilledSelection(index: string, limit: number) {
+    setSelectedSkilled((prev) => {
+      if (prev.includes(index)) return prev.filter((s) => s !== index);
+      if (prev.length >= limit) return prev;
+      return [...prev, index];
+    });
+  }
+
+  async function saveBonusSkills(needsHuman: boolean, skilledCount: number) {
+    setBonusSkillPending(true);
+    setChoiceError(null);
+    let ok = true;
+    if (needsHuman) {
+      const r = await setHumanSkillChoice(characterId, selectedHumanSkill);
+      if (r.success && r.draft) setCurrentDraft(r.draft);
+      else {
+        ok = false;
+        setChoiceError(r.error ?? "Couldn't save skill choice.");
+      }
+    }
+    if (ok && skilledCount > 0) {
+      const r = await setSkilledChoices(characterId, selectedSkilled);
+      if (r.success && r.draft) setCurrentDraft(r.draft);
+      else {
+        ok = false;
+        setChoiceError(r.error ?? "Couldn't save Skilled choices.");
+      }
+    }
+    if (ok) setBonusSkillPickerOpen(false);
+    setBonusSkillPending(false);
+  }
+
   function toggleFeature(index: string) {
     setExpandedFeatures((prev) => {
       const next = new Set(prev);
@@ -2501,6 +2557,33 @@ export default function PlaySheet({
             </div>
           ))}
         </div>
+
+        {/* Heroic Inspiration — a universal 2024 mechanic (DMs grant it; Human
+            Resourceful auto-grants it on each Long Rest). A simple toggle the
+            player flips when they gain or spend it. */}
+        <button
+          onClick={() => setPlay((prev) => ({ ...prev, heroicInspiration: !prev.heroicInspiration }))}
+          disabled={!isOwner}
+          className={`mt-3 flex w-full items-center justify-between rounded-lg border p-3 text-left disabled:opacity-60 ${
+            play.heroicInspiration
+              ? "border-tavern-gold bg-tavern-gold/10"
+              : "border-tavern-border bg-tavern-card"
+          }`}
+        >
+          <span>
+            <span className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+              Heroic Inspiration
+            </span>
+            <span className="ml-2 text-xs text-tavern-muted">
+              {play.heroicInspiration
+                ? "You have it — reroll any d20 (tap to spend)."
+                : "None — tap when the DM grants it."}
+            </span>
+          </span>
+          <span className="font-heading text-xl font-bold text-tavern-gold-light">
+            {play.heroicInspiration ? "★" : "☆"}
+          </span>
+        </button>
 
         {/* HP / resources */}
         <div id="hp" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
@@ -3357,6 +3440,101 @@ export default function PlaySheet({
                   <span className="font-heading font-bold">{formatModifier(skill.bonus)}</span>
                 </button>
               ))}
+            </div>
+          )}
+          {!collapsedSections.has("skills") && sheet.jackOfAllTrades && (
+            <p className="mt-2 text-xs text-tavern-muted italic">
+              Jack of All Trades: half your proficiency bonus (+{Math.floor(sheet.proficiencyBonus / 2)})
+              is already included on every skill you&apos;re not proficient in.
+            </p>
+          )}
+          {!collapsedSections.has("skills") && hasBonusSkillChoice && (
+            <div className="mt-3">
+              {!bonusSkillPickerOpen ? (
+                <div className="flex items-center justify-between rounded-md border border-tavern-border p-3">
+                  <div className="text-xs text-tavern-muted">
+                    {isHuman && "Skillful: 1 chosen skill proficiency. "}
+                    {skilledCount > 0 && `Skilled feat: ${skilledCount} chosen skill proficiencies.`}
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={openBonusSkillPicker}
+                      className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                    >
+                      {currentDraft.humanSkillChoice || currentDraft.skilledChoices.length > 0
+                        ? "Edit Skills"
+                        : "Choose Skills"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
+                  {isHuman && (
+                    <>
+                      <p className="text-xs font-bold text-tavern-gold-light">
+                        Skillful — choose 1 skill proficiency
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-3">
+                        {sheet.skills.map((s) => (
+                          <button
+                            key={`human-${s.index}`}
+                            onClick={() =>
+                              setSelectedHumanSkill((prev) => (prev === s.index ? null : s.index))
+                            }
+                            className={`rounded-md border px-2 py-1.5 text-left text-xs ${
+                              selectedHumanSkill === s.index
+                                ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold"
+                                : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
+                            }`}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {skilledCount > 0 && (
+                    <>
+                      <p className={`text-xs font-bold text-tavern-gold-light ${isHuman ? "mt-3" : ""}`}>
+                        Skilled — choose {skilledCount} ({selectedSkilled.length} selected)
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-3">
+                        {sheet.skills.map((s) => {
+                          const selected = selectedSkilled.includes(s.index);
+                          return (
+                            <button
+                              key={`skilled-${s.index}`}
+                              onClick={() => toggleSkilledSelection(s.index, skilledCount)}
+                              className={`rounded-md border px-2 py-1.5 text-left text-xs ${
+                                selected
+                                  ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold"
+                                  : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
+                              }`}
+                            >
+                              {s.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => saveBonusSkills(isHuman, skilledCount)}
+                      disabled={bonusSkillPending}
+                      className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                    >
+                      {bonusSkillPending ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setBonusSkillPickerOpen(false)}
+                      className="rounded-md border border-tavern-border px-3 py-1.5 text-xs text-tavern-muted hover:border-tavern-gold-light"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
