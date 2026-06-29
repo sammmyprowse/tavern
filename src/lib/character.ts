@@ -1249,6 +1249,52 @@ export const SUBCLASS_PREPARED_SPELLS: Record<
     { level: 13, spells: [{ name: "Banishment", index: "banishment" }, { name: "Compulsion", index: "compulsion" }] },
     { level: 17, spells: [{ name: "Hold Monster", index: "hold-monster" }, { name: "Dispel Evil and Good", index: "dispel-evil-and-good" }] },
   ],
+
+  // Druid circles (full caster, 3/5/7/9). The official SRD druid subclass
+  // doesn't grant a spell list, so these exceed official parity — but several
+  // already promised spells in prose, so all three are brought to full depth.
+  "circle-of-the-tide": [
+    { level: 3, spells: [{ name: "Fog Cloud", index: "fog-cloud" }, { name: "Create or Destroy Water", index: "create-or-destroy-water" }] },
+    { level: 5, spells: [{ name: "Water Breathing", index: "water-breathing" }, { name: "Sleet Storm", index: "sleet-storm" }] },
+    { level: 7, spells: [{ name: "Control Water", index: "control-water" }, { name: "Ice Storm", index: "ice-storm" }] },
+    { level: 9, spells: [{ name: "Cone of Cold", index: "cone-of-cold" }, { name: "Conjure Elemental", index: "conjure-elemental" }] },
+  ],
+  "circle-of-the-bloom": [
+    { level: 3, spells: [{ name: "Entangle", index: "entangle" }, { name: "Goodberry", index: "goodberry" }] },
+    { level: 5, spells: [{ name: "Plant Growth", index: "plant-growth" }, { name: "Speak with Plants", index: "speak-with-plants" }] },
+    { level: 7, spells: [{ name: "Giant Insect", index: "giant-insect" }, { name: "Conjure Woodland Beings", index: "conjure-woodland-beings" }] },
+    { level: 9, spells: [{ name: "Tree Stride", index: "tree-stride" }, { name: "Awaken", index: "awaken" }] },
+  ],
+  "circle-of-the-wildheart": [
+    { level: 3, spells: [{ name: "Speak with Animals", index: "speak-with-animals" }, { name: "Longstrider", index: "longstrider" }] },
+    { level: 5, spells: [{ name: "Spike Growth", index: "spike-growth" }, { name: "Conjure Animals", index: "conjure-animals" }] },
+    { level: 7, spells: [{ name: "Dominate Beast", index: "dominate-beast" }, { name: "Giant Insect", index: "giant-insect" }] },
+    { level: 9, spells: [{ name: "Insect Plague", index: "insect-plague" }, { name: "Awaken", index: "awaken" }] },
+  ],
+
+  // Ranger conclaves (half caster, 3/5/9/13/17). These already granted a thin
+  // 2-spell list in prose; expanded here to full official-style depth.
+  "beastcaller": [
+    { level: 3, spells: [{ name: "Animal Friendship", index: "animal-friendship" }, { name: "Speak with Animals", index: "speak-with-animals" }] },
+    { level: 5, spells: [{ name: "Animal Messenger", index: "animal-messenger" }, { name: "Locate Animals or Plants", index: "locate-animals-or-plants" }] },
+    { level: 9, spells: [{ name: "Conjure Animals", index: "conjure-animals" }, { name: "Plant Growth", index: "plant-growth" }] },
+    { level: 13, spells: [{ name: "Dominate Beast", index: "dominate-beast" }, { name: "Locate Creature", index: "locate-creature" }] },
+    { level: 17, spells: [{ name: "Commune with Nature", index: "commune-with-nature" }, { name: "Tree Stride", index: "tree-stride" }] },
+  ],
+  "shadowstalker": [
+    { level: 3, spells: [{ name: "Disguise Self", index: "disguise-self" }, { name: "Hunter's Mark", index: "hunters-mark" }] },
+    { level: 5, spells: [{ name: "Darkness", index: "darkness" }, { name: "Pass without Trace", index: "pass-without-trace" }] },
+    { level: 9, spells: [{ name: "Fear", index: "fear" }, { name: "Nondetection", index: "nondetection" }] },
+    { level: 13, spells: [{ name: "Greater Invisibility", index: "greater-invisibility" }, { name: "Dimension Door", index: "dimension-door" }] },
+    { level: 17, spells: [{ name: "Mislead", index: "mislead" }, { name: "Seeming", index: "seeming" }] },
+  ],
+  "wayfinder": [
+    { level: 3, spells: [{ name: "Longstrider", index: "longstrider" }, { name: "Alarm", index: "alarm" }] },
+    { level: 5, spells: [{ name: "Locate Object", index: "locate-object" }, { name: "Pass without Trace", index: "pass-without-trace" }] },
+    { level: 9, spells: [{ name: "Water Walk", index: "water-walk" }, { name: "Clairvoyance", index: "clairvoyance" }] },
+    { level: 13, spells: [{ name: "Locate Creature", index: "locate-creature" }, { name: "Freedom of Movement", index: "freedom-of-movement" }] },
+    { level: 17, spells: [{ name: "Teleportation Circle", index: "teleportation-circle" }, { name: "Tree Stride", index: "tree-stride" }] },
+  ],
 };
 
 // Base-species traits that grant an at-will cantrip from the species itself
