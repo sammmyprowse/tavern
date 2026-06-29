@@ -766,7 +766,7 @@ export default function PlaySheet({
     "hp", "skills",
     ...(sheet.fightingStyleKnownMax > 0 ? ["fighting-style"] : []),
     ...(weaponMasteryMax > 0 ? ["weapon-mastery"] : []),
-    ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null ? ["spells"] : []),
+    ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip ? ["spells"] : []),
     ...(speciesTraits.length > 0 ? ["species-traits"] : []),
     ...(unlockedFeatures.length > 0 ? ["features"] : []),
     ...(weapons.length > 0 || sheet.classIndex === "paladin" ? ["attacks"] : []),
@@ -2027,7 +2027,7 @@ export default function PlaySheet({
               ? [{ id: "fighting-style", label: "Fighting Style" }]
               : []),
             ...(weaponMasteryMax > 0 ? [{ id: "weapon-mastery", label: "Weapon Mastery" }] : []),
-            ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null ? [{ id: "spells", label: "Spells" }] : []),
+            ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip ? [{ id: "spells", label: "Spells" }] : []),
             ...(speciesTraits.length > 0 ? [{ id: "species-traits", label: "Species Traits" }] : []),
             ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
             ...(weapons.length > 0 || sheet.classIndex === "paladin" ? [{ id: "attacks", label: "Attacks" }] : []),
@@ -3666,7 +3666,7 @@ export default function PlaySheet({
         })()}
 
         {/* Spells */}
-        {(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null) && (
+        {(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip) && (
           <div id="spells" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <button
               onClick={() => toggleSection("spells")}
@@ -3772,6 +3772,28 @@ export default function PlaySheet({
               </div>
             )}
 
+            {sheet.arcaneRecoveryMax > 0 && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Arcane Recovery
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    Once per day on a Short Rest, recover expended spell slots totalling up to{" "}
+                    {sheet.arcaneRecoveryMax} slot level{sheet.arcaneRecoveryMax === 1 ? "" : "s"}{" "}
+                    (none above 5th). Recovers your highest slots first — adjust below if needed.
+                  </div>
+                </div>
+                <button
+                  onClick={useArcaneRecovery}
+                  disabled={play.usedArcaneRecovery || !play.expendedSlots.some((n) => n > 0)}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  {play.usedArcaneRecovery ? "Used" : "Recover"}
+                </button>
+              </div>
+            )}
+
             {sheet.sorceryPointsMax > 0 && (
               <div className="mt-4">
                 <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
@@ -3791,6 +3813,39 @@ export default function PlaySheet({
                   <button
                     onClick={expendSorceryPoint}
                     disabled={play.expendedSorceryPoints >= sheet.sorceryPointsMax}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    &minus;
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {sheet.innateSorceryMax > 0 && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+                <div>
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Innate Sorcery
+                  </div>
+                  <div className="text-xs text-tavern-muted">
+                    Bonus Action: for 1 minute your Spell Save DC is +1 and you have Advantage on
+                    your spell attack rolls. {sheet.innateSorceryMax} uses per Long Rest.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                  <button
+                    onClick={restoreInnateSorcery}
+                    disabled={play.expendedInnateSorcery <= 0}
+                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                  <span className="font-heading font-bold text-tavern-text">
+                    {sheet.innateSorceryMax - play.expendedInnateSorcery}/{sheet.innateSorceryMax}
+                  </span>
+                  <button
+                    onClick={useInnateSorcery}
+                    disabled={play.expendedInnateSorcery >= sheet.innateSorceryMax}
                     className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
                   >
                     &minus;
@@ -4194,8 +4249,15 @@ export default function PlaySheet({
                 )}
               </div>
             )}
-            {(sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null) && (() => {
-              const cantrips = sheet.lineageSpells.filter((s) => s.unlockLevel === 1);
+            {(sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip) && (() => {
+              const cantrips = [
+                ...sheet.lineageSpells.filter((s) => s.unlockLevel === 1),
+                // Tiefling's Thaumaturgy (base-species at-will cantrip) — shown
+                // alongside the lineage cantrips with the same at-will treatment.
+                ...(sheet.speciesCantrip
+                  ? [{ name: sheet.speciesCantrip, traitIndex: "species-cantrip", unlockLevel: 1 }]
+                  : []),
+              ];
               const leveled = sheet.lineageSpells.filter((s) => s.unlockLevel > 1 && sheet.level >= s.unlockLevel);
               if (cantrips.length === 0 && leveled.length === 0 && !sheet.lineageCantripTrait) return null;
               const currentCantrip = play.lineageCantrip ?? sheet.lineageCantripTrait?.defaultCantrip ?? null;

@@ -18,7 +18,12 @@ import {
   getSpellsByIndex,
   getTraitDescriptions,
 } from "@/lib/srd";
-import { EMPTY_DRAFT, LINEAGE_CANTRIP_CLASS, type CharacterDraft } from "@/lib/character";
+import {
+  EMPTY_DRAFT,
+  LINEAGE_CANTRIP_CLASS,
+  SPECIES_CANTRIP_SPELL,
+  type CharacterDraft,
+} from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
@@ -118,7 +123,17 @@ export default async function CharacterPlaySheet({
   const lineageSpellIndexes = (characterSubspecies?.traits ?? [])
     .filter((t) => t.index.startsWith("lineage-spell-"))
     .map((t) => t.index.replace(/^lineage-spell-/, ""));
-  const lineageSpellData = await getSpellsByIndex(lineageSpellIndexes);
+  // Base-species cantrips (e.g. Tiefling's Thaumaturgy via Otherworldly
+  // Presence) live on the species, not a lineage-spell-* subspecies trait —
+  // collect their spell indexes too so the at-will cantrip can be surfaced.
+  const characterSpecies = species.find((s) => s.index === draft.speciesIndex) ?? null;
+  const speciesCantripIndexes = (characterSpecies?.traits ?? [])
+    .map((t) => SPECIES_CANTRIP_SPELL[t.index])
+    .filter((idx): idx is string => Boolean(idx));
+  const lineageSpellData = await getSpellsByIndex([
+    ...lineageSpellIndexes,
+    ...speciesCantripIndexes,
+  ]);
 
   // For subspecies with a swappable cantrip (currently only High Elf), also
   // fetch all cantrips from that class so the picker can show the full list.

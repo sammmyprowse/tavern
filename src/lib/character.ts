@@ -1058,6 +1058,15 @@ export const SPECIES_NATURAL_WEAPONS: Record<
   },
 };
 
+// Base-species traits that grant an at-will cantrip from the species itself
+// (not a subspecies/lineage). Maps the trait index → the spell index to fetch
+// and surface. Tiefling's Otherworldly Presence grants Thaumaturgy at-will —
+// it lives on the base species, so it can't ride the lineage-spell-* subspecies
+// path Fire Bolt/Chill Touch use.
+export const SPECIES_CANTRIP_SPELL: Record<string, string> = {
+  "otherworldly-presence": "thaumaturgy",
+};
+
 // Maps subspecies index → the class whose cantrip list to use for the
 // lineage cantrip picker (e.g. High Elf's Prestidigitation → Wizard list).
 export const LINEAGE_CANTRIP_CLASS: Record<string, string> = {
