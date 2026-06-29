@@ -10,9 +10,12 @@ import {
   computeArmorClass,
   divineSparkDice,
   favoredEnemyMax,
+  featHpBonus,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
   finalAbilityScores,
   fullCasterSlots,
+  innateSorceryMax,
+  SPECIES_NATURAL_WEAPONS,
   halfCasterSlots,
   HALF_CASTER_CLASSES,
   focusPointsMax,
@@ -149,6 +152,39 @@ export interface CharacterSheet {
   lineageSpells: { name: string; traitIndex: string; unlockLevel: number }[];
   lineageSpellSaveDC: number | null;
   lineageSpellAttackBonus: number | null;
+  // Tiefling Otherworldly Presence grants the Thaumaturgy cantrip at-will,
+  // from the BASE species (not the Fiendish Legacy subspecies) — so it can't
+  // ride the lineage-spell-* subspecies path Fire Bolt/Chill Touch use. Name
+  // of the granted cantrip, or null. CHA-based (uses lineageSpell DC/attack).
+  speciesCantrip: string | null;
+  // Bard's Jack of All Trades (level 2+): half proficiency bonus (rounded
+  // down) added to ability checks with skills you're NOT proficient in. The
+  // skills list above already bakes this into each non-proficient bonus; this
+  // flag is just so the UI can label why those bonuses are nonzero.
+  jackOfAllTrades: boolean;
+  // Wizard Arcane Recovery (level 1): once per day on a Short Rest, recover
+  // spell slots totalling up to half your level (rounded up), none above 5th.
+  arcaneRecoveryMax: number;
+  // Sorcerer Innate Sorcery (level 1): 2 uses/Long Rest, Bonus Action for
+  // Advantage on your spell attacks for 1 minute.
+  innateSorceryMax: number;
+  // Aasimar Healing Hands: touch-heal a flat (character level) HP, 1/Long Rest.
+  // Goblin Fury of the Small: extra (level) damage vs a larger creature,
+  // 1/Short or Long Rest. Shifter Shifting: Temp HP = level + CON, Speed +10,
+  // 1/Short or Long Rest. All three are 1-use homebrew traits (counts here are
+  // the use cap, 0 when the species lacks the trait).
+  healingHandsMax: number;
+  furyOfTheSmallMax: number;
+  shiftingMax: number;
+  // Fairy/Owlin flight: the species' Fly Speed in feet, or null. Fairy's
+  // equals their walking Speed; Owlin's is a flat 30. (The "not in Heavy
+  // armor" caveat is shown in the trait text but not enforced — this app
+  // doesn't track armor weight category, same as Barbarian Fast Movement.)
+  flySpeed: number | null;
+  // Natural-weapon species (Tabaxi/Tortle Claws, Satyr Ram's Headbutt) — a
+  // synthesized Unarmed Strike shown in Attacks, same shape as Monk's. null
+  // for species without one. See SPECIES_NATURAL_WEAPONS.
+  naturalWeapon: { name: string; damageDie: number; damageType: string; note: string | null } | null;
 }
 
 export function buildCharacterSheet(
@@ -194,7 +230,21 @@ export function buildCharacterSheet(
   }
 
   const proficiencyBonus = proficiencyBonusForLevel(draft.level);
-  const maxHpValue = maxHp(cls.hitDie, modifiers.con, draft.hpRolls);
+
+  // Base-species trait indexes (subspecies traits are handled separately in
+  // the lineage block below). Used to detect trait-driven mechanics like
+  // Dwarven Toughness, Tiefling's Otherworldly Presence, and the homebrew
+  // natural-weapon / flight / once-per-rest traits.
+  const speciesTraits = new Set(species.traits.map((t) => t.index));
+
+  // Dwarven Toughness: "+1 Hit Point maximum for each level you have gained."
+  // Tough/Hardened feats add their own per-level HP (see featHpBonus). Both
+  // stack on top of the normal hit-die + CON computation.
+  const dwarvenToughnessHp = speciesTraits.has("dwarven-toughness") ? draft.level : 0;
+  const maxHpValue =
+    maxHp(cls.hitDie, modifiers.con, draft.hpRolls) +
+    dwarvenToughnessHp +
+    featHpBonus(draft.featChoices, draft.level);
 
   const proficientSaves = new Set(cls.savingThrows.map((s) => s.index));
   const savingThrows: ResolvedSave[] = ABILITY_ORDER.map((ability) => {
@@ -215,7 +265,20 @@ export function buildCharacterSheet(
   const proficientSkills = new Set([
     ...draft.skillChoices.map((s) => s.replace(/^skill-/, "")),
     ...backgroundSkillIndexes,
+    // Human's Skillful trait (one chosen skill) and the Skilled feat (up to
+    // three) both grant ordinary skill proficiency — folded in here so they
+    // count toward the bonus, Expertise eligibility, and passive Perception
+    // exactly like any class/background skill.
+    ...(draft.humanSkillChoice ? [draft.humanSkillChoice.replace(/^skill-/, "")] : []),
+    ...draft.skilledChoices.map((s) => s.replace(/^skill-/, "")),
   ]);
+
+  // Bard's Jack of All Trades adds half proficiency bonus (rounded down) to
+  // every ability check that uses a skill you're NOT proficient in (and, by
+  // the rule, not Expertise either — those already double it). Applied only
+  // to non-proficient skills below.
+  const jackOfAllTrades = cls.index === "bard" && draft.level >= 2;
+  const jackBonus = jackOfAllTrades ? Math.floor(proficiencyBonus / 2) : 0;
 
   const expertiseSkills = new Set(draft.expertiseChoices);
   const skills: ResolvedSkill[] = refs.skills.map((skill) => {
@@ -228,7 +291,9 @@ export function buildCharacterSheet(
       ability,
       proficient,
       expertise,
-      bonus: modifiers[ability] + (proficient ? proficiencyBonus * (expertise ? 2 : 1) : 0),
+      bonus:
+        modifiers[ability] +
+        (proficient ? proficiencyBonus * (expertise ? 2 : 1) : jackBonus),
     };
   });
 
@@ -244,6 +309,12 @@ export function buildCharacterSheet(
 
   const spellcastingAbility = cls.spellcastingAbility;
   const spellAbilityMod = spellcastingAbility ? modifiers[spellcastingAbility] : 0;
+
+  // Alert feat: "When you roll Initiative, you can add your Proficiency Bonus
+  // to the roll." Applied to the static Initiative stat since this app shows
+  // a flat Initiative number rather than rolling it.
+  const takenFeatIndexes = new Set(draft.featChoices.map((fc) => fc.featIndex));
+  const initiative = modifiers.dex + (takenFeatIndexes.has("alert") ? proficiencyBonus : 0);
 
   return {
     name: draft.name,
@@ -267,7 +338,7 @@ export function buildCharacterSheet(
     savingThrows,
     skills,
     ownedEquipment,
-    initiative: modifiers.dex,
+    initiative,
     speed: species.speed,
     passivePerception,
     sneakAttackDice: cls.index === "rogue" ? sneakAttackDice(draft.level) : null,
@@ -359,6 +430,22 @@ export function buildCharacterSheet(
         lineageCantripTrait: swappable ?? null,
       };
     })(),
+    // Tiefling's Otherworldly Presence grants Thaumaturgy at-will from the
+    // base species. CHA-based, so it reuses the lineageSpell DC/attack the
+    // Fiendish Legacy subspecies already establishes for this species.
+    speciesCantrip: speciesTraits.has("otherworldly-presence") ? "Thaumaturgy" : null,
+    jackOfAllTrades,
+    arcaneRecoveryMax: cls.index === "wizard" ? Math.max(1, Math.ceil(draft.level / 2)) : 0,
+    innateSorceryMax: cls.index === "sorcerer" ? innateSorceryMax(draft.level) : 0,
+    healingHandsMax: speciesTraits.has("healing-hands") ? 1 : 0,
+    furyOfTheSmallMax: speciesTraits.has("fury-of-the-small") ? 1 : 0,
+    shiftingMax: speciesTraits.has("shifting") ? 1 : 0,
+    flySpeed: speciesTraits.has("fairy-flight")
+      ? species.speed
+      : speciesTraits.has("owlin-flight")
+        ? 30
+        : null,
+    naturalWeapon: SPECIES_NATURAL_WEAPONS[species.index] ?? null,
   };
 }
 

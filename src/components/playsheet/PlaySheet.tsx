@@ -192,6 +192,21 @@ interface PlayState {
   expendedStonecunning: number;
   expendedAdrenalineRush: number;
   usedLargeForm: boolean;
+  // Homebrew species once-per-rest traits. Healing Hands (Aasimar): Long-Rest
+  // only. Fury of the Small (Goblin) and Shifting (Shifter): Short OR Long
+  // Rest. All three are single-use (a boolean would do, but a count keeps the
+  // same expend/restore UI shape as the others).
+  expendedHealingHands: number;
+  expendedFuryOfTheSmall: number;
+  expendedShifting: number;
+  // Innate Sorcery (Sorcerer): 2 uses/Long Rest.
+  expendedInnateSorcery: number;
+  // Arcane Recovery (Wizard): once per day, used on a Short Rest. Reset on a
+  // Long Rest. Boolean flag, same shape as usedMagicalCunning.
+  usedArcaneRecovery: boolean;
+  // Human Resourceful grants Heroic Inspiration on each Long Rest; also a
+  // generic DM-grantable flag any character can toggle. Shown as a stat chip.
+  heroicInspiration: boolean;
   // Relentless Endurance (Orc): "drop to 1 Hit Point instead" the first
   // time you'd be reduced to 0 each Long Rest — checked automatically by
   // applyDamage below, not a button the player clicks.
@@ -396,6 +411,12 @@ export default function PlaySheet({
     expendedStonecunning: 0,
     expendedAdrenalineRush: 0,
     usedLargeForm: false,
+    expendedHealingHands: 0,
+    expendedFuryOfTheSmall: 0,
+    expendedShifting: 0,
+    expendedInnateSorcery: 0,
+    usedArcaneRecovery: false,
+    heroicInspiration: false,
     usedRelentlessEndurance: false,
     usedLineageSpell3: false,
     usedLineageSpell5: false,
@@ -502,6 +523,33 @@ export default function PlaySheet({
         range: "5 ft",
       }
     : null;
+  // Species natural weapon (Tabaxi/Tortle Claws, Satyr Ram's Headbutt) — a
+  // synthesized Unarmed Strike, same approach as Monk's above. Uses STR like a
+  // normal Unarmed Strike; a Monk can use the higher of STR/DEX (Dexterous
+  // Attacks) and the larger of the natural die vs their Martial Arts die,
+  // since the claws ARE their Unarmed Strike. Shown as its own row.
+  const naturalWeapon: ResolvedWeapon | null = sheet.naturalWeapon
+    ? (() => {
+        const isMonk = monkMartialArtsDie != null;
+        const ability: "str" | "dex" =
+          isMonk && sheet.modifiers.dex > sheet.modifiers.str ? "dex" : "str";
+        const die = Math.max(sheet.naturalWeapon.damageDie, monkMartialArtsDie ?? 0);
+        return {
+          index: "natural-weapon",
+          name: sheet.naturalWeapon.name,
+          ability,
+          attackBonus: sheet.modifiers[ability] + sheet.proficiencyBonus,
+          damageDice: `1d${die}`,
+          damageBonus: sheet.modifiers[ability],
+          damageType: sheet.naturalWeapon.damageType,
+          mastery: null,
+          notes: sheet.naturalWeapon.note,
+          bonusDamageDice: null,
+          bonusDamageCondition: null,
+          range: "5 ft",
+        };
+      })()
+    : null;
   // Empty weaponMasteryChoices means either "this class doesn't have the
   // feature" or "an existing character created before it shipped never
   // recorded a choice" — both cases fall back to null (show mastery
@@ -511,6 +559,7 @@ export default function PlaySheet({
     currentDraft.weaponMasteryChoices.length > 0 ? new Set(currentDraft.weaponMasteryChoices) : null;
   const weapons = [
     ...(monkUnarmedStrike ? [monkUnarmedStrike] : []),
+    ...(naturalWeapon ? [naturalWeapon] : []),
     ...resolveWeapons(
       allOwnedBundleItems,
       augmentedLookup,
@@ -676,6 +725,9 @@ export default function PlaySheet({
     sheet.rageMax > 0 ||
     sheet.focusPointsMax > 0 ||
     sheet.adrenalineRushMax > 0 ||
+    sheet.furyOfTheSmallMax > 0 ||
+    sheet.shiftingMax > 0 ||
+    sheet.arcaneRecoveryMax > 0 ||
     (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
 
   const cantripOptions = classSpells.filter((s) => s.level === 0);
@@ -1020,6 +1072,16 @@ export default function PlaySheet({
       expendedStonecunning: 0,
       expendedAdrenalineRush: 0,
       usedLargeForm: false,
+      expendedHealingHands: 0,
+      expendedFuryOfTheSmall: 0,
+      expendedShifting: 0,
+      expendedInnateSorcery: 0,
+      usedArcaneRecovery: false,
+      // Human Resourceful: "You gain Heroic Inspiration whenever you finish a
+      // Long Rest." Granted automatically here for Humans; left untouched for
+      // everyone else (a DM-granted Inspiration shouldn't be wiped by a rest).
+      heroicInspiration:
+        sheet?.speciesIndex === "human" ? true : prev.heroicInspiration,
       usedRelentlessEndurance: false,
       usedLineageSpell3: false,
       usedLineageSpell5: false,
@@ -1051,6 +1113,10 @@ export default function PlaySheet({
       expendedRage: Math.max(0, prev.expendedRage - 1),
       expendedFocusPoints: 0,
       expendedAdrenalineRush: 0,
+      // Fury of the Small (Goblin) and Shifting (Shifter) both recover on a
+      // Short OR Long Rest, confirmed from each trait's own text.
+      expendedFuryOfTheSmall: 0,
+      expendedShifting: 0,
     }));
   }
 
@@ -1379,6 +1445,91 @@ export default function PlaySheet({
       ...prev,
       expendedAdrenalineRush: Math.max(0, prev.expendedAdrenalineRush - 1),
     }));
+  }
+
+  // Healing Hands (Aasimar homebrew): "touch a creature and cause it to
+  // regain Hit Points equal to your character level. Once you use this trait,
+  // you can't use it again until you finish a Long Rest." Flat amount (no
+  // roll in this homebrew version) — heals the character's own current HP and
+  // expends the single use, same one-click shape as Second Wind/Wholeness.
+  function useHealingHands() {
+    if (!sheet || play.expendedHealingHands >= sheet.healingHandsMax) return;
+    const amount = sheet.level;
+    setPlay((prev) => ({
+      ...prev,
+      expendedHealingHands: prev.expendedHealingHands + 1,
+      currentHp: Math.min(sheet.maxHpValue, prev.currentHp + amount),
+    }));
+    pushLog({ label: "Healing Hands", detail: `Heal ${amount} HP (touch)`, total: amount });
+  }
+
+  // Fury of the Small (Goblin homebrew): "extra damage equal to your character
+  // level" against a larger creature, once per Short/Long Rest. Logs the flat
+  // bonus damage and expends the use; the player adds it to their damage roll,
+  // same as Sneak Attack's standalone roll button.
+  function useFuryOfTheSmall() {
+    if (!sheet || play.expendedFuryOfTheSmall >= sheet.furyOfTheSmallMax) return;
+    setPlay((prev) => ({ ...prev, expendedFuryOfTheSmall: prev.expendedFuryOfTheSmall + 1 }));
+    pushLog({
+      label: "Fury of the Small",
+      detail: `+${sheet.level} damage vs a larger creature — add to your damage roll`,
+      total: sheet.level,
+    });
+  }
+
+  // Shifting (Shifter homebrew): Bonus Action, Temp HP = level + CON mod,
+  // +10 ft Speed for 1 minute, once per Short/Long Rest. Grants the temp HP
+  // (Speed bump is informational) and expends the use.
+  function useShifting() {
+    if (!sheet || play.expendedShifting >= sheet.shiftingMax) return;
+    const tempHp = Math.max(1, sheet.level + sheet.modifiers.con);
+    setPlay((prev) => ({
+      ...prev,
+      expendedShifting: prev.expendedShifting + 1,
+      tempHp: Math.max(prev.tempHp, tempHp),
+    }));
+    pushLog({ label: "Shifting", detail: `${tempHp} Temp HP, +10 ft Speed (1 min)`, total: tempHp });
+  }
+
+  // Innate Sorcery (Sorcerer): Bonus Action, Advantage on your spell attacks
+  // for 1 minute, 2 uses/Long Rest. No roll — a stepper, same as Stonecunning.
+  function useInnateSorcery() {
+    if (!sheet || play.expendedInnateSorcery >= sheet.innateSorceryMax) return;
+    setPlay((prev) => ({ ...prev, expendedInnateSorcery: prev.expendedInnateSorcery + 1 }));
+  }
+
+  function restoreInnateSorcery() {
+    setPlay((prev) => ({
+      ...prev,
+      expendedInnateSorcery: Math.max(0, prev.expendedInnateSorcery - 1),
+    }));
+  }
+
+  // Arcane Recovery (Wizard): once per day on a Short Rest, recover expended
+  // spell slots totalling up to ceil(level/2) slot levels, none above 5th.
+  // Recovers greedily from the highest eligible expended slot down — the
+  // typical optimal play — and the player can fine-tune via the slot steppers
+  // afterward. Marks the feature used until the next Long Rest.
+  function useArcaneRecovery() {
+    if (!sheet || play.usedArcaneRecovery) return;
+    let budget = sheet.arcaneRecoveryMax;
+    setPlay((prev) => {
+      const next = [...prev.expendedSlots];
+      // Slot levels 5..1 (indexes 4..0) — never 6th+ per the rule.
+      for (let i = 4; i >= 0 && budget > 0; i--) {
+        const slotLevel = i + 1;
+        while ((next[i] ?? 0) > 0 && budget >= slotLevel) {
+          next[i] -= 1;
+          budget -= slotLevel;
+        }
+      }
+      return { ...prev, expendedSlots: next, usedArcaneRecovery: true };
+    });
+    pushLog({
+      label: "Arcane Recovery",
+      detail: `Recover up to ${sheet.arcaneRecoveryMax} slot levels (none above 5th)`,
+      total: sheet.arcaneRecoveryMax,
+    });
   }
 
   function rollDivineSpark() {
@@ -2330,6 +2481,9 @@ export default function PlaySheet({
             ["AC", ac],
             ["Initiative", formatModifier(sheet.initiative)],
             ["Speed", displaySpeed ?? "—"],
+            // Fairy/Owlin Fly Speed (see sheet.flySpeed) shown as its own chip
+            // right after Speed, only when the species grants flight.
+            ...(sheet.flySpeed != null ? [["Fly Speed", sheet.flySpeed] as const] : []),
             ["Prof. Bonus", formatModifier(sheet.proficiencyBonus)],
             ["Passive Perc.", sheet.passivePerception],
             ["Hit Die", `d${sheet.hitDie}`],
@@ -3039,6 +3193,68 @@ export default function PlaySheet({
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {sheet.healingHandsMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Healing Hands
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Touch a creature to restore {sheet.level} Hit Points. Once per Long Rest.
+                </div>
+              </div>
+              <button
+                onClick={useHealingHands}
+                disabled={play.expendedHealingHands >= sheet.healingHandsMax}
+                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {play.expendedHealingHands >= sheet.healingHandsMax ? "Used" : "Heal"}
+              </button>
+            </div>
+          )}
+
+          {sheet.furyOfTheSmallMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Fury of the Small
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  On a hit against a larger creature, deal +{sheet.level} damage. Once per Short or
+                  Long Rest.
+                </div>
+              </div>
+              <button
+                onClick={useFuryOfTheSmall}
+                disabled={play.expendedFuryOfTheSmall >= sheet.furyOfTheSmallMax}
+                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {play.expendedFuryOfTheSmall >= sheet.furyOfTheSmallMax ? "Used" : `+${sheet.level} Dmg`}
+              </button>
+            </div>
+          )}
+
+          {sheet.shiftingMax > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Shifting
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  Bonus Action: gain {Math.max(1, sheet.level + sheet.modifiers.con)} Temporary Hit
+                  Points and +10 ft Speed for 1 minute. Once per Short or Long Rest.
+                </div>
+              </div>
+              <button
+                onClick={useShifting}
+                disabled={play.expendedShifting >= sheet.shiftingMax}
+                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                {play.expendedShifting >= sheet.shiftingMax ? "Used" : "Shift"}
+              </button>
             </div>
           )}
 

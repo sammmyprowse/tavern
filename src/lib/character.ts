@@ -82,6 +82,14 @@ export interface CharacterDraft {
   // (e.g. Soldier: one Gaming Set from dice/dragonchess/playing-cards/
   // three-dragon-ante). null for backgrounds with no such choice.
   toolProficiencyChoice: string | null;
+  // Human's Skillful trait grants proficiency in one skill of choice (bare
+  // skill index, e.g. "perception"). null for non-Humans / until chosen.
+  humanSkillChoice: string | null;
+  // The Skilled feat grants proficiency in any 3 skills or tools of choice.
+  // Bare skill indexes (tools aren't tracked as proficiencies on the sheet
+  // yet, so this is skills-only for now). One array per character regardless
+  // of how many times Skilled is taken — the picker caps it at 3 × count.
+  skilledChoices: string[];
 }
 
 export interface ExpertiseMilestone {
@@ -262,6 +270,8 @@ export const EMPTY_DRAFT: CharacterDraft = {
   classEquipmentChoice: 0,
   backgroundEquipmentChoice: 0,
   toolProficiencyChoice: null,
+  humanSkillChoice: null,
+  skilledChoices: [],
 };
 
 export const MAX_LEVEL = 20;
@@ -380,6 +390,26 @@ export function maxHp(hitDie: number, conMod: number, hpRolls: number[]): number
   const level1Hp = hitDie + conMod;
   const restHp = hpRolls.reduce((sum, roll) => sum + roll, 0);
   return level1Hp + restHp;
+}
+
+// Bonus HP from HP-granting feats, summed across every relevant feat choice.
+// Tough (homebrew): "+2 for each character level you have attained" → 2 ×
+// current level, regardless of when taken. Hardened (homebrew): "+2, and
+// increases by 2 again every time you gain a level thereafter" → 2 at the
+// level it was taken plus 2 per level since, i.e. 2 × (level − takenLevel + 1).
+// Both read straight from each feat's own description text. Other feats grant
+// no HP. featChoices carries the level each feat was taken at, which Hardened
+// needs and Tough ignores.
+export function featHpBonus(
+  featChoices: { level: number; featIndex: string }[],
+  characterLevel: number,
+): number {
+  let bonus = 0;
+  for (const fc of featChoices) {
+    if (fc.featIndex === "tough") bonus += 2 * characterLevel;
+    else if (fc.featIndex === "hardened") bonus += 2 * (characterLevel - fc.level + 1);
+  }
+  return bonus;
 }
 
 // HP gained per level-up beyond 1 is never less than 1 (standard 5e rule), even
@@ -568,6 +598,16 @@ export const CANTRIPS_KNOWN_BY_CLASS: Record<string, (level: number) => number> 
 // 5e rule). Used to fuel Metamagic and to convert to/from spell slots.
 export function sorceryPointsMax(level: number): number {
   return level >= 2 ? level : 0;
+}
+
+// Innate Sorcery (Sorcerer level 1, 2024): "As a Bonus Action, you can ...
+// give yourself ... advantage on the spell attack rolls ... You can use this
+// feature twice, and you regain all expended uses ... when you finish a Long
+// Rest." A flat 2 uses from level 1 — the feature text gives the count
+// directly and never references a scaling table, so this is a confirmed
+// fixed number, not a disclosed simplification.
+export function innateSorceryMax(level: number): number {
+  return level >= 1 ? 2 : 0;
 }
 
 // Real, confirmed schedule for how many Metamagic options a Sorcerer knows —
@@ -996,6 +1036,27 @@ export function wholenessOfBodyMax(wisModifier: number): number {
 export function breathWeaponDice(level: number): number {
   return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
 }
+
+// Species whose traits turn the Unarmed Strike into a natural weapon, surfaced
+// as its own row in the Attacks section. Values read straight from each
+// (homebrew) trait's own description text — NOT the real published stat
+// blocks: Tabaxi/Tortle Claws deal 1d4 Slashing, Satyr's Ram's Headbutt deals
+// 1d4 Bludgeoning (plus a 5-ft push, surfaced as a note). All use STR like a
+// normal Unarmed Strike (none are Finesse). Damage adds the STR modifier the
+// same way resolveWeapons does for equipped weapons.
+export const SPECIES_NATURAL_WEAPONS: Record<
+  string,
+  { name: string; damageDie: number; damageType: string; note: string | null }
+> = {
+  tabaxi: { name: "Claws", damageDie: 4, damageType: "Slashing", note: null },
+  tortle: { name: "Claws", damageDie: 4, damageType: "Slashing", note: null },
+  satyr: {
+    name: "Ram's Headbutt",
+    damageDie: 4,
+    damageType: "Bludgeoning",
+    note: "On a hit, you can push the target up to 5 ft away.",
+  },
+};
 
 // Maps subspecies index → the class whose cantrip list to use for the
 // lineage cantrip picker (e.g. High Elf's Prestidigitation → Wizard list).
