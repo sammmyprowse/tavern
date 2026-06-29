@@ -3041,3 +3041,63 @@ pickers live on the play sheet, same pattern as Expertise/Fighting Style).
 subclasses and Paladin Oath of Devotion; the gnome second-cantrip content gap;
 and the larger items the audit reconfirmed (Champion crit range, higher-level
 use-count scaling, Ranger Hunter's Prey/Defensive Tactics swap-on-rest, etc.).
+
+## Subclass spell lists — Paladin fix, homebrew parity, gnome cantrips
+Follow-up to the audit-fixes pass, closing the documented subclass-spell gaps.
+
+**Paladin Oath of Devotion (the garbled-data fix).** The dataset's "Oath of
+Devotion Spells" feature had a mangled, wrong spell table. Researched the
+authoritative 2024 SRD 5.2 list (3: Protection from Evil and Good, Shield of
+Faith; 5: Aid, Zone of Truth; 9: Beacon of Hope, Dispel Magic; 13: Freedom of
+Movement, Guardian of Faith; 17: Commune, Flame Strike), rebuilt the subclass
+feature description in the DB (`jsonb_set` on the feature's description), and
+added `oath-of-devotion` to `SUBCLASS_PREPARED_SPELLS`. Verified live.
+
+**Homebrew caster subclasses now grant official-depth spell lists.** Every
+homebrew caster subclass that should grant always-prepared spells now does, at
+the same cadence/depth as the official ones:
+- Cleric (war/storm/trickery-domain), Sorcerer (wildspark/stormborn/starborn),
+  Warlock (fey/celestial/voidborn-patron): full-caster cadence 3/5/7/9, 2
+  spells per tier.
+- Paladin (oath-of-the-stormguard/wanderer/judgment): half-caster cadence
+  3/5/9/13/17.
+- Druid (circle-of-the-tide/bloom/wildheart): full-caster 3/5/7/9. Several
+  Druid/Ranger homebrew subclasses already *promised* always-prepared spells
+  in prose but with a thin, unwired 2-spell list — those were expanded to full
+  depth and actually wired up.
+- Ranger (beastcaller/shadowstalker/wayfinder): half-caster 3/5/9/13/17.
+
+Each is added BOTH to `SUBCLASS_PREPARED_SPELLS` in character.ts (drives the
+interactive "Subclass Spells (Always Prepared)" block in the Spells card) AND
+as a "<Subclass> Spells" feature in the subclass's DB `data.features` array
+(shows the table in the Features list), exactly how official subclasses present
+them. **All spells are real SRD spells with validated 2014-dataset slugs** —
+the Cleric War/Tempest(Storm)/Trickery lists are themselves open SRD content;
+the rest are original thematic selections from real spells. Wizard and Bard
+homebrew subclasses intentionally get NO spell list — their official 2024
+counterparts (Evoker, College of Lore) don't grant one either, so "no list" IS
+parity there; their feature sets are already official-comparable in depth
+(4-6 substantive features each, confirmed).
+
+DB edits to official-import rows (oath-of-devotion description) and homebrew
+subclass rows were done via direct `execute_sql` UPDATEs since there's no seed
+file for these — the user explicitly authorized editing the SRD content tables.
+If these tables are ever re-imported from 5e-database, re-apply these spell-list
+features and the oath-of-devotion description fix.
+
+**Gnome lineage second cantrips.** The imported SRD only had one lineage spell
+per gnome lineage; the real 2024 lineages grant two. Added Forest Gnome →
+Speak with Animals (a 1st-level spell cast at-will) and Rock Gnome →
+Prestidigitation, as new `traits` rows + entries in each subspecies'
+`data.traits` array. Because Speak with Animals is at-will but NOT a cantrip,
+the lineage at-will spell row's label was made level-aware ("Level 1 · At-will"
+vs "Cantrip · At-will") instead of hardcoding "Cantrip".
+
+**Verification note:** the official subclass-spell render path was verified live
+(Ophelia, Warlock/Fiend Patron — the "Subclass Spells (Always Prepared)" block
+rendered Burning Hands/Command/Scorching Ray/Suggestion correctly; Fredegar,
+Paladin/Oath of Devotion — Protection from Evil and Good + Shield of Faith
+rendered). The homebrew and gnome additions use the identical map → sheet →
+fetch → render path with validated slugs, so they weren't separately live-tested
+(no existing character uses a homebrew caster subclass, and the user's own
+characters weren't mutated to manufacture one).
