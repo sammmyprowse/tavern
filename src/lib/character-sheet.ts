@@ -16,6 +16,7 @@ import {
   fullCasterSlots,
   innateSorceryMax,
   SPECIES_NATURAL_WEAPONS,
+  SUBCLASS_PREPARED_SPELLS,
   halfCasterSlots,
   HALF_CASTER_CLASSES,
   focusPointsMax,
@@ -185,6 +186,10 @@ export interface CharacterSheet {
   // synthesized Unarmed Strike shown in Attacks, same shape as Monk's. null
   // for species without one. See SPECIES_NATURAL_WEAPONS.
   naturalWeapon: { name: string; damageDie: number; damageType: string; note: string | null } | null;
+  // Subclass always-prepared spells reached at the current level (Life Domain,
+  // Fiend Patron, Draconic Sorcery). name = display name, index = 2014 spell
+  // slug for detail lookup, unlockLevel = the class level it's granted at.
+  subclassPreparedSpells: { name: string; index: string; unlockLevel: number }[];
 }
 
 export function buildCharacterSheet(
@@ -446,6 +451,9 @@ export function buildCharacterSheet(
         ? 30
         : null,
     naturalWeapon: SPECIES_NATURAL_WEAPONS[species.index] ?? null,
+    subclassPreparedSpells: (SUBCLASS_PREPARED_SPELLS[draft.subclassIndex ?? ""] ?? [])
+      .filter((m) => draft.level >= m.level)
+      .flatMap((m) => m.spells.map((s) => ({ ...s, unlockLevel: m.level }))),
   };
 }
 

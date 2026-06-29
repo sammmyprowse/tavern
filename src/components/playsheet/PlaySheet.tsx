@@ -97,6 +97,7 @@ interface PlaySheetProps {
   traitDescriptions: Record<string, string>;
   classSpells: SpellOption[];
   lineageCantripSpells: SpellOption[];
+  subclassSpellData: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
   avatarUrl: string | null;
@@ -250,6 +251,7 @@ export default function PlaySheet({
   traitDescriptions,
   classSpells,
   lineageCantripSpells,
+  subclassSpellData,
   isOwner,
   isPublic,
   avatarUrl,
@@ -3539,8 +3541,11 @@ export default function PlaySheet({
           )}
         </div>
 
-        {/* Languages */}
-        {(currentDraft.languageChoices.length > 0 || currentDraft.toolProficiencyChoice) && (() => {
+        {/* Languages & Proficiencies — always shown. Every PC knows Common
+            (2024 PHB), so it's listed even when no extra languages were
+            chosen, plus the two creation-time language picks and any
+            automatic class language (Thieves' Cant / Druidic). */}
+        {(() => {
           const languagesByIndex = new Map(languages.map((l) => [l.index, l]));
           const background = backgrounds.find((b) => b.index === currentDraft.backgroundIndex) ?? null;
           const autoLang =
@@ -3558,18 +3563,21 @@ export default function PlaySheet({
                 .find((o) => o.index === currentDraft.toolProficiencyChoice)
                 ?.name.replace(/^Tool:\s*/, "") ?? currentDraft.toolProficiencyChoice
             : null;
-          const allLanguages = autoLang ? [autoLang, ...chosenNames] : chosenNames;
+          // Common first, then any auto class language, then chosen languages —
+          // deduped so a player who picked Common as one of their two doesn't
+          // see it twice.
+          const allLanguages = [
+            ...new Set(["Common", ...(autoLang ? [autoLang] : []), ...chosenNames]),
+          ];
           return (
             <div className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
               <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
                 Languages &amp; Proficiencies
               </h2>
-              {allLanguages.length > 0 && (
-                <p className="mt-2 text-sm text-tavern-text">{allLanguages.join(", ")}</p>
-              )}
+              <p className="mt-2 text-sm text-tavern-text">{allLanguages.join(", ")}</p>
               {toolProfName && (
                 <p className="mt-1 text-sm text-tavern-muted">
-                  Gaming Set: {toolProfName}
+                  Tool Proficiency: {toolProfName}
                 </p>
               )}
             </div>
@@ -4427,6 +4435,78 @@ export default function PlaySheet({
                 )}
               </div>
             )}
+            {sheet.subclassPreparedSpells.length > 0 && (() => {
+              const attackBonus = sheet.spellAttackBonus ?? 0;
+              const saveDC = sheet.spellSaveDC ?? 0;
+              const findSpell = (idx: string) => subclassSpellData.find((s) => s.index === idx) ?? null;
+              return (
+                <div className="mt-4 space-y-2 rounded-md border border-tavern-border p-3">
+                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                    Subclass Spells (Always Prepared)
+                  </div>
+                  <p className="text-xs text-tavern-muted">
+                    Granted by your subclass — always prepared and don&apos;t count against your
+                    prepared-spell limit. Cast using your normal spell slots.
+                  </p>
+                  {sheet.subclassPreparedSpells.map((sp) => {
+                    const spell = findSpell(sp.index);
+                    const key = `subclass-spell-${sp.index}`;
+                    const expanded = expandedFeatures.has(key);
+                    const damageDice = spell?.level === 0 && spell ? getCantripDamageDice(spell) : spell?.damageDice ?? null;
+                    return (
+                      <div key={key} className="rounded-md border border-tavern-border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <button onClick={() => toggleFeature(key)} className="flex-1 text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-heading font-bold text-tavern-text">{sp.name}</span>
+                              {spell?.description && (
+                                <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 text-xs text-tavern-muted">
+                              {spell ? (spell.level === 0 ? "Cantrip" : `Level ${spell.level}`) : `Unlocked at level ${sp.unlockLevel}`}
+                              {spell?.school ? ` · ${spell.school}` : ""}
+                              {spell?.range ? ` · ${spell.range}` : ""}
+                              {spell?.concentration ? " · Concentration" : ""}
+                              {spell?.dcType ? ` · DC ${saveDC} ${spell.dcType.toUpperCase()} save` : ""}
+                            </div>
+                          </button>
+                          <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                            {spell?.attackType && (
+                              <button
+                                onClick={() => rollSpellAttack(sp.name, attackBonus)}
+                                className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                              >
+                                Attack {formatModifier(attackBonus)}
+                              </button>
+                            )}
+                            {damageDice && (
+                              <button
+                                onClick={() => rollSpellDamage(sp.name, damageDice, spell?.damageType ?? null)}
+                                className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                              >
+                                Damage
+                              </button>
+                            )}
+                            <button
+                              onClick={() => castSpell(sp.name)}
+                              className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light"
+                            >
+                              Cast
+                            </button>
+                          </div>
+                        </div>
+                        {expanded && spell?.description && (
+                          <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
+                            {spell.description}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             {(sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip) && (() => {
               const cantrips = [
                 ...sheet.lineageSpells.filter((s) => s.unlockLevel === 1),

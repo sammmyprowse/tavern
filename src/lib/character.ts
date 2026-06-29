@@ -1058,6 +1058,84 @@ export const SPECIES_NATURAL_WEAPONS: Record<
   },
 };
 
+// Subclasses that grant always-prepared spells at certain class levels.
+// 2024 stores these as a table jammed into the subclass feature's prose
+// (e.g. "Life Domain Spells"), not structured data — so the lists are
+// transcribed here by hand from each subclass's own feature text, keyed by
+// subclass index, as {level, spells:[{name, index}]} milestones. `index` is
+// the 2014-ruleset spell slug used to look up full details; a few 2024-only
+// spells (Chromatic Orb, Dragon's Breath, Charm Monster, Aura of Life,
+// Summon Dragon) aren't in the 2014 dataset and resolve to name-only rows.
+// Oath of Devotion is deliberately omitted — its source table is garbled in
+// the dataset, so its spells stay visible only via the Features list rather
+// than risk surfacing a wrong list. Homebrew subclasses grant their spells
+// in prose too and aren't transcribed here.
+export const SUBCLASS_PREPARED_SPELLS: Record<
+  string,
+  { level: number; spells: { name: string; index: string }[] }[]
+> = {
+  "life-domain": [
+    { level: 3, spells: [
+      { name: "Aid", index: "aid" },
+      { name: "Bless", index: "bless" },
+      { name: "Cure Wounds", index: "cure-wounds" },
+      { name: "Lesser Restoration", index: "lesser-restoration" },
+    ] },
+    { level: 5, spells: [
+      { name: "Mass Healing Word", index: "mass-healing-word" },
+      { name: "Revivify", index: "revivify" },
+    ] },
+    { level: 7, spells: [
+      { name: "Aura of Life", index: "aura-of-life" },
+      { name: "Death Ward", index: "death-ward" },
+    ] },
+    { level: 9, spells: [
+      { name: "Greater Restoration", index: "greater-restoration" },
+      { name: "Mass Cure Wounds", index: "mass-cure-wounds" },
+    ] },
+  ],
+  "fiend-patron": [
+    { level: 3, spells: [
+      { name: "Burning Hands", index: "burning-hands" },
+      { name: "Command", index: "command" },
+      { name: "Scorching Ray", index: "scorching-ray" },
+      { name: "Suggestion", index: "suggestion" },
+    ] },
+    { level: 5, spells: [
+      { name: "Fireball", index: "fireball" },
+      { name: "Stinking Cloud", index: "stinking-cloud" },
+    ] },
+    { level: 7, spells: [
+      { name: "Fire Shield", index: "fire-shield" },
+      { name: "Wall of Fire", index: "wall-of-fire" },
+    ] },
+    { level: 9, spells: [
+      { name: "Geas", index: "geas" },
+      { name: "Insect Plague", index: "insect-plague" },
+    ] },
+  ],
+  "draconic-sorcery": [
+    { level: 3, spells: [
+      { name: "Alter Self", index: "alter-self" },
+      { name: "Chromatic Orb", index: "chromatic-orb" },
+      { name: "Command", index: "command" },
+      { name: "Dragon's Breath", index: "dragons-breath" },
+    ] },
+    { level: 5, spells: [
+      { name: "Fear", index: "fear" },
+      { name: "Fly", index: "fly" },
+    ] },
+    { level: 7, spells: [
+      { name: "Arcane Eye", index: "arcane-eye" },
+      { name: "Charm Monster", index: "charm-monster" },
+    ] },
+    { level: 9, spells: [
+      { name: "Legend Lore", index: "legend-lore" },
+      { name: "Summon Dragon", index: "summon-dragon" },
+    ] },
+  ],
+};
+
 // Base-species traits that grant an at-will cantrip from the species itself
 // (not a subspecies/lineage). Maps the trait index → the spell index to fetch
 // and surface. Tiefling's Otherworldly Presence grants Thaumaturgy at-will —

@@ -22,6 +22,7 @@ import {
   EMPTY_DRAFT,
   LINEAGE_CANTRIP_CLASS,
   SPECIES_CANTRIP_SPELL,
+  SUBCLASS_PREPARED_SPELLS,
   type CharacterDraft,
 } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
@@ -156,6 +157,14 @@ export default async function CharacterPlaySheet({
     ...cantripPickerSpells.filter((s) => !seenIndexes.has(s.index)),
   ];
 
+  // Detail data (description/range/attack/damage) for subclass always-prepared
+  // spells (Life Domain / Fiend / Draconic Sorcery), fetched by slug. A few
+  // 2024-only spells aren't in the 2014 dataset and simply won't resolve here —
+  // the play sheet shows those as name-only rows.
+  const subclassSpellIndexes = (SUBCLASS_PREPARED_SPELLS[draft.subclassIndex ?? ""] ?? [])
+    .flatMap((m) => m.spells.map((s) => s.index));
+  const subclassSpellData = await getSpellsByIndex(subclassSpellIndexes);
+
   return (
     <PlaySheet
       characterId={character.id}
@@ -176,6 +185,7 @@ export default async function CharacterPlaySheet({
       traitDescriptions={traitDescriptions}
       classSpells={classSpells}
       lineageCantripSpells={lineageCantripSpells}
+      subclassSpellData={subclassSpellData}
       isOwner={isOwner}
       isPublic={character.is_public}
       avatarUrl={character.avatar_url}
