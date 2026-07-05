@@ -4,6 +4,28 @@ export const ABILITY_ORDER: AbilityKey[] = ["str", "dex", "con", "int", "wis", "
 
 export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8] as const;
 
+// Point Buy (2024/2014 rules): 27 points, scores range 8-15 before racial/
+// background bonuses, with an escalating cost above 13.
+export const POINT_BUY_BUDGET = 27;
+export const POINT_BUY_MIN = 8;
+export const POINT_BUY_MAX = 15;
+export const POINT_BUY_COST: Record<number, number> = {
+  8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9,
+};
+export function pointBuyCost(score: number): number {
+  return POINT_BUY_COST[score] ?? 0;
+}
+export function pointBuyRemaining(scores: AbilityScores): number {
+  return (
+    POINT_BUY_BUDGET -
+    ABILITY_ORDER.reduce((sum, a) => sum + pointBuyCost(scores[a] ?? POINT_BUY_MIN), 0)
+  );
+}
+
+// The four ability-score assignment methods the builder offers. Only affects
+// how baseAbilityScores gets filled in — buildCharacterSheet never reads it.
+export type AbilityScoreMethod = "standard" | "pointbuy" | "rolled" | "manual";
+
 export type AbilityScores = Record<AbilityKey, number | null>;
 
 export interface AbilityBonusChoice {
@@ -82,6 +104,11 @@ export interface CharacterDraft {
   // (e.g. Soldier: one Gaming Set from dice/dragonchess/playing-cards/
   // three-dragon-ante). null for backgrounds with no such choice.
   toolProficiencyChoice: string | null;
+  // Ability-score assignment method chosen in the builder, plus the rolled
+  // pool (only used when method is "rolled" — the six 4d6-drop-lowest values
+  // to assign). Builder-only; buildCharacterSheet never reads either.
+  abilityScoreMethod: AbilityScoreMethod;
+  rolledAbilityPool: number[];
   // Human's Skillful trait grants proficiency in one skill of choice (bare
   // skill index, e.g. "perception"). null for non-Humans / until chosen.
   humanSkillChoice: string | null;
@@ -270,6 +297,8 @@ export const EMPTY_DRAFT: CharacterDraft = {
   classEquipmentChoice: 0,
   backgroundEquipmentChoice: 0,
   toolProficiencyChoice: null,
+  abilityScoreMethod: "standard",
+  rolledAbilityPool: [],
   humanSkillChoice: null,
   skilledChoices: [],
 };
