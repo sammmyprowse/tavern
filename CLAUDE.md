@@ -3101,3 +3101,81 @@ rendered). The homebrew and gnome additions use the identical map → sheet →
 fetch → render path with validated slugs, so they weren't separately live-tested
 (no existing character uses a homebrew caster subclass, and the user's own
 characters weren't mutated to manufacture one).
+
+## Competitor-gap features (post-audit initiative)
+After a research pass comparing Tavern to D&D Beyond / Aurora / Roll20, a set of
+missing features was implemented. Each is real, described, and interactive where
+a gameplay mechanic is involved (the project's standing bar).
+
+**Ability score methods** (`AbilitiesStep.tsx`): the builder now offers Standard
+Array, **Point Buy** (27-point budget, scores 8-15, escalating cost above 13,
+live points-remaining), **Rolled** (4d6-drop-lowest ×6, assign from a pool that
+handles duplicates), and **Manual** (any 1-30). New `CharacterDraft`
+`abilityScoreMethod` + `rolledAbilityPool` (builder-only; buildCharacterSheet
+never reads them). Point Buy helpers (`POINT_BUY_*`, `pointBuyCost`,
+`pointBuyRemaining`) in character.ts.
+
+**Play-sheet status trackers** (`src/lib/conditions.ts` + PlaySheet "Conditions
+& Status" card): **Exhaustion** 0-6 auto-applies −2/level to every d20 roll
+(threaded through rollCheck/rollAttack/rollSpellAttack, logged with an
+"(Exhaustion −N)" note) and −5 ft/level Speed (displaySpeed); a Long Rest
+removes one level. **Conditions** — toggle chips for all 15, each showing its
+effect (tracked, not auto-simulated). **Concentration** — a free-text reminder.
+All three are localStorage-only PlayState.
+
+**Attunement + encumbrance**: magic items requiring attunement (or homebrew
+ones) get an Attune/Attuned toggle capped at 3 (`attunedMagicItemIndexes`);
+"Attunement N/3" shown. Encumbrance sums carried weight vs STR×15 and flags
+Encumbered. Both in the Equipment card.
+
+**JSON export/import** (`src/lib/character-export.ts`): "Export JSON" on the
+play sheet downloads a portable `<name>.tavern.json` (draft + bio/notes/
+personality/inventory/currency/magic items; avatar/is_public/party excluded).
+"Import from File" on My Characters creates a new character via the
+`importCharacter` server action (auth-gated, always inserts). Drafts merge
+against EMPTY_DRAFT so older files pick up newer defaults.
+
+**XP tracking** (`XP_THRESHOLDS`, `xpForNextLevel`, `levelForXp`): `CharacterDraft`
+`levelingMode` ("milestone"|"xp") + `xp`. The play sheet's owner leveling area
+has a Milestone/XP toggle; in XP mode an XP progress bar + Add/Subtract XP gate
+the Level Up button on reaching the next threshold. `setLevelingProgress`
+persists it.
+
+**Extra Attack / Epic Boons / Campaign Notes**: `attacksPerAction(class, level)`
+shows an Extra Attack banner on the Attacks card (Fighter to 4 at L20, martials
+to 2 at L5). The 7 real SRD **Epic Boon** feats (`getEpicBoonFeats`,
+type='epic-boon') are offered in the play-sheet feat picker at level 19 with
+full descriptions, and resolve their name+description in Features (dual
+generalFeats/epicBoonFeats lookup). **Campaign Notes** — a new
+`characters.notes` column (migration `add_character_notes` + regenerated
+types), `setCharacterNotes` action, `CharacterNotes` editable card, included in
+JSON export/import.
+
+**Spell compendium** (`/spells`, `getAllSpells`/`CompendiumSpell`,
+`SpellCompendium.tsx`): a public reference page — search + filter by level/
+school/class, each spell expands to full rules text (casting time, range,
+components, material, duration, concentration/ritual, description, At Higher
+Levels, class list). A "Spells" link in the header (signed in or out).
+
+**Quick Build / Surprise Me** (`src/lib/quick-build.ts`): a panel on the
+builder's first step. `buildQuickDraft` produces a complete valid level-1
+draft — ability scores along a per-class priority (2024 recommended arrays),
+required skills, background + its ability bonus + tool choice, two non-rare
+languages, and weapon mastery for the 5 classes that get it — then drops the
+player on Review. Quick Build takes optional species/class/name; Surprise Me
+randomizes everything.
+
+**Printable / PDF sheet** (`/characters/[id]/print`, `PrintButton.tsx`): a
+clean white-on-black one-page sheet with a "Print / Save as PDF" button firing
+`window.print()` (any browser → Save as PDF; no library). Renders core stats
+(real computed AC assuming starting armor worn), abilities+saves, skills,
+attacks, spellcasting (DC/attack/slots/cantrips/prepared), features, equipment.
+"Print / PDF" link next to Export JSON.
+
+**Deliberately still open (large, their own projects):** true **multiclassing**
+(single `classIndex` is baked through the entire draft/sheet/builder) and a
+**user-facing homebrew content builder** (users can build custom equipment +
+magic items today, but not their own species/class/subclass/feat/spell). Both
+were scoped but not started — each is a multi-pass effort that changes core
+data shapes, and (per this project's habit of asking before large content/
+architecture decisions) warrants confirming direction first.
