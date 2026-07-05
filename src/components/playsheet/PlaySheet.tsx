@@ -2184,6 +2184,15 @@ export default function PlaySheet({
                   >
                     Export JSON
                   </button>
+                  <a
+                    href={`/characters/${characterId}/print`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-tavern-muted hover:text-tavern-gold-light"
+                    title="Open a print-friendly sheet you can save as a PDF"
+                  >
+                    Print / PDF
+                  </a>
                   <DeleteCharacterButton
                     characterId={characterId}
                     characterName={sheet.name || "Unnamed"}
