@@ -120,6 +120,9 @@ interface PlayState {
   // (magicItems, not ownedEquipment/inventory) — same localStorage-only,
   // ephemeral-session treatment as every other equip state on this sheet.
   equippedMagicItemIndexes: string[];
+  // Magic items the character is attuned to (max 3, the standard limit). A
+  // separate concept from equipped — you can carry an item without attuning.
+  attunedMagicItemIndexes: string[];
   rollMode: RollMode;
   // expendedSlots[i] = slots used at spell level i+1. Play state, not part of
   // the saved draft — resets every Long Rest the same way hit dice used does.
@@ -405,6 +408,7 @@ export default function PlaySheet({
     deathSaveFailures: 0,
     equippedIndexes: allOwnedIndexes,
     equippedMagicItemIndexes: [],
+    attunedMagicItemIndexes: [],
     rollMode: "normal",
     expendedSlots: [],
     expendedSorceryPoints: 0,
@@ -511,6 +515,23 @@ export default function PlaySheet({
   const magicItemAcBonus = magicItems
     .filter((item) => equippedMagicItemSet.has(item.id))
     .reduce((sum, item) => sum + item.acBonus, 0);
+  // Attunement: max 3 attuned items (the standard limit). An item can be
+  // attuned only if it requires attunement (real items) or is fully homebrew
+  // (magicItemIndex null — could require it, so it's allowed).
+  const ATTUNEMENT_MAX = 3;
+  const attunedSet = new Set(play.attunedMagicItemIndexes);
+  const attunedCount = play.attunedMagicItemIndexes.length;
+
+  // Encumbrance: total carried weight vs carrying capacity (STR × 15 lb).
+  // Sums starting equipment (minus removed/money) and found/custom inventory
+  // by each item's catalog weight × count. Coin weight is ignored (base rule).
+  const totalWeight =
+    sheet.ownedEquipment
+      .filter((i) => !i.isMoney && i.index && !play.removedStartingIndexes.includes(i.index))
+      .reduce((sum, i) => sum + (equipmentByIndex.get(i.index!)?.weight ?? 0) * i.count, 0) +
+    inventory.reduce((sum, i) => sum + (equipmentByIndex.get(i.baseIndex)?.weight ?? 0) * i.count, 0);
+  const carryingCapacity = sheet.finalScores.str * 15;
+  const isEncumbered = totalWeight > carryingCapacity;
   const ac =
     computeAC(
       allOwnedBundleItems,
@@ -996,6 +1017,20 @@ export default function PlaySheet({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return { ...prev, equippedMagicItemIndexes: [...next] };
+    });
+  }
+
+  function toggleAttunement(id: string) {
+    setPlay((prev) => {
+      const attuned = prev.attunedMagicItemIndexes.includes(id);
+      // Block attuning a 4th item — the 3-slot limit.
+      if (!attuned && prev.attunedMagicItemIndexes.length >= ATTUNEMENT_MAX) return prev;
+      return {
+        ...prev,
+        attunedMagicItemIndexes: attuned
+          ? prev.attunedMagicItemIndexes.filter((x) => x !== id)
+          : [...prev.attunedMagicItemIndexes, id],
+      };
     });
   }
 
@@ -5164,6 +5199,26 @@ export default function PlaySheet({
           <p className="mt-1 text-xs text-tavern-muted">
             Tap to equip or unequip. Armor and shields affect your AC live.
           </p>
+          {/* Encumbrance + attunement summary */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <div className={`flex-1 rounded-md border p-2.5 text-xs ${isEncumbered ? "border-tavern-oxblood" : "border-tavern-border"}`}>
+              <span className="font-heading font-bold tracking-wider text-tavern-gold-light uppercase">Weight</span>{" "}
+              <span className={isEncumbered ? "font-bold text-tavern-oxblood-light" : "text-tavern-text"}>
+                {totalWeight % 1 === 0 ? totalWeight : totalWeight.toFixed(1)} / {carryingCapacity} lb
+              </span>
+              <span className="text-tavern-muted">
+                {isEncumbered ? " — over capacity (Encumbered)" : ` — carrying capacity (STR ${sheet.finalScores.str} × 15)`}
+              </span>
+            </div>
+            {magicItems.length > 0 && (
+              <div className="rounded-md border border-tavern-border p-2.5 text-xs">
+                <span className="font-heading font-bold tracking-wider text-tavern-gold-light uppercase">Attunement</span>{" "}
+                <span className={attunedCount >= ATTUNEMENT_MAX ? "font-bold text-tavern-gold-light" : "text-tavern-text"}>
+                  {attunedCount} / {ATTUNEMENT_MAX}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="mt-3 space-y-1.5">
             {sheet.ownedEquipment
               .filter((item) => !item.isMoney && item.index && !play.removedStartingIndexes.includes(item.index))
@@ -5300,8 +5355,13 @@ export default function PlaySheet({
             {magicItems.map((item) => {
               const lookup = item.magicItemIndex ? magicItemByIndex.get(item.magicItemIndex) : undefined;
               const isEquipped = equippedMagicItemSet.has(item.id);
+              const isAttuned = attunedSet.has(item.id);
+              // Real items expose whether they need attunement; homebrew
+              // (no index) could require it, so it's allowed there too.
+              const canAttune = (lookup?.requiresAttunement ?? false) || !item.magicItemIndex;
               const summaryParts = [
                 item.acBonus ? `${formatModifier(item.acBonus)} AC` : null,
+                lookup?.requiresAttunement ? "Requires Attunement" : null,
                 item.notes,
               ].filter(Boolean);
               const detailsKey = `magic:${item.id}`;
@@ -5328,6 +5388,20 @@ export default function PlaySheet({
                       <span className="text-xs uppercase">{isEquipped ? "Equipped" : "Stowed"}</span>
                     </button>
                     <div className="flex items-center gap-2">
+                      {canAttune && (
+                        <button
+                          onClick={() => toggleAttunement(item.id)}
+                          disabled={!isAttuned && attunedCount >= ATTUNEMENT_MAX}
+                          title={!isAttuned && attunedCount >= ATTUNEMENT_MAX ? "You're already attuned to 3 items" : undefined}
+                          className={`rounded-md border px-2 py-0.5 text-xs font-bold ${
+                            isAttuned
+                              ? "border-tavern-gold bg-tavern-gold/15 text-tavern-gold-light"
+                              : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light disabled:opacity-30"
+                          }`}
+                        >
+                          {isAttuned ? "Attuned" : "Attune"}
+                        </button>
+                      )}
                       {details.length > 0 && (
                         <button
                           onClick={() => toggleFeature(detailsKey)}
