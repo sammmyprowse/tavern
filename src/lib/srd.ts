@@ -533,6 +533,66 @@ export interface SpellOption {
   cantripScaling: Record<string, string> | null;
 }
 
+// A fully-detailed spell for the reference compendium — every field a player
+// needs to read a spell, not just the combat-relevant subset SpellOption
+// carries. 2014 ruleset (the only spell data available).
+export interface CompendiumSpell {
+  index: string;
+  name: string;
+  level: number;
+  school: string | null;
+  castingTime: string | null;
+  range: string | null;
+  components: string[];
+  material: string | null;
+  duration: string | null;
+  concentration: boolean;
+  ritual: boolean;
+  classes: string[];
+  description: string | null;
+  higherLevel: string | null;
+}
+
+// Every spell, fully detailed, for the reference compendium page. Sorted by
+// level then name.
+export async function getAllSpells(): Promise<CompendiumSpell[]> {
+  const { data } = await supabase
+    .from("spells")
+    .select("index, name, level, school, concentration, ritual, data")
+    .eq("ruleset", "2014");
+
+  return (data ?? [])
+    .map((s) => {
+      const d = s.data as {
+        desc?: string[];
+        higher_level?: string[];
+        range?: string;
+        casting_time?: string;
+        duration?: string;
+        components?: string[];
+        material?: string;
+        classes?: { name: string }[];
+      };
+      return {
+        index: s.index,
+        name: s.name,
+        level: s.level ?? 0,
+        school: s.school,
+        castingTime: d.casting_time ?? null,
+        range: d.range ?? null,
+        components: d.components ?? [],
+        material: d.material ?? null,
+        duration: d.duration ?? null,
+        concentration: s.concentration ?? false,
+        ritual: s.ritual ?? false,
+        classes: (d.classes ?? []).map((c) => c.name),
+        description: d.desc ? d.desc.join("\n\n") : null,
+        higherLevel: d.higher_level ? d.higher_level.join("\n\n") : null,
+      };
+    })
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
+
 // Spell data only exists in the 2014 ruleset (2024 SRD hasn't published
 // spells yet) — close to, but not guaranteed byte-identical to, 2024 spell
 // text. Unlike features/subclasses, there's no `class_index` column here, so

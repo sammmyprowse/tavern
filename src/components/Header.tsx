@@ -8,9 +8,18 @@ export default async function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-tavern-border px-6 py-4">
-      <Link href="/" className="font-heading text-lg font-bold tracking-wide text-tavern-gold">
-        Tavern
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link href="/" className="font-heading text-lg font-bold tracking-wide text-tavern-gold">
+          Tavern
+        </Link>
+        {/* Public reference — visible signed in or out. */}
+        <Link
+          href="/spells"
+          className="font-heading text-xs tracking-widest text-tavern-muted uppercase hover:text-tavern-gold-light"
+        >
+          Spells
+        </Link>
+      </div>
 
       {data.user ? (
         <div className="flex items-center gap-4">
