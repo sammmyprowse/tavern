@@ -109,6 +109,11 @@ export interface CharacterDraft {
   // to assign). Builder-only; buildCharacterSheet never reads either.
   abilityScoreMethod: AbilityScoreMethod;
   rolledAbilityPool: number[];
+  // Leveling mode. "milestone" (default) = Level Up whenever the player wants;
+  // "xp" = track experience points and gate Level Up on reaching the next
+  // threshold. `xp` is only meaningful in xp mode. Both persist to the draft.
+  levelingMode: LevelingMode;
+  xp: number;
   // Human's Skillful trait grants proficiency in one skill of choice (bare
   // skill index, e.g. "perception"). null for non-Humans / until chosen.
   humanSkillChoice: string | null;
@@ -299,11 +304,35 @@ export const EMPTY_DRAFT: CharacterDraft = {
   toolProficiencyChoice: null,
   abilityScoreMethod: "standard",
   rolledAbilityPool: [],
+  levelingMode: "milestone",
+  xp: 0,
   humanSkillChoice: null,
   skilledChoices: [],
 };
 
 export const MAX_LEVEL = 20;
+
+// Standard 5e XP thresholds — cumulative XP required to BE each level.
+// Indexed by level (XP_THRESHOLDS[level] = XP needed to have reached `level`).
+// Index 0 is unused; level 1 needs 0.
+export const XP_THRESHOLDS: number[] = [
+  0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
+  85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
+];
+export type LevelingMode = "milestone" | "xp";
+// XP required to reach the next level, or null at max level.
+export function xpForNextLevel(level: number): number | null {
+  return level >= MAX_LEVEL ? null : XP_THRESHOLDS[level + 1];
+}
+// The level a given XP total qualifies for (1-20).
+export function levelForXp(xp: number): number {
+  let level = 1;
+  for (let l = 2; l <= MAX_LEVEL; l++) {
+    if (xp >= XP_THRESHOLDS[l]) level = l;
+    else break;
+  }
+  return level;
+}
 
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);

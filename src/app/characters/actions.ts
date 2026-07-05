@@ -605,6 +605,34 @@ export interface SetSpellsResult {
 // don't re-validate e.g. a subclass index against the real subclass list
 // either — owner-only mutation on the player's own character, not an
 // adversarial boundary), just a sanity cap against a malformed payload.
+// Persist leveling mode and/or XP total. XP is clamped non-negative; the mode
+// is validated. Doesn't itself change `level` — reaching a threshold enables
+// the existing Level Up control, it doesn't auto-advance.
+export async function setLevelingProgress(
+  characterId: string,
+  patch: { levelingMode?: "milestone" | "xp"; xp?: number },
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  const nextDraft: CharacterDraft = {
+    ...draft,
+    ...(patch.levelingMode === "milestone" || patch.levelingMode === "xp"
+      ? { levelingMode: patch.levelingMode }
+      : {}),
+    ...(typeof patch.xp === "number" && isFinite(patch.xp)
+      ? { xp: Math.max(0, Math.floor(patch.xp)) }
+      : {}),
+  };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
 export async function setKnownCantrips(
   characterId: string,
   cantripIndexes: string[],

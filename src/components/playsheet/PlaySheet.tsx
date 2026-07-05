@@ -8,6 +8,8 @@ import {
   hpGainForLevelUp,
   fixedAverageHpGain,
   MAX_LEVEL,
+  xpForNextLevel,
+  XP_THRESHOLDS,
   ORDER_CHOICES,
   GIANT_ANCESTRY_OPTIONS,
   ASI_LEVELS,
@@ -33,6 +35,7 @@ import { buildCharacterExport, downloadCharacterExport } from "@/lib/character-e
 import {
   levelUpCharacter,
   levelDownCharacter,
+  setLevelingProgress,
   chooseSubclass,
   chooseOriginOrder,
   chooseGiantAncestry,
@@ -363,6 +366,8 @@ export default function PlaySheet({
   const [levelingDown, setLevelingDown] = useState(false);
   const [levelDownError, setLevelDownError] = useState<string | null>(null);
   const [levelDownPending, setLevelDownPending] = useState(false);
+  const [xpInput, setXpInput] = useState("");
+  const [levelingPending, setLevelingPending] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
   const [subclassPending, setSubclassPending] = useState(false);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<string | null>(null);
@@ -634,6 +639,14 @@ export default function PlaySheet({
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
   const isHalfling = sheet.speciesIndex === "halfling";
+
+  // Leveling / XP derived values (used by the owner-only leveling controls).
+  const xpMode = currentDraft.levelingMode === "xp";
+  const nextLevelXp = xpForNextLevel(sheet.level);
+  const hasEnoughXp = !xpMode || nextLevelXp === null || currentDraft.xp >= nextLevelXp;
+  const xpIntoLevel = currentDraft.xp - (XP_THRESHOLDS[sheet.level] ?? 0);
+  const xpForThisSpan = nextLevelXp !== null ? nextLevelXp - (XP_THRESHOLDS[sheet.level] ?? 0) : 0;
+  const xpPct = xpForThisSpan > 0 ? Math.min(100, Math.round((xpIntoLevel / xpForThisSpan) * 100)) : 100;
 
   const orderOptions = ORDER_CHOICES[sheet.classIndex] ?? null;
   const needsOrderChoice = !!orderOptions && !currentDraft.orderChoice;
@@ -1710,6 +1723,26 @@ export default function PlaySheet({
     setLevelDownPending(false);
   }
 
+  async function handleSetLevelingMode(mode: "milestone" | "xp") {
+    setLevelingPending(true);
+    const result = await setLevelingProgress(characterId, { levelingMode: mode });
+    if (result.success && result.draft) setCurrentDraft(result.draft);
+    setLevelingPending(false);
+  }
+
+  async function handleAddXp(delta: number) {
+    if (!sheet) return;
+    const next = Math.max(0, currentDraft.xp + delta);
+    setLevelingPending(true);
+    const result = await setLevelingProgress(characterId, { xp: next });
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      pushLog({ label: delta >= 0 ? "Gained XP" : "Adjusted XP", detail: `${currentDraft.xp} → ${next} XP`, total: delta });
+      setXpInput("");
+    }
+    setLevelingPending(false);
+  }
+
   async function handleChooseSubclass(subclassIndex: string) {
     setSubclassPending(true);
     setChoiceError(null);
@@ -2196,6 +2229,69 @@ export default function PlaySheet({
 
         {isOwner && (
           <div className="mt-4">
+            {/* Leveling mode toggle */}
+            <div className="mb-2 flex items-center gap-1 text-xs">
+              <span className="text-tavern-muted">Leveling:</span>
+              {(["milestone", "xp"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => handleSetLevelingMode(m)}
+                  disabled={levelingPending}
+                  className={`rounded-md border px-2 py-0.5 font-bold uppercase tracking-wide ${
+                    currentDraft.levelingMode === m
+                      ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold-light"
+                      : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                  }`}
+                >
+                  {m === "milestone" ? "Milestone" : "XP"}
+                </button>
+              ))}
+            </div>
+
+            {/* XP bar (XP mode only) */}
+            {xpMode && (
+              <div className="mb-3 rounded-md border border-tavern-border p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-heading font-bold text-tavern-gold-light">
+                    {currentDraft.xp.toLocaleString()} XP
+                  </span>
+                  <span className="text-tavern-muted">
+                    {nextLevelXp !== null
+                      ? `${nextLevelXp.toLocaleString()} to reach level ${sheet.level + 1}`
+                      : "Max level"}
+                  </span>
+                </div>
+                {nextLevelXp !== null && (
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-tavern-bg">
+                    <div className="h-full bg-tavern-gold" style={{ width: `${xpPct}%` }} />
+                  </div>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={xpInput}
+                    onChange={(e) => setXpInput(e.target.value)}
+                    placeholder="Amount"
+                    className="w-24 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1 text-sm text-tavern-text"
+                  />
+                  <button
+                    onClick={() => { const n = parseInt(xpInput, 10); if (!isNaN(n)) handleAddXp(n); }}
+                    disabled={levelingPending || !xpInput}
+                    className="rounded-md bg-tavern-oxblood px-3 py-1 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-40"
+                  >
+                    Add XP
+                  </button>
+                  <button
+                    onClick={() => { const n = parseInt(xpInput, 10); if (!isNaN(n)) handleAddXp(-n); }}
+                    disabled={levelingPending || !xpInput}
+                    className="rounded-md border border-tavern-border px-3 py-1 text-xs font-bold text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-40"
+                  >
+                    Subtract
+                  </button>
+                </div>
+              </div>
+            )}
+
             {sheet.level >= MAX_LEVEL ? (
               <p className="text-xs tracking-wide text-tavern-muted uppercase">
                 Maximum level reached
@@ -2203,9 +2299,13 @@ export default function PlaySheet({
             ) : !levelingUp ? (
               <button
                 onClick={() => setLevelingUp(true)}
-                className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+                disabled={!hasEnoughXp}
+                title={!hasEnoughXp && nextLevelXp !== null ? `Need ${(nextLevelXp - currentDraft.xp).toLocaleString()} more XP` : undefined}
+                className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Level Up to {sheet.level + 1}
+                {hasEnoughXp
+                  ? `Level Up to ${sheet.level + 1}`
+                  : `Need ${nextLevelXp !== null ? (nextLevelXp - currentDraft.xp).toLocaleString() : ""} more XP`}
               </button>
             ) : (
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-tavern-gold/40 bg-tavern-card p-3">
