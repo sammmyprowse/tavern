@@ -35,6 +35,7 @@ export async function importCharacter(fileText: string): Promise<SaveCharacterRe
       draft: c.draft as unknown as Json,
       personality: c.personality as unknown as Json,
       bio: c.bio,
+      notes: c.notes,
       inventory: c.inventory as unknown as Json,
       currency: c.currency as unknown as Json,
       magic_items: c.magicItems as unknown as Json,

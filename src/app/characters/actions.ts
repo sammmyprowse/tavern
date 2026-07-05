@@ -126,6 +126,32 @@ export async function setCharacterBio(characterId: string, bio: string): Promise
   return { success: true };
 }
 
+// Free-form campaign notes (a running journal). Same shape as setCharacterBio,
+// with a larger cap since a campaign log grows over many sessions.
+export async function setCharacterNotes(characterId: string, notes: string): Promise<SetBioResult> {
+  if (notes.length > 20000) {
+    return { success: false, error: "Notes are too long (max 20000 characters)." };
+  }
+
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase
+    .from("characters")
+    .update({ notes })
+    .eq("id", characterId)
+    .eq("user_id", userData.user.id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true };
+}
+
 export interface SetPersonalityResult {
   success: boolean;
   error?: string;

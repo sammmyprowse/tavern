@@ -12,6 +12,7 @@ import {
   getFeaturesForClass,
   getSubclassesForClass,
   getGeneralFeatsList,
+  getEpicBoonFeats,
   getFightingStyleFeats,
   getWeaponMasteryProperties,
   getSpellsForClass,
@@ -51,6 +52,7 @@ export default async function CharacterPlaySheet({
     languages,
     magicItemLookup,
     generalFeats,
+    epicBoonFeats,
     fightingStyleFeats,
     masteryProperties,
     traitDescriptions,
@@ -59,7 +61,7 @@ export default async function CharacterPlaySheet({
     supabase
       .from("characters")
       .select(
-        "id, user_id, name, draft, is_public, avatar_url, bio, personality, inventory, currency, magic_items",
+        "id, user_id, name, draft, is_public, avatar_url, bio, notes, personality, inventory, currency, magic_items",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -72,6 +74,7 @@ export default async function CharacterPlaySheet({
     getLanguagesList(),
     getMagicItemLookup(),
     getGeneralFeatsList(),
+    getEpicBoonFeats(),
     getFightingStyleFeats(),
     getWeaponMasteryProperties(),
     getTraitDescriptions(),
@@ -180,6 +183,7 @@ export default async function CharacterPlaySheet({
       features={features}
       subclassOptions={subclassOptions}
       generalFeats={generalFeats}
+      epicBoonFeats={epicBoonFeats}
       fightingStyleFeats={fightingStyleFeats}
       masteryProperties={masteryProperties}
       traitDescriptions={traitDescriptions}
@@ -190,6 +194,7 @@ export default async function CharacterPlaySheet({
       isPublic={character.is_public}
       avatarUrl={character.avatar_url}
       bio={character.bio}
+      notes={character.notes}
       personality={character.personality as unknown as PersonalityAnswers | null}
       inventory={(character.inventory as unknown as InventoryItem[] | null) ?? []}
       currency={character.currency as unknown as Currency | null}

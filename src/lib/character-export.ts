@@ -17,6 +17,7 @@ export interface CharacterExport {
   name: string;
   draft: CharacterDraft;
   bio: string | null;
+  notes: string | null;
   personality: PersonalityAnswers | null;
   inventory: InventoryItem[];
   currency: Currency | null;
@@ -27,6 +28,7 @@ export function buildCharacterExport(input: {
   name: string;
   draft: CharacterDraft;
   bio: string | null;
+  notes: string | null;
   personality: PersonalityAnswers | null;
   inventory: InventoryItem[];
   currency: Currency | null;
@@ -66,6 +68,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
       name,
       draft: { ...draft, name },
       bio: typeof obj.bio === "string" ? obj.bio : null,
+      notes: typeof obj.notes === "string" ? obj.notes : null,
       personality: (obj.personality as PersonalityAnswers | null) ?? null,
       inventory: Array.isArray(obj.inventory) ? (obj.inventory as InventoryItem[]) : [],
       currency: (obj.currency as Currency | null) ?? null,

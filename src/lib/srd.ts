@@ -734,6 +734,31 @@ export async function getGeneralFeatsList(): Promise<FeatOption[]> {
     });
 }
 
+// Epic Boon feats (type='epic-boon') — real SRD content, taken at level 19 in
+// place of that level's Ability Score Improvement. Shown alongside general
+// feats in the feat picker only at level 19. Full descriptions ship in the
+// data (each boon's mechanical effect + its "score to 30" clause for one
+// ability), surfaced the same informational way as every other non-ASI feat.
+export async function getEpicBoonFeats(): Promise<FeatOption[]> {
+  const { data } = await supabase
+    .from("feats")
+    .select("index, name, ruleset, data")
+    .eq("type", "epic-boon")
+    .in("ruleset", ["2024", "homebrew"]);
+
+  return (data ?? [])
+    .map((f) => {
+      const d = f.data as { description?: string };
+      return {
+        index: f.index,
+        name: f.name,
+        description: d.description ?? null,
+        isHomebrew: f.ruleset === "homebrew",
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Fighting Style feats (Archery/Defense/Great Weapon Fighting/Two-Weapon
 // Fighting) are a real, separate feat category in the SRD data
 // (type='fighting-style', distinct from the homebrew general-feat pool

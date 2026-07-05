@@ -9,6 +9,7 @@ import {
   clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
+  attacksPerAction,
   favoredEnemyMax,
   featHpBonus,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
@@ -190,6 +191,9 @@ export interface CharacterSheet {
   // Fiend Patron, Draconic Sorcery). name = display name, index = 2014 spell
   // slug for detail lookup, unlockLevel = the class level it's granted at.
   subclassPreparedSpells: { name: string; index: string; unlockLevel: number }[];
+  // Attacks made with one Attack action (Extra Attack). 1 for most; up to 4
+  // for a level-20 Fighter. Shown as a reminder on the Attacks card.
+  attacksPerAction: number;
 }
 
 export function buildCharacterSheet(
@@ -454,6 +458,7 @@ export function buildCharacterSheet(
     subclassPreparedSpells: (SUBCLASS_PREPARED_SPELLS[draft.subclassIndex ?? ""] ?? [])
       .filter((m) => draft.level >= m.level)
       .flatMap((m) => m.spells.map((s) => ({ ...s, unlockLevel: m.level }))),
+    attacksPerAction: attacksPerAction(cls.index, draft.level),
   };
 }
 

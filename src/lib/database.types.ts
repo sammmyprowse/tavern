@@ -98,6 +98,7 @@ export type Database = {
           is_public: boolean
           magic_items: Json | null
           name: string
+          notes: string | null
           personality: Json | null
           updated_at: string
           user_id: string
@@ -113,6 +114,7 @@ export type Database = {
           is_public?: boolean
           magic_items?: Json | null
           name: string
+          notes?: string | null
           personality?: Json | null
           updated_at?: string
           user_id: string
@@ -128,6 +130,7 @@ export type Database = {
           is_public?: boolean
           magic_items?: Json | null
           name?: string
+          notes?: string | null
           personality?: Json | null
           updated_at?: string
           user_id?: string

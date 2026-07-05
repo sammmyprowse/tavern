@@ -78,6 +78,7 @@ import DiceLog from "./DiceLog";
 import ShareControl from "./ShareControl";
 import CharacterAvatar from "./CharacterAvatar";
 import CharacterBio from "./CharacterBio";
+import CharacterNotes from "./CharacterNotes";
 import CharacterPersonality from "./CharacterPersonality";
 import DeleteCharacterButton from "./DeleteCharacterButton";
 import SectionNav from "./SectionNav";
@@ -97,6 +98,7 @@ interface PlaySheetProps {
   features: ClassFeature[];
   subclassOptions: SubclassOption[];
   generalFeats: FeatOption[];
+  epicBoonFeats: FeatOption[];
   fightingStyleFeats: FeatOption[];
   masteryProperties: MasteryPropertyInfo[];
   traitDescriptions: Record<string, string>;
@@ -107,6 +109,7 @@ interface PlaySheetProps {
   isPublic: boolean;
   avatarUrl: string | null;
   bio: string | null;
+  notes: string | null;
   personality: PersonalityAnswers | null;
   inventory: InventoryItem[];
   currency: Currency | null;
@@ -263,6 +266,7 @@ export default function PlaySheet({
   features,
   subclassOptions,
   generalFeats,
+  epicBoonFeats,
   fightingStyleFeats,
   masteryProperties,
   traitDescriptions,
@@ -273,6 +277,7 @@ export default function PlaySheet({
   isPublic,
   avatarUrl,
   bio,
+  notes,
   personality,
   inventory: initialInventory,
   currency: initialCurrency,
@@ -678,7 +683,11 @@ export default function PlaySheet({
   );
   const takenFeatIndexes = new Set(currentDraft.featChoices.map((fc) => fc.featIndex));
   const featFeatures: ClassFeature[] = currentDraft.featChoices.map((fc) => {
-    const opt = generalFeats.find((f) => f.index === fc.featIndex);
+    // Epic boons live in a separate list from general feats — check both so a
+    // chosen boon shows its real name + full description, not a raw slug.
+    const opt =
+      generalFeats.find((f) => f.index === fc.featIndex) ??
+      epicBoonFeats.find((f) => f.index === fc.featIndex);
     return {
       index: `feat-${fc.featIndex}-${fc.level}`,
       name: opt?.name ?? fc.featIndex,
@@ -2162,6 +2171,7 @@ export default function PlaySheet({
                           name: currentDraft.name,
                           draft: currentDraft,
                           bio,
+                          notes,
                           personality,
                           inventory,
                           currency,
@@ -2209,6 +2219,7 @@ export default function PlaySheet({
             ...(weapons.length > 0 || sheet.classIndex === "paladin" ? [{ id: "attacks", label: "Attacks" }] : []),
             { id: "equipment", label: "Equipment" },
             ...(personality || isOwner ? [{ id: "personality", label: "Personality" }] : []),
+            { id: "notes", label: "Notes" },
           ]}
         />
 
@@ -2533,8 +2544,14 @@ export default function PlaySheet({
                   <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
                     Choose a Feat — Level {lvl}
                   </p>
+                  {lvl >= 19 && (
+                    <p className="mt-1 text-xs text-tavern-muted">
+                      At level 19 you may take an Epic Boon (listed at the end) instead of an
+                      ordinary feat or Ability Score Improvement.
+                    </p>
+                  )}
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {generalFeats
+                    {[...generalFeats, ...(lvl >= 19 ? epicBoonFeats : [])]
                       .filter(
                         (f) => f.index === "ability-score-improvement" || !takenFeatIndexes.has(f.index),
                       )
@@ -5125,6 +5142,18 @@ export default function PlaySheet({
               <span className="text-xs text-tavern-muted">{collapsedSections.has("attacks") ? "▸" : "▾"}</span>
             </button>
             {!collapsedSections.has("attacks") && (<>
+            {sheet.attacksPerAction > 1 && (
+              <div className="mt-3 rounded-md border border-tavern-gold/40 bg-tavern-gold/5 p-3">
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Extra Attack
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  When you take the Attack action, you make {sheet.attacksPerAction} attacks instead
+                  of one — tap Attack that many times. (Two-Weapon Fighting, Sneak Attack, and
+                  bonus-action attacks are separate from this.)
+                </div>
+              </div>
+            )}
             {sheet.sneakAttackDice && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
                 <div>
@@ -5610,6 +5639,8 @@ export default function PlaySheet({
           isOwner={isOwner}
           sheet={sheet}
         />
+
+        <CharacterNotes characterId={characterId} initialNotes={notes} isOwner={isOwner} />
 
         <p className="mt-6 text-xs text-tavern-muted">
           This is an early version of the play sheet — custom items, per-class resources

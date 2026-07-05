@@ -450,6 +450,18 @@ export function maxHp(hitDie: number, conMod: number, hpRolls: number[]): number
   return level1Hp + restHp;
 }
 
+// Number of attacks made with the Attack action, from the Extra Attack line
+// of features. Fighter scales to 4 (levels 5/11/20); Barbarian/Monk/Paladin/
+// Ranger get one Extra Attack at level 5 (2 total). Everyone else makes 1.
+// Confirmed from the features table's Extra Attack / Two/Three Extra Attacks
+// rows. This is shown as a reminder on the Attacks card — the sheet doesn't
+// model turn-by-turn action economy, so the player clicks Attack that many times.
+export function attacksPerAction(classIndex: string, level: number): number {
+  if (classIndex === "fighter") return level >= 20 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1;
+  if (["barbarian", "monk", "paladin", "ranger"].includes(classIndex)) return level >= 5 ? 2 : 1;
+  return 1;
+}
+
 // Bonus HP from HP-granting feats, summed across every relevant feat choice.
 // Tough (homebrew): "+2 for each character level you have attained" → 2 ×
 // current level, regardless of when taken. Hardened (homebrew): "+2, and
