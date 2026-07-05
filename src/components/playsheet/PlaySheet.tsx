@@ -28,6 +28,7 @@ import {
   type ResolvedWeapon,
 } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
+import { CONDITIONS, EXHAUSTION_MAX, exhaustionD20Penalty, exhaustionSpeedPenalty } from "@/lib/conditions";
 import {
   levelUpCharacter,
   levelDownCharacter,
@@ -210,6 +211,15 @@ interface PlayState {
   // Human Resourceful grants Heroic Inspiration on each Long Rest; also a
   // generic DM-grantable flag any character can toggle. Shown as a stat chip.
   heroicInspiration: boolean;
+  // Exhaustion level (0-6). Each level is a -2 penalty on every d20 test and
+  // -5 ft Speed; auto-applied to rolls and displaySpeed. A Long Rest reduces
+  // it by 1.
+  exhaustionLevel: number;
+  // Active conditions (indexes into CONDITIONS) — tracked/shown, not auto-
+  // simulated. Concentration is a free-text reminder of the spell you're
+  // concentrating on ("" = none).
+  conditions: string[];
+  concentratingOn: string;
   // Relentless Endurance (Orc): "drop to 1 Hit Point instead" the first
   // time you'd be reduced to 0 each Long Rest — checked automatically by
   // applyDamage below, not a button the player clicks.
@@ -425,6 +435,9 @@ export default function PlaySheet({
     expendedInnateSorcery: 0,
     usedArcaneRecovery: false,
     heroicInspiration: false,
+    exhaustionLevel: 0,
+    conditions: [],
+    concentratingOn: "",
     usedRelentlessEndurance: false,
     usedLineageSpell3: false,
     usedLineageSpell5: false,
@@ -588,10 +601,13 @@ export default function PlaySheet({
     if (!item.index || !equippedSet.has(item.index)) return false;
     return Boolean(equipmentByIndex.get(item.index)?.armorClass);
   });
-  const displaySpeed =
+  const baseSpeed =
     sheet.classIndex === "monk" && sheet.speed != null && !wearingArmorOrShield
       ? sheet.speed + sheet.unarmoredMovementBonus
       : sheet.speed;
+  // Exhaustion cuts Speed by 5 ft per level (floored at 0).
+  const displaySpeed =
+    baseSpeed != null ? Math.max(0, baseSpeed - exhaustionSpeedPenalty(play.exhaustionLevel)) : baseSpeed;
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
   const isDying = play.currentHp <= 0;
@@ -778,7 +794,7 @@ export default function PlaySheet({
     .filter((e): e is EquipmentLookupItem => Boolean(e));
 
   const collapsibleSectionIds = [
-    "hp", "skills",
+    "hp", "status", "skills",
     ...(sheet.fightingStyleKnownMax > 0 ? ["fighting-style"] : []),
     ...(weaponMasteryMax > 0 ? ["weapon-mastery"] : []),
     ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip ? ["spells"] : []),
@@ -803,11 +819,20 @@ export default function PlaySheet({
       : `d20 ${mod}`;
   }
 
+  // Exhaustion imposes a cumulative -2 on every d20 Test (checks, saves,
+  // attacks, spell attacks). Subtracted from the modifier before rolling so
+  // the logged total already reflects it; a note is appended when it applies.
+  const exhaustionPenalty = exhaustionD20Penalty(play.exhaustionLevel);
+  function withExhaustion(detail: string): string {
+    return exhaustionPenalty > 0 ? `${detail} (Exhaustion −${exhaustionPenalty})` : detail;
+  }
+
   function rollCheck(label: string, modifier: number) {
-    const result = rollD20(modifier, play.rollMode, isHalfling);
+    const mod = modifier - exhaustionPenalty;
+    const result = rollD20(mod, play.rollMode, isHalfling);
     pushLog({
       label,
-      detail: d20Detail(result, modifier),
+      detail: withExhaustion(d20Detail(result, mod)),
       total: result.total,
       isNat20: result.isNat20,
       isNat1: result.isNat1,
@@ -815,10 +840,11 @@ export default function PlaySheet({
   }
 
   function rollAttack(weapon: ReturnType<typeof resolveWeapons>[number]) {
-    const result = rollD20(weapon.attackBonus, play.rollMode, isHalfling);
+    const mod = weapon.attackBonus - exhaustionPenalty;
+    const result = rollD20(mod, play.rollMode, isHalfling);
     pushLog({
       label: `${weapon.name} Attack`,
-      detail: d20Detail(result, weapon.attackBonus),
+      detail: withExhaustion(d20Detail(result, mod)),
       total: result.total,
       isNat20: result.isNat20,
       isNat1: result.isNat1,
@@ -871,10 +897,11 @@ export default function PlaySheet({
   }
 
   function rollSpellAttack(spellName: string, attackBonus: number) {
-    const result = rollD20(attackBonus, play.rollMode, isHalfling);
+    const mod = attackBonus - exhaustionPenalty;
+    const result = rollD20(mod, play.rollMode, isHalfling);
     pushLog({
       label: `${spellName} Spell Attack`,
-      detail: d20Detail(result, attackBonus),
+      detail: withExhaustion(d20Detail(result, mod)),
       total: result.total,
       isNat20: result.isNat20,
       isNat1: result.isNat1,
@@ -1097,6 +1124,8 @@ export default function PlaySheet({
       // everyone else (a DM-granted Inspiration shouldn't be wiped by a rest).
       heroicInspiration:
         sheet?.speciesIndex === "human" ? true : prev.heroicInspiration,
+      // A Long Rest reduces Exhaustion by 1 (2024 rules).
+      exhaustionLevel: Math.max(0, prev.exhaustionLevel - 1),
       usedRelentlessEndurance: false,
       usedLineageSpell3: false,
       usedLineageSpell5: false,
@@ -2079,6 +2108,7 @@ export default function PlaySheet({
           sections={[
             { id: "stats", label: "Stats" },
             { id: "hp", label: "HP & Resources" },
+            { id: "status", label: "Status" },
             { id: "abilities", label: "Abilities" },
             { id: "skills", label: "Skills" },
             ...(sheet.fightingStyleKnownMax > 0
@@ -3365,6 +3395,113 @@ export default function PlaySheet({
           )}
             </>
           )}
+        </div>
+
+        {/* Conditions & Status */}
+        <div id="status" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
+          <button onClick={() => toggleSection("status")} className="flex w-full items-center justify-between">
+            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+              Conditions &amp; Status
+            </h2>
+            <span className="text-xs text-tavern-muted">{collapsedSections.has("status") ? "▸" : "▾"}</span>
+          </button>
+          {!collapsedSections.has("status") && (<>
+            {/* Exhaustion */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
+              <div>
+                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Exhaustion
+                </div>
+                <div className="text-xs text-tavern-muted">
+                  {play.exhaustionLevel === 0
+                    ? "No exhaustion. Each level is −2 to all d20 tests and −5 ft Speed; a Long Rest removes one level."
+                    : play.exhaustionLevel >= EXHAUSTION_MAX
+                      ? "Level 6 — the character dies."
+                      : `−${exhaustionD20Penalty(play.exhaustionLevel)} to all d20 tests (checks, saves, attacks) and −${exhaustionSpeedPenalty(play.exhaustionLevel)} ft Speed — applied automatically.`}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
+                <button
+                  onClick={() => setPlay((p) => ({ ...p, exhaustionLevel: Math.max(0, p.exhaustionLevel - 1) }))}
+                  disabled={play.exhaustionLevel <= 0}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  −
+                </button>
+                <span className={`font-heading font-bold ${play.exhaustionLevel > 0 ? "text-tavern-oxblood-light" : "text-tavern-text"}`}>
+                  {play.exhaustionLevel}/{EXHAUSTION_MAX}
+                </span>
+                <button
+                  onClick={() => setPlay((p) => ({ ...p, exhaustionLevel: Math.min(EXHAUSTION_MAX, p.exhaustionLevel + 1) }))}
+                  disabled={play.exhaustionLevel >= EXHAUSTION_MAX}
+                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Concentration */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-tavern-border p-3">
+              <span className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                Concentrating on
+              </span>
+              <input
+                type="text"
+                value={play.concentratingOn}
+                onChange={(e) => setPlay((p) => ({ ...p, concentratingOn: e.target.value }))}
+                placeholder="e.g. Hex, Bless — reminder only"
+                className="min-w-[8rem] flex-1 rounded-md border border-tavern-border bg-tavern-bg px-2 py-1 text-sm text-tavern-text placeholder:text-tavern-muted/60"
+              />
+              {play.concentratingOn && (
+                <button
+                  onClick={() => setPlay((p) => ({ ...p, concentratingOn: "" }))}
+                  className="rounded-md border border-tavern-border px-2 py-1 text-xs text-tavern-muted hover:border-tavern-gold-light"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Conditions */}
+            <div className="mt-3">
+              <div className="flex flex-wrap gap-1.5">
+                {CONDITIONS.map((c) => {
+                  const active = play.conditions.includes(c.index);
+                  return (
+                    <button
+                      key={c.index}
+                      onClick={() =>
+                        setPlay((p) => ({
+                          ...p,
+                          conditions: active
+                            ? p.conditions.filter((x) => x !== c.index)
+                            : [...p.conditions, c.index],
+                        }))
+                      }
+                      className={`rounded-full border px-3 py-1 text-xs font-bold ${
+                        active
+                          ? "border-tavern-oxblood bg-tavern-oxblood/20 text-tavern-oxblood-light"
+                          : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {play.conditions.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {CONDITIONS.filter((c) => play.conditions.includes(c.index)).map((c) => (
+                    <div key={c.index} className="rounded-md border border-tavern-border p-2.5 text-xs">
+                      <span className="font-bold text-tavern-oxblood-light">{c.name}:</span>{" "}
+                      <span className="text-tavern-muted">{c.effect}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>)}
         </div>
 
         {/* Ability scores + saves */}
