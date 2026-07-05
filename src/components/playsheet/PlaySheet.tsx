@@ -29,6 +29,7 @@ import {
 } from "@/lib/character-sheet";
 import { rollD20, rollDice, rollFlatDie, doubleDiceNotation, type RollMode, type DiceLogEntry } from "@/lib/dice";
 import { CONDITIONS, EXHAUSTION_MAX, exhaustionD20Penalty, exhaustionSpeedPenalty } from "@/lib/conditions";
+import { buildCharacterExport, downloadCharacterExport } from "@/lib/character-export";
 import {
   levelUpCharacter,
   levelDownCharacter,
@@ -2121,6 +2122,25 @@ export default function PlaySheet({
               {isOwner && (
                 <div className="flex flex-col items-end gap-2">
                   <ShareControl characterId={characterId} initialIsPublic={isPublic} />
+                  <button
+                    onClick={() =>
+                      downloadCharacterExport(
+                        buildCharacterExport({
+                          name: currentDraft.name,
+                          draft: currentDraft,
+                          bio,
+                          personality,
+                          inventory,
+                          currency,
+                          magicItems,
+                        }),
+                      )
+                    }
+                    className="text-xs text-tavern-muted hover:text-tavern-gold-light"
+                    title="Download this character as a .json file you can back up or import elsewhere"
+                  >
+                    Export JSON
+                  </button>
                   <DeleteCharacterButton
                     characterId={characterId}
                     characterName={sheet.name || "Unnamed"}
