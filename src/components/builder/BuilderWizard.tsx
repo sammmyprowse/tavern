@@ -11,6 +11,7 @@ import LanguagesStep from "./steps/LanguagesStep";
 import PersonalityStep from "./steps/PersonalityStep";
 import ReviewStep from "./steps/ReviewStep";
 import { EMPTY_DRAFT, WEAPON_MASTERY_KNOWN_BY_CLASS, type CharacterDraft, type DraftUpdate } from "@/lib/character";
+import { buildQuickDraft } from "@/lib/quick-build";
 import type { PersonalityAnswers } from "@/lib/personality";
 import type {
   SpeciesOption,
@@ -61,6 +62,27 @@ export default function BuilderWizard({
   // the whole wizard behind a choice instead of silently resuming (or
   // silently overwriting) whatever they were partway through last time.
   const [hasUnresolvedDraft, setHasUnresolvedDraft] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [qbSpecies, setQbSpecies] = useState("");
+  const [qbClass, setQbClass] = useState("");
+  const [qbName, setQbName] = useState("");
+
+  const quickRefs = { species, subspecies, classes, backgrounds, languages, equipment };
+
+  // Quick Build: fill a complete draft from an optional species/class/name and
+  // jump straight to Review to tweak or save. Surprise Me randomizes everything.
+  function runQuickBuild(random: boolean) {
+    setDraft(
+      buildQuickDraft(quickRefs, {
+        random,
+        speciesIndex: random ? undefined : qbSpecies || undefined,
+        classIndex: random ? undefined : qbClass || undefined,
+        name: random ? undefined : qbName || undefined,
+      }),
+    );
+    setQuickOpen(false);
+    setStep("review");
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -195,6 +217,89 @@ export default function BuilderWizard({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
+      {/* Quick Build / Surprise Me — only offered at the very start. */}
+      {step === "species" && (
+        <div className="mb-4 rounded-xl border border-tavern-gold/40 bg-tavern-card p-4">
+          {!quickOpen ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-tavern-muted">
+                In a hurry? Let the tavern build one for you.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setQuickOpen(true)}
+                  className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+                >
+                  ⚡ Quick Build
+                </button>
+                <button
+                  onClick={() => runQuickBuild(true)}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-muted uppercase hover:border-tavern-gold-light hover:text-tavern-gold-light"
+                >
+                  🎲 Surprise Me
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm font-bold text-tavern-gold-light">Quick Build</p>
+              <p className="mt-0.5 text-xs text-tavern-muted">
+                Pick what you care about — anything you leave blank is chosen for you (recommended
+                skills, ability scores, background, and more). You&apos;ll land on Review to tweak.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <select
+                  value={qbSpecies}
+                  onChange={(e) => setQbSpecies(e.target.value)}
+                  className="rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-sm text-tavern-text"
+                >
+                  <option value="">Random species</option>
+                  {species.map((s) => (
+                    <option key={s.index} value={s.index}>
+                      {s.name}
+                      {s.isHomebrew ? " (Homebrew)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={qbClass}
+                  onChange={(e) => setQbClass(e.target.value)}
+                  className="rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-sm text-tavern-text"
+                >
+                  <option value="">Random class</option>
+                  {classes.map((c) => (
+                    <option key={c.index} value={c.index}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={qbName}
+                  onChange={(e) => setQbName(e.target.value)}
+                  placeholder="Name (optional)"
+                  className="rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-sm text-tavern-text placeholder:text-tavern-muted"
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => runQuickBuild(false)}
+                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
+                >
+                  Build It
+                </button>
+                <button
+                  onClick={() => setQuickOpen(false)}
+                  className="text-xs text-tavern-muted hover:text-tavern-gold-light"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <ProgressSteps current={step} steps={relevantSteps} />
 
       <div className="rounded-xl border border-tavern-border bg-tavern-card p-6 sm:p-8">
