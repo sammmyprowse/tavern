@@ -35,6 +35,12 @@ export default async function Header() {
           >
             Parties
           </Link>
+          <Link
+            href="/homebrew"
+            className="font-heading text-xs tracking-widest text-tavern-muted uppercase hover:text-tavern-gold-light"
+          >
+            Homebrew
+          </Link>
           <form action={signOut}>
             <button
               type="submit"

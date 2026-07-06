@@ -30,6 +30,7 @@ import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
+import { getUserFeats } from "@/app/homebrew/actions";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
 export default async function CharacterPlaySheet({
@@ -101,6 +102,11 @@ export default async function CharacterPlaySheet({
   }
 
   const isOwner = userData.user?.id === character.user_id;
+  // The owner's custom homebrew feats are offered alongside the built-in feats
+  // in the picker (and resolve their name/description in the Features list).
+  // Only the owner sees their own homebrew, so this is skipped for viewers.
+  const userFeats = isOwner ? await getUserFeats() : [];
+  const allGeneralFeats = [...generalFeats, ...userFeats];
   // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
   // hydration already is — a character saved before some later CharacterDraft
   // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
@@ -182,7 +188,7 @@ export default async function CharacterPlaySheet({
       magicItemLookup={Array.from(magicItemLookup.values())}
       features={features}
       subclassOptions={subclassOptions}
-      generalFeats={generalFeats}
+      generalFeats={allGeneralFeats}
       epicBoonFeats={epicBoonFeats}
       fightingStyleFeats={fightingStyleFeats}
       masteryProperties={masteryProperties}
