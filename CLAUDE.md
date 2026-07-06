@@ -3179,3 +3179,35 @@ magic items today, but not their own species/class/subclass/feat/spell). Both
 were scoped but not started — each is a multi-pass effort that changes core
 data shapes, and (per this project's habit of asking before large content/
 architecture decisions) warrants confirming direction first.
+
+## User homebrew content builder (first increment: custom feats)
+The start of letting users create their OWN homebrew (distinct from the
+dev-authored homebrew species/backgrounds/subclasses/feats baked into the SRD
+tables). Infrastructure is built to extend to more content types.
+
+**Storage:** new `user_content` table — `(id, user_id → auth.users, kind, name,
+data jsonb, created_at, updated_at)` with RLS (owner-only, `auth.uid() =
+user_id` for ALL). `kind` discriminates content types ('feat' first). Migration
+`create_user_content`; types regenerated. Extends to species/subclass/spell/etc
+via new `kind` values without a schema change.
+
+**Custom feats** (`/homebrew`, `HomebrewManager.tsx`, `app/homebrew/actions.ts`):
+signed-in users create/edit/delete feats (name + full description). Each is
+surfaced in the feat picker on that user's OWN characters (page.tsx merges
+`getUserFeats()` into `generalFeats`, gated on `isOwner`), tagged Homebrew like
+the built-in homebrew feats, and resolves its name+description in the Features
+list via the existing generalFeats lookup. A chosen custom feat is recorded as
+`user-feat:{id}` (`USER_FEAT_PREFIX`) so it never collides with a real SRD slug.
+"Homebrew" link in the header for signed-in users.
+
+**"use server" gotcha:** a `"use server"` file may only export async functions —
+the shared `USER_FEAT_PREFIX` const and `UserContentResult` type had to move to
+`src/lib/user-content.ts` (tsc doesn't catch this; only the Next/SWC build
+does, and the dev server caches the failed parse — a restart was needed to
+clear it, same stale-cache pattern noted elsewhere in this file).
+
+**Not yet built (natural next increments, each its own form + picker/sheet
+integration):** custom species (traits/ASI/speed → species picker + sheet),
+subclasses (features array → subclass picker), spells (full spell shape →
+compendium + spell pickers), backgrounds, classes. All auth-gated, so the
+create flow can't be exercised in an unauthenticated preview.
