@@ -31,7 +31,7 @@ import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
-import { getUserFeats } from "@/app/homebrew/actions";
+import { getUserFeats, getUserSubclasses } from "@/app/homebrew/actions";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
 export default async function CharacterPlaySheet({
@@ -108,6 +108,9 @@ export default async function CharacterPlaySheet({
   // Only the owner sees their own homebrew, so this is skipped for viewers.
   const userFeats = isOwner ? await getUserFeats() : [];
   const allGeneralFeats = [...generalFeats, ...userFeats];
+  // The owner's custom subclasses are offered in the play-sheet subclass picker
+  // for the matching class (tagged Homebrew like the dev-authored ones).
+  const userSubclasses = isOwner ? await getUserSubclasses() : [];
   // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
   // hydration already is — a character saved before some later CharacterDraft
   // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
@@ -151,9 +154,16 @@ export default async function CharacterPlaySheet({
   );
   // Flat union of every class's subclass options (for name lookups + the
   // base-feature dedup) plus a per-class map (for the per-class subclass picker).
-  const subclassOptions = perClass.flatMap((p) => p.subclassOptions);
+  // Merge the owner's custom subclasses into each class's option list.
+  const subclassesForClass = (classIndex: string, base: typeof perClass[number]["subclassOptions"]) => [
+    ...base,
+    ...userSubclasses
+      .filter((us) => us.classIndex === classIndex)
+      .map(({ classIndex: _c, ...option }) => option),
+  ];
+  const subclassOptions = perClass.flatMap((p) => subclassesForClass(p.classIndex, p.subclassOptions));
   const subclassOptionsByClass = Object.fromEntries(
-    perClass.map((p) => [p.classIndex, p.subclassOptions]),
+    perClass.map((p) => [p.classIndex, subclassesForClass(p.classIndex, p.subclassOptions)]),
   );
   const classSpellsByClass = Object.fromEntries(perClass.map((p) => [p.classIndex, p.classSpells]));
   const classSpells = perClass[0]?.classSpells ?? [];

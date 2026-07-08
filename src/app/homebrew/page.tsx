@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 import HomebrewManager, { type HomebrewFeat } from "@/components/homebrew/HomebrewManager";
+import SubclassManager, { type HomebrewSubclass } from "@/components/homebrew/SubclassManager";
+import type { UserSubclassFeature } from "@/lib/user-content";
 
 export const metadata = { title: "Homebrew — Tavern" };
 
@@ -27,23 +29,44 @@ export default async function HomebrewPage() {
 
   const { data } = await supabase
     .from("user_content")
-    .select("id, name, data")
+    .select("id, name, kind, data")
     .eq("user_id", userData.user.id)
-    .eq("kind", "feat")
+    .in("kind", ["feat", "subclass"])
     .order("name");
 
-  const feats: HomebrewFeat[] = (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: (row.data as { description?: string }).description ?? "",
-  }));
+  const rows = data ?? [];
+  const feats: HomebrewFeat[] = rows
+    .filter((r) => r.kind === "feat")
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: (row.data as { description?: string }).description ?? "",
+    }));
+  const subclasses: HomebrewSubclass[] = rows
+    .filter((r) => r.kind === "subclass")
+    .map((row) => {
+      const d = row.data as {
+        classIndex?: string;
+        summary?: string;
+        description?: string;
+        features?: UserSubclassFeature[];
+      };
+      return {
+        id: row.id,
+        name: row.name,
+        classIndex: d.classIndex ?? "",
+        summary: d.summary ?? "",
+        description: d.description ?? "",
+        features: d.features ?? [],
+      };
+    });
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <h1 className="font-heading text-3xl font-bold tracking-wide text-tavern-gold">Homebrew</h1>
       <p className="mt-1 text-tavern-muted">
-        Create your own content. Custom <span className="text-tavern-gold-light">feats</span> are
-        available now — more content types are coming.
+        Create your own content. It appears — tagged homebrew — in the relevant picker on your own
+        characters. More content types are coming.
       </p>
 
       <div className="mt-6">
@@ -52,6 +75,15 @@ export default async function HomebrewPage() {
         </h2>
         <div className="mt-2">
           <HomebrewManager feats={feats} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Subclasses
+        </h2>
+        <div className="mt-2">
+          <SubclassManager subclasses={subclasses} />
         </div>
       </div>
     </div>
