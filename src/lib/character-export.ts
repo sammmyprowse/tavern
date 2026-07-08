@@ -1,4 +1,4 @@
-import { EMPTY_DRAFT, type CharacterDraft } from "./character";
+import { normalizeDraft, type CharacterDraft } from "./character";
 import type { PersonalityAnswers } from "./personality";
 import type { InventoryItem } from "./inventory";
 import type { Currency } from "./currency";
@@ -54,10 +54,10 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   if (obj.tavern !== "character" || typeof obj.draft !== "object" || obj.draft === null) {
     return { ok: false, error: "That file isn't a Tavern character export." };
   }
-  // Merge the draft against EMPTY_DRAFT so a file from an older app version
-  // (missing newer fields) still imports cleanly — same defensive merge the
-  // play sheet and builder already do for stored drafts.
-  const draft = { ...EMPTY_DRAFT, ...(obj.draft as Partial<CharacterDraft>) } as CharacterDraft;
+  // normalizeDraft merges against EMPTY_DRAFT (so a file from an older app
+  // version still imports) AND backfills the multiclass fields — same handling
+  // the play sheet and actions apply to stored drafts.
+  const draft = normalizeDraft((obj.draft ?? {}) as Partial<CharacterDraft>);
   const name =
     typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : draft.name?.trim() || "Imported Character";
   return {

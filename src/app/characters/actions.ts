@@ -7,11 +7,17 @@ import {
   ORDER_CHOICES,
   GIANT_ANCESTRY_OPTIONS,
   ASI_LEVELS,
+  ABILITY_ORDER,
   EXPERTISE_SCHEDULE,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
   CANTRIPS_KNOWN_BY_CLASS,
-  EMPTY_DRAFT,
   metamagicKnownMax,
+  normalizeDraft,
+  classLevelOf,
+  appendClassLevel,
+  meetsMulticlassPrereq,
+  finalAbilityScores,
+  type AbilityKey,
   type AbilityBonusChoice,
   type CharacterDraft,
 } from "@/lib/character";
@@ -46,14 +52,29 @@ async function loadOwnedDraft(characterId: string) {
     ok: true as const,
     supabase,
     userId: userData.user.id,
-    // Merged against EMPTY_DRAFT — a character saved before some later
-    // CharacterDraft field existed has a raw DB row simply missing that
-    // key. Without this, e.g. levelDownCharacter's
-    // `draft.weaponMasteryChoices.slice(...)` throws for any character
-    // saved before that field shipped, the same crash this fixes on the
-    // play sheet's own loader in src/app/characters/[id]/page.tsx.
-    draft: { ...EMPTY_DRAFT, ...(character.draft as unknown as CharacterDraft) },
+    // normalizeDraft merges against EMPTY_DRAFT (so a row saved before a later
+    // CharacterDraft field existed doesn't crash on a missing key) AND backfills
+    // the multiclass fields (levelClasses, per-class buckets, feat attribution)
+    // for legacy single-class rows. Same trap documented in CLAUDE.md, now
+    // handled in one place for every action that mutates a draft.
+    draft: normalizeDraft(character.draft as unknown as CharacterDraft),
   };
+}
+
+// Final ability scores derived from the draft alone (base + background bonus +
+// every ASI pick), no SRD refs needed — enough to check multiclass ability
+// prerequisites server-side. Mirrors buildCharacterSheet's own computation.
+function finalScoresFromDraft(draft: CharacterDraft): Record<AbilityKey, number> {
+  const asiBonuses = draft.featChoices
+    .filter((fc) => fc.featIndex === "ability-score-improvement")
+    .map((fc) => fc.abilityBonus);
+  const raw = finalAbilityScores(draft.baseAbilityScores, [
+    draft.backgroundAbilityBonus,
+    ...asiBonuses,
+  ]);
+  const scores = {} as Record<AbilityKey, number>;
+  for (const a of ABILITY_ORDER) scores[a] = raw[a] ?? 10;
+  return scores;
 }
 
 async function saveDraft(
@@ -341,9 +362,14 @@ export interface LevelUpResult {
 // hpGain is the already-resolved HP increase (rolled or averaged client-side
 // via the dice engine, same split of responsibility as the rest of the play
 // sheet) — this action's job is only to persist the new level/draft.
+// classIndex is the class the new level goes into (defaults to the primary
+// class = "continue your main class"). If it's a class the character doesn't
+// have yet, this is a multiclass into it — its ability prerequisites are
+// enforced here (server-side, from the draft's own scores).
 export async function levelUpCharacter(
   characterId: string,
   hpGain: number,
+  classIndex?: string,
 ): Promise<LevelUpResult> {
   if (!Number.isInteger(hpGain) || hpGain < 1) {
     return { success: false, error: "Invalid HP gain." };
@@ -357,11 +383,21 @@ export async function levelUpCharacter(
     return { success: false, error: `Already at the maximum level (${MAX_LEVEL}).` };
   }
 
-  const nextDraft: CharacterDraft = {
-    ...draft,
-    level: draft.level + 1,
-    hpRolls: [...draft.hpRolls, hpGain],
-  };
+  const chosen = classIndex ?? draft.classIndex;
+  if (!chosen) {
+    return { success: false, error: "No class selected for this level." };
+  }
+
+  // Multiclassing INTO a new class requires meeting its ability prerequisites.
+  const isNewClass = classLevelOf(draft, chosen) === 0;
+  if (isNewClass && !meetsMulticlassPrereq(finalScoresFromDraft(draft), chosen)) {
+    return {
+      success: false,
+      error: "You don't meet the ability score prerequisites to multiclass into that class.",
+    };
+  }
+
+  const nextDraft = appendClassLevel(draft, chosen, hpGain);
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -397,26 +433,86 @@ export async function levelDownCharacter(characterId: string): Promise<LevelDown
     return { success: false, error: "Already at level 1." };
   }
 
+  // The level being removed is the most recently gained one — remove it from
+  // whatever class it went into (which may be a secondary class).
+  const poppedClass = draft.levelClasses[draft.levelClasses.length - 1] ?? draft.classIndex ?? "";
   const newLevel = draft.level - 1;
-  const classIndex = draft.classIndex ?? "";
+  const newLevelClasses = draft.levelClasses.slice(0, -1);
+  // The popped class's NEW level after removing this one.
+  const newClassLevel = classLevelOf(
+    { ...draft, level: newLevel, levelClasses: newLevelClasses },
+    poppedClass,
+  );
 
-  const expertiseMax = (EXPERTISE_SCHEDULE[classIndex] ?? [])
-    .filter((m) => m.level <= newLevel)
+  // What the popped class is allowed to know/have at its new (lower) level.
+  const expertiseMax = (EXPERTISE_SCHEDULE[poppedClass] ?? [])
+    .filter((m) => m.level <= newClassLevel)
     .reduce((sum, m) => sum + m.count, 0);
-  const fightingStyleMax = FIGHTING_STYLE_KNOWN_BY_CLASS[classIndex]?.(newLevel) ?? 0;
-  const cantripsMax = CANTRIPS_KNOWN_BY_CLASS[classIndex]?.(newLevel) ?? 0;
-  const metamagicMax = metamagicKnownMax(newLevel);
+  const fightingStyleMax = FIGHTING_STYLE_KNOWN_BY_CLASS[poppedClass]?.(newClassLevel) ?? 0;
+  const cantripsMax = CANTRIPS_KNOWN_BY_CLASS[poppedClass]?.(newClassLevel) ?? 0;
+  const metamagicMax = poppedClass === "sorcerer" ? metamagicKnownMax(newClassLevel) : 0;
+
+  const isPrimary = poppedClass === draft.classIndex;
+
+  // Truncate a secondary class's per-class bucket to `max`; a class that hit 0
+  // levels has its bucket removed entirely.
+  const sliceBucket = (map: Record<string, string[]>, max: number): Record<string, string[]> => {
+    const next = { ...map };
+    if (newClassLevel === 0) delete next[poppedClass];
+    else if (next[poppedClass]) next[poppedClass] = next[poppedClass].slice(0, max);
+    return next;
+  };
+  // For the primary class its choices live in the legacy flat arrays.
+  const sliceLegacy = (arr: string[], max: number) => (isPrimary ? arr.slice(0, max) : arr);
+
+  const secondarySubclasses = { ...draft.secondarySubclasses };
+  const secondaryOrderChoice = { ...draft.secondaryOrderChoice };
+  let subclassIndex = draft.subclassIndex;
+  if (isPrimary) {
+    if (newClassLevel < 3) subclassIndex = null;
+  } else if (newClassLevel < 3) {
+    delete secondarySubclasses[poppedClass];
+  }
+  if (newClassLevel === 0) {
+    delete secondarySubclasses[poppedClass];
+    delete secondaryOrderChoice[poppedClass];
+  }
 
   const nextDraft: CharacterDraft = {
     ...draft,
     level: newLevel,
+    levelClasses: newLevelClasses,
     hpRolls: draft.hpRolls.slice(0, -1),
-    subclassIndex: newLevel < 3 ? null : draft.subclassIndex,
-    featChoices: draft.featChoices.filter((f) => f.level <= newLevel),
-    expertiseChoices: draft.expertiseChoices.slice(0, expertiseMax),
-    fightingStyleChoices: draft.fightingStyleChoices.slice(0, fightingStyleMax),
-    knownCantrips: draft.knownCantrips.slice(0, cantripsMax),
-    metamagicChoices: draft.metamagicChoices.slice(0, metamagicMax),
+    subclassIndex,
+    secondarySubclasses,
+    secondaryOrderChoice,
+    // Drop feats the popped class earned at a milestone above its new level.
+    featChoices: draft.featChoices.filter((f) => {
+      const owner = f.classIndex ?? draft.classIndex;
+      return owner !== poppedClass || f.level <= newClassLevel;
+    }),
+    // Primary class → legacy flat arrays; a secondary class → its bucket.
+    expertiseChoices: sliceLegacy(draft.expertiseChoices, expertiseMax),
+    fightingStyleChoices: sliceLegacy(draft.fightingStyleChoices, fightingStyleMax),
+    knownCantrips: sliceLegacy(draft.knownCantrips, cantripsMax),
+    metamagicChoices: sliceLegacy(draft.metamagicChoices, metamagicMax),
+    classExpertise: isPrimary ? draft.classExpertise : sliceBucket(draft.classExpertise, expertiseMax),
+    classFightingStyles: isPrimary
+      ? draft.classFightingStyles
+      : sliceBucket(draft.classFightingStyles, fightingStyleMax),
+    classCantrips: isPrimary ? draft.classCantrips : sliceBucket(draft.classCantrips, cantripsMax),
+    classMetamagic: isPrimary ? draft.classMetamagic : sliceBucket(draft.classMetamagic, metamagicMax),
+    // Prepared spells aren't truncated (cap needs the final ability modifier —
+    // same disclosed gap as before); weapon mastery is a level-1 grant that
+    // never scales, so buckets only need clearing if a secondary class is gone.
+    classPreparedSpells:
+      !isPrimary && newClassLevel === 0
+        ? Object.fromEntries(Object.entries(draft.classPreparedSpells).filter(([k]) => k !== poppedClass))
+        : draft.classPreparedSpells,
+    classWeaponMastery:
+      !isPrimary && newClassLevel === 0
+        ? Object.fromEntries(Object.entries(draft.classWeaponMastery).filter(([k]) => k !== poppedClass))
+        : draft.classWeaponMastery,
   };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
@@ -435,16 +531,24 @@ export interface ChooseSubclassResult {
 export async function chooseSubclass(
   characterId: string,
   subclassIndex: string,
+  classIndex?: string,
 ): Promise<ChooseSubclassResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const { supabase, userId, draft } = loaded;
 
-  if (draft.level < 3) {
-    return { success: false, error: "Subclass unlocks at level 3." };
+  const cls = classIndex ?? draft.classIndex;
+  if (!cls || classLevelOf(draft, cls) < 3) {
+    return { success: false, error: "Subclass unlocks at level 3 in that class." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, subclassIndex };
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, subclassIndex }
+      : {
+          ...draft,
+          secondarySubclasses: { ...draft.secondarySubclasses, [cls]: subclassIndex },
+        };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -462,12 +566,14 @@ export interface ChooseOrderResult {
 export async function chooseOriginOrder(
   characterId: string,
   choiceKey: string,
+  classIndex?: string,
 ): Promise<ChooseOrderResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const { supabase, userId, draft } = loaded;
 
-  const options = ORDER_CHOICES[draft.classIndex ?? ""];
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const options = ORDER_CHOICES[cls];
   if (!options) {
     return { success: false, error: "This class doesn't have an Order choice." };
   }
@@ -475,7 +581,13 @@ export async function chooseOriginOrder(
     return { success: false, error: "Invalid choice." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, orderChoice: choiceKey };
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, orderChoice: choiceKey }
+      : {
+          ...draft,
+          secondaryOrderChoice: { ...draft.secondaryOrderChoice, [cls]: choiceKey },
+        };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -531,15 +643,18 @@ export async function chooseFeat(
   level: number,
   featIndex: string,
   abilityBonus: AbilityBonusChoice | null,
+  classIndex?: string,
 ): Promise<ChooseFeatResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const { supabase, userId, draft } = loaded;
 
-  if (!ASI_LEVELS.includes(level) || level > draft.level) {
+  // `level` is the OWNING class's level milestone; validate against that class.
+  const cls = classIndex ?? draft.classIndex ?? "";
+  if (!ASI_LEVELS.includes(level) || level > classLevelOf(draft, cls)) {
     return { success: false, error: "Not a feat choice you can make yet." };
   }
-  if (draft.featChoices.some((fc) => fc.level === level)) {
+  if (draft.featChoices.some((fc) => (fc.classIndex ?? draft.classIndex) === cls && fc.level === level)) {
     return { success: false, error: "Already chose a feat for that level." };
   }
 
@@ -559,7 +674,10 @@ export async function chooseFeat(
 
   const nextDraft: CharacterDraft = {
     ...draft,
-    featChoices: [...draft.featChoices, { level, featIndex, abilityBonus }],
+    featChoices: [
+      ...draft.featChoices,
+      { classIndex: cls, level, featIndex, abilityBonus, takenAtCharLevel: draft.level },
+    ],
   };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
@@ -579,21 +697,25 @@ export async function chooseExpertise(
   characterId: string,
   level: number,
   skillIndexes: string[],
+  classIndex?: string,
 ): Promise<ChooseExpertiseResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
   const { supabase, userId, draft } = loaded;
 
-  const schedule = EXPERTISE_SCHEDULE[draft.classIndex ?? ""];
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const schedule = EXPERTISE_SCHEDULE[cls];
   const milestone = schedule?.find((m) => m.level === level);
-  if (!milestone || level > draft.level) {
+  if (!milestone || level > classLevelOf(draft, cls)) {
     return { success: false, error: "Not an Expertise choice you can make yet." };
   }
 
+  const isPrimary = cls === draft.classIndex;
+  const existing = isPrimary ? draft.expertiseChoices : draft.classExpertise[cls] ?? [];
   const priorCount = schedule
     .filter((m) => m.level < level)
     .reduce((sum, m) => sum + m.count, 0);
-  if (draft.expertiseChoices.length !== priorCount) {
+  if (existing.length !== priorCount) {
     return { success: false, error: "Already chose Expertise for that level." };
   }
 
@@ -601,14 +723,14 @@ export async function chooseExpertise(
   if (uniqueSkills.size !== milestone.count || skillIndexes.length !== milestone.count) {
     return { success: false, error: `Choose exactly ${milestone.count} skills.` };
   }
-  if (skillIndexes.some((s) => draft.expertiseChoices.includes(s))) {
+  if (skillIndexes.some((s) => existing.includes(s))) {
     return { success: false, error: "Already have Expertise in one of those skills." };
   }
 
-  const nextDraft: CharacterDraft = {
-    ...draft,
-    expertiseChoices: [...draft.expertiseChoices, ...skillIndexes],
-  };
+  const combined = [...existing, ...skillIndexes];
+  const nextDraft: CharacterDraft = isPrimary
+    ? { ...draft, expertiseChoices: combined }
+    : { ...draft, classExpertise: { ...draft.classExpertise, [cls]: combined } };
 
   const { error: saveError } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (saveError) return { success: false, error: saveError.message };
@@ -662,6 +784,7 @@ export async function setLevelingProgress(
 export async function setKnownCantrips(
   characterId: string,
   cantripIndexes: string[],
+  classIndex?: string,
 ): Promise<SetSpellsResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -671,7 +794,11 @@ export async function setKnownCantrips(
     return { success: false, error: "Invalid cantrip list." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, knownCantrips: cantripIndexes };
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, knownCantrips: cantripIndexes }
+      : { ...draft, classCantrips: { ...draft.classCantrips, [cls]: cantripIndexes } };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -683,6 +810,7 @@ export async function setKnownCantrips(
 export async function setPreparedSpells(
   characterId: string,
   spellIndexes: string[],
+  classIndex?: string,
 ): Promise<SetSpellsResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -692,7 +820,11 @@ export async function setPreparedSpells(
     return { success: false, error: "Invalid spell list." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, preparedSpells: spellIndexes };
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, preparedSpells: spellIndexes }
+      : { ...draft, classPreparedSpells: { ...draft.classPreparedSpells, [cls]: spellIndexes } };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -708,6 +840,7 @@ export async function setPreparedSpells(
 export async function setMetamagicChoices(
   characterId: string,
   optionKeys: string[],
+  classIndex?: string,
 ): Promise<SetSpellsResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -717,7 +850,11 @@ export async function setMetamagicChoices(
     return { success: false, error: "Invalid Metamagic selection." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, metamagicChoices: optionKeys };
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, metamagicChoices: optionKeys }
+      : { ...draft, classMetamagic: { ...draft.classMetamagic, [cls]: optionKeys } };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -732,6 +869,7 @@ export async function setMetamagicChoices(
 export async function setFightingStyleChoices(
   characterId: string,
   featIndexes: string[],
+  classIndex?: string,
 ): Promise<SetSpellsResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -741,7 +879,11 @@ export async function setFightingStyleChoices(
     return { success: false, error: "Invalid Fighting Style selection." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, fightingStyleChoices: featIndexes };
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, fightingStyleChoices: featIndexes }
+      : { ...draft, classFightingStyles: { ...draft.classFightingStyles, [cls]: featIndexes } };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };
@@ -758,6 +900,7 @@ export async function setFightingStyleChoices(
 export async function setWeaponMasteryChoices(
   characterId: string,
   weaponIndexes: string[],
+  classIndex?: string,
 ): Promise<SetSpellsResult> {
   const loaded = await loadOwnedDraft(characterId);
   if (!loaded.ok) return { success: false, error: loaded.error };
@@ -767,7 +910,11 @@ export async function setWeaponMasteryChoices(
     return { success: false, error: "Invalid Weapon Mastery selection." };
   }
 
-  const nextDraft: CharacterDraft = { ...draft, weaponMasteryChoices: weaponIndexes };
+  const cls = classIndex ?? draft.classIndex ?? "";
+  const nextDraft: CharacterDraft =
+    cls === draft.classIndex
+      ? { ...draft, weaponMasteryChoices: weaponIndexes }
+      : { ...draft, classWeaponMastery: { ...draft.classWeaponMastery, [cls]: weaponIndexes } };
 
   const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
   if (error) return { success: false, error: error.message };

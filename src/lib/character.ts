@@ -122,6 +122,38 @@ export interface CharacterDraft {
   // yet, so this is skills-only for now). One array per character regardless
   // of how many times Skilled is taken — the picker caps it at 3 × count.
   skilledChoices: string[];
+
+  // ── Multiclassing ──────────────────────────────────────────────────────
+  // In 5e you always start with ONE class at level 1 and can only branch on
+  // level-up, so the builder never touches any of these — they only ever
+  // change via the play sheet's Level Up. `classIndex`/`subclassIndex`/`level`/
+  // `hpRolls` above keep their meaning: the level-1 (primary) class, the
+  // primary's subclass, the TOTAL character level, and one HP gain per
+  // character level beyond 1.
+  //
+  // `levelClasses[i]` is the classIndex the character put their (i+2)th level
+  // into — parallel to `hpRolls`, so `levelClasses.length === level - 1`.
+  // Any class's level is derivable: classLevelOf(c) = (classIndex===c ? 1 : 0)
+  // + count(levelClasses === c). See classLevelOf/orderedClasses.
+  levelClasses: string[];
+  // Subclass chosen for each NON-primary class (the primary's stays in
+  // subclassIndex). Keyed by classIndex.
+  secondarySubclasses: Record<string, string>;
+  // Cleric/Druid Order pick when taken as a secondary class (primary's stays
+  // in orderChoice). Keyed by classIndex.
+  secondaryOrderChoice: Record<string, string>;
+  // Per-class spell buckets. A multiclass caster prepares/knows from each
+  // class's own list independently. Keyed by classIndex. For a single-class
+  // caster, classCantrips[classIndex]/classPreparedSpells[classIndex] mirror
+  // the legacy knownCantrips/preparedSpells (normalizeDraft migrates old rows).
+  classCantrips: Record<string, string[]>;
+  classPreparedSpells: Record<string, string[]>;
+  // Per-class choice buckets for class-specific, freely-re-settable picks.
+  // Keyed by classIndex; legacy flat arrays fold into the primary's slot.
+  classExpertise: Record<string, string[]>;
+  classFightingStyles: Record<string, string[]>;
+  classMetamagic: Record<string, string[]>;
+  classWeaponMastery: Record<string, string[]>;
 }
 
 export interface ExpertiseMilestone {
@@ -169,7 +201,18 @@ export function sneakAttackDice(level: number): number {
 }
 
 export interface FeatChoice {
+  // `level` is the OWNING class's level milestone this ASI/feat sits at
+  // (4/8/12/16/19 of that class). For a single-class character it mirrors the
+  // character level; for a multiclass character each class earns its own ASIs
+  // on its own level track, so the milestone is per class. `classIndex` names
+  // the owning class and `takenAtCharLevel` records the character level it was
+  // taken at (needed for Hardened's per-level HP, and for display). Both are
+  // optional for backward compatibility with pre-multiclass saved rows —
+  // normalizeDraft() backfills them (classIndex = primary, takenAtCharLevel =
+  // level) so every entry that reaches derivation has them populated.
   level: number;
+  classIndex?: string;
+  takenAtCharLevel?: number;
   featIndex: string;
   // Only set when featIndex === "ability-score-improvement" — every other
   // feat is informational/listed only, same as class and subclass features.
@@ -308,9 +351,163 @@ export const EMPTY_DRAFT: CharacterDraft = {
   xp: 0,
   humanSkillChoice: null,
   skilledChoices: [],
+  levelClasses: [],
+  secondarySubclasses: {},
+  secondaryOrderChoice: {},
+  classCantrips: {},
+  classPreparedSpells: {},
+  classExpertise: {},
+  classFightingStyles: {},
+  classMetamagic: {},
+  classWeaponMastery: {},
 };
 
 export const MAX_LEVEL = 20;
+
+// ── Multiclassing ──────────────────────────────────────────────────────────
+// A character's level in one specific class. Primary contributes its level-1,
+// every entry in levelClasses adds one more to whichever class it names.
+export function classLevelOf(draft: CharacterDraft, classIndex: string): number {
+  const base = draft.classIndex === classIndex ? 1 : 0;
+  return base + draft.levelClasses.filter((c) => c === classIndex).length;
+}
+
+// Every class the character has levels in, primary first, then others in the
+// order they were first taken. Each entry carries that class's own level and
+// its chosen subclass (from subclassIndex for the primary, secondarySubclasses
+// for the rest).
+export function orderedClasses(
+  draft: CharacterDraft,
+): { classIndex: string; level: number; subclassIndex: string | null }[] {
+  if (!draft.classIndex) return [];
+  const order: string[] = [draft.classIndex];
+  for (const c of draft.levelClasses) {
+    if (!order.includes(c)) order.push(c);
+  }
+  return order.map((classIndex) => ({
+    classIndex,
+    level: classLevelOf(draft, classIndex),
+    subclassIndex:
+      classIndex === draft.classIndex
+        ? draft.subclassIndex
+        : draft.secondarySubclasses[classIndex] ?? null,
+  }));
+}
+
+// Full casters count their whole level toward the shared multiclass spell-slot
+// table; half casters (Paladin/Ranger) count half (rounded down). Warlock's
+// Pact Magic is a SEPARATE pool and is excluded here. The multiclass slot
+// table is identical to the full-caster table, so slots = fullCasterSlots(this).
+export const FULL_CASTER_CLASSES = new Set(["bard", "cleric", "druid", "sorcerer", "wizard"]);
+
+export function combinedCasterLevel(draft: CharacterDraft): number {
+  let total = 0;
+  for (const { classIndex, level } of orderedClasses(draft)) {
+    if (FULL_CASTER_CLASSES.has(classIndex)) total += level;
+    else if (HALF_CASTER_CLASSES.has(classIndex)) total += Math.floor(level / 2);
+  }
+  return total;
+}
+
+// Extra Attack does NOT stack across classes — a Fighter 5/Barbarian 5 makes 2
+// attacks, not 4. Take the max of each class's own attacksPerAction, not the sum.
+export function multiclassAttacksPerAction(draft: CharacterDraft): number {
+  let max = 1;
+  for (const { classIndex, level } of orderedClasses(draft)) {
+    max = Math.max(max, attacksPerAction(classIndex, level));
+  }
+  return max;
+}
+
+// Real 2024 multiclassing ability prerequisites. To take a level in a class you
+// need the listed minimum(s): "all" = every ability ≥ 13, "any" = at least one.
+// (Fighter is STR or DEX; the two-ability classes require both.) Enforced in the
+// Level Up flow (UI-disabled) and in levelUpCharacter (server-rejected).
+export const MULTICLASS_PREREQ_MIN = 13;
+export const MULTICLASS_PREREQUISITES: Record<
+  string,
+  { abilities: AbilityKey[]; mode: "all" | "any" }
+> = {
+  barbarian: { abilities: ["str"], mode: "all" },
+  bard: { abilities: ["cha"], mode: "all" },
+  cleric: { abilities: ["wis"], mode: "all" },
+  druid: { abilities: ["wis"], mode: "all" },
+  fighter: { abilities: ["str", "dex"], mode: "any" },
+  monk: { abilities: ["dex", "wis"], mode: "all" },
+  paladin: { abilities: ["str", "cha"], mode: "all" },
+  ranger: { abilities: ["dex", "wis"], mode: "all" },
+  rogue: { abilities: ["dex"], mode: "all" },
+  sorcerer: { abilities: ["cha"], mode: "all" },
+  warlock: { abilities: ["cha"], mode: "all" },
+  wizard: { abilities: ["int"], mode: "all" },
+};
+
+export function meetsMulticlassPrereq(
+  finalScores: Record<AbilityKey, number>,
+  classIndex: string,
+): boolean {
+  const req = MULTICLASS_PREREQUISITES[classIndex];
+  if (!req) return true;
+  const ok = (a: AbilityKey) => (finalScores[a] ?? 0) >= MULTICLASS_PREREQ_MIN;
+  return req.mode === "all" ? req.abilities.every(ok) : req.abilities.some(ok);
+}
+
+// Add one character level in `classIndex`. hpGain is already resolved (rolled
+// or averaged client-side, same split as the single-class path). Level-appended
+// choices (subclass/ASI/etc.) are made separately via their own actions after.
+export function appendClassLevel(
+  draft: CharacterDraft,
+  classIndex: string,
+  hpGain: number,
+): CharacterDraft {
+  return {
+    ...draft,
+    level: draft.level + 1,
+    hpRolls: [...draft.hpRolls, hpGain],
+    levelClasses: [...draft.levelClasses, classIndex],
+  };
+}
+
+// Migrate any draft (legacy single-class row, freshly-imported file, or a
+// current multiclass row) into a fully-populated shape. Must run at every load
+// boundary that hydrates a stored draft (page.tsx, actions' loadOwnedDraft,
+// import, quick-build) — the same "merge against EMPTY_DRAFT" trap documented
+// in CLAUDE.md, extended to backfill the multiclass fields. Idempotent.
+export function normalizeDraft(raw: Partial<CharacterDraft>): CharacterDraft {
+  const d: CharacterDraft = { ...EMPTY_DRAFT, ...(raw as CharacterDraft) };
+  const primary = d.classIndex;
+
+  // Backfill per-level class attribution. A legacy single-class row has no
+  // levelClasses (or a stale-length one) — every level after 1 was the primary.
+  if (!Array.isArray(d.levelClasses) || d.levelClasses.length !== Math.max(0, d.level - 1)) {
+    d.levelClasses = primary ? Array(Math.max(0, d.level - 1)).fill(primary) : [];
+  }
+
+  // The PRIMARY class keeps using the legacy flat fields (subclassIndex,
+  // knownCantrips, preparedSpells, expertiseChoices, fightingStyleChoices,
+  // metamagicChoices, weaponMasteryChoices, orderChoice) as its source of
+  // truth — this keeps the heavily-tested single-class play-sheet code
+  // unchanged. Every ADDITIONAL class stores its own choices in these keyed
+  // maps, which therefore never contain the primary class. Just ensure they
+  // exist as objects for a legacy row.
+  d.secondarySubclasses = { ...(d.secondarySubclasses ?? {}) };
+  d.secondaryOrderChoice = { ...(d.secondaryOrderChoice ?? {}) };
+  d.classCantrips = { ...(d.classCantrips ?? {}) };
+  d.classPreparedSpells = { ...(d.classPreparedSpells ?? {}) };
+  d.classExpertise = { ...(d.classExpertise ?? {}) };
+  d.classFightingStyles = { ...(d.classFightingStyles ?? {}) };
+  d.classMetamagic = { ...(d.classMetamagic ?? {}) };
+  d.classWeaponMastery = { ...(d.classWeaponMastery ?? {}) };
+
+  // Attribute each feat choice to its owning class (primary for legacy rows).
+  d.featChoices = (d.featChoices ?? []).map((fc) => ({
+    ...fc,
+    classIndex: fc.classIndex ?? primary ?? undefined,
+    takenAtCharLevel: fc.takenAtCharLevel ?? fc.level,
+  }));
+
+  return d;
+}
 
 // Standard 5e XP thresholds — cumulative XP required to BE each level.
 // Indexed by level (XP_THRESHOLDS[level] = XP needed to have reached `level`).
@@ -471,13 +668,16 @@ export function attacksPerAction(classIndex: string, level: number): number {
 // no HP. featChoices carries the level each feat was taken at, which Hardened
 // needs and Tough ignores.
 export function featHpBonus(
-  featChoices: { level: number; featIndex: string }[],
+  featChoices: { level: number; takenAtCharLevel?: number; featIndex: string }[],
   characterLevel: number,
 ): number {
   let bonus = 0;
   for (const fc of featChoices) {
     if (fc.featIndex === "tough") bonus += 2 * characterLevel;
-    else if (fc.featIndex === "hardened") bonus += 2 * (characterLevel - fc.level + 1);
+    // Hardened counts from the CHARACTER level it was taken at (takenAtCharLevel),
+    // falling back to `level` for legacy single-class entries where the two match.
+    else if (fc.featIndex === "hardened")
+      bonus += 2 * (characterLevel - (fc.takenAtCharLevel ?? fc.level) + 1);
   }
   return bonus;
 }

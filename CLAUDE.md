@@ -3211,3 +3211,102 @@ integration):** custom species (traits/ASI/speed → species picker + sheet),
 subclasses (features array → subclass picker), spells (full spell shape →
 compendium + spell pickers), backgrounds, classes. All auth-gated, so the
 create flow can't be exercised in an unauthenticated preview.
+
+## Multiclassing
+The largest refactor in the project — every class resource in
+`character-sheet.ts` and dozens of `PlaySheet.tsx` blocks previously assumed one
+`classIndex` + one `level`. **Design keystone: you can never multiclass at level
+1** (you always start one class and only branch on level-up), so the **builder
+wizard is untouched** — all multiclass entry is via the play sheet's Level Up.
+
+**Data model (`character.ts`), additive + backward-compatible.** Kept:
+`classIndex` = the level-1/primary class, `subclassIndex` = its subclass, `level`
+= TOTAL character level, `hpRolls` = per-character-level HP. Added:
+- `levelClasses: string[]` — parallel to `hpRolls`; the classIndex each level
+  after 1 went into (invariant `length === level - 1`). `classLevelOf(draft, c)`
+  and `orderedClasses(draft)` derive per-class levels from it.
+- **Primary class = legacy flat fields; each ADDITIONAL class = keyed maps**
+  (`secondarySubclasses`, `secondaryOrderChoice`, `classCantrips`,
+  `classPreparedSpells`, `classExpertise`, `classFightingStyles`,
+  `classMetamagic`, `classWeaponMastery`). This asymmetry is deliberate: it
+  leaves the heavily-tested single-class play-sheet reads/writes unchanged and
+  makes multiclass purely additive. The maps NEVER contain the primary class.
+- `FeatChoice` gained `classIndex` + `takenAtCharLevel` (optional; migrated) so
+  ASIs are tracked on each class's own 4/8/12/16/19 track.
+- `normalizeDraft(raw)` — one migration run at every load boundary (page.tsx,
+  actions' `loadOwnedDraft`, import). Merges against `EMPTY_DRAFT` (the old
+  missing-key trap) AND backfills `levelClasses` for legacy single-class rows +
+  attributes feats to the primary. Idempotent. **Replaces the bare
+  `{...EMPTY_DRAFT, ...raw}` at those sites — use `normalizeDraft` for any new
+  draft-load boundary.**
+
+**Derivation (`character-sheet.ts`).** Builds `classLevels`/`classes`/
+`hitDicePool`; every `cls.index === "x" ? fn(draft.level)` became
+`clvl("x") > 0 ? fn(clvl("x"))` so a Fighter 5/Wizard 3 gets BOTH kits at their
+own class levels. `proficiencyBonus` stays on TOTAL level; `maxHp` already summed
+per-level (each `hpRolls` entry was computed with its own class's die at gain
+time, so it needed no change). **Spell slots**: a SINGLE non-Warlock caster uses
+its own class table (`halfCasterSlots` for a lone Paladin/Ranger — NOT the
+combined table); TWO+ caster classes use `fullCasterSlots(combinedCasterLevel)`
+(full casters count full, half-casters `floor(level/2)`, Warlock excluded).
+**Warlock Pact Magic is a separate `pactSlots` pool** (was folded into
+`spellSlots` before). `spellcasting: SpellcastingClass[]` — one entry per caster
+class with its own save DC/attack/cantrip/prepared counts; old scalar
+`spellSaveDC`/etc. now come from the first caster (back-compat for print sheet /
+personality prompt). `multiclassAttacksPerAction` = MAX across classes (Extra
+Attack doesn't stack). Level-20 capstone (Primal Champion) now keyed on 20 IN
+that class, not total.
+
+**Actions (`characters/actions.ts`).** `levelUpCharacter(id, hpGain,
+classIndex?)` — the level goes into `classIndex` (default primary); a NEW class
+enforces **`meetsMulticlassPrereq`** server-side (computed from the draft's own
+scores via `finalScoresFromDraft`, no SRD refs needed) and is rejected if unmet.
+Per-class setters (`chooseSubclass`/`chooseFeat`/`chooseExpertise`/
+`chooseOriginOrder`/`setKnownCantrips`/`setPreparedSpells`/`setMetamagicChoices`/
+`setFightingStyleChoices`/`setWeaponMasteryChoices`) all gained an optional
+`classIndex` param and write the legacy field when it's the primary, the keyed
+map otherwise. `levelDownCharacter` pops the last `levelClasses` entry, trims
+that class's choices to its new level, and removes a secondary class's maps
+entirely if it hits 0.
+
+**Play sheet.** Level Up shows a **class chooser** (Continue each existing class /
+"+ New class…" grid with prerequisites shown and disabled when unmet, using
+`sheet.finalScores`); the HP roll uses the chosen class's hit die. Header shows
+`Fighter 5 (Champion) / Wizard 3 (Evoker — Homebrew)` (single-class output
+unchanged, no level number). Features filter by each feature's OWNING class level
+(`f.level <= clsLvl(f.classIndex)`); subclass features loop every chosen subclass.
+Resource-card gates changed from `sheet.classIndex === "x"` to
+`clsLvl("x") > 0`. Subclass picker loops `classesNeedingSubclass` (each class
+picks its own at level 3). Spells card shows one Save DC/Attack pair per caster
+class; the cantrip/prepared pickers target the character's FIRST caster class
+(`spellClass`) reading/writing its bucket — so a single-caster multiclass works
+whether the caster is primary or secondary. New `PlayState.expendedPactSlots`
+tracks Warlock's separate pool (Short-or-Long-Rest recovery).
+
+**Verified live** (no console errors): single-class Warlock (Ophelia — Pact
+Magic slots + Magical Cunning intact after the pactSlots split), single-class
+Paladin (Fredegar — half-caster `3/3` slots preserved by the single-caster
+branch), and a hand-inserted **Fighter 5/Wizard 3** — header
+"Fighter 5 (Champion) / Wizard 3", both classes' features filtered to their own
+level, Second Wind + Action Surge (Fighter) AND Arcane Recovery (Wizard) all
+present, Spell Slots 4/2 (`fullCasterSlots(3)`), Spell Save DC 12 (INT + total
+prof), +3 proficiency on total level 8, Extra Attack (no stack), HP 48 (per-class
+dice summed). `tsc` clean throughout.
+
+**Deliberately scoped / disclosed simplifications:**
+- **Multiclass proficiency grants** (the armor/weapon/skill subset when joining a
+  class) are shown as info text in the add-class flow, not wired to new skill
+  pickers — the app already resolves weapons regardless of proficiency.
+- **Per-class ASI/Expertise/Fighting-Style/Metamagic/Weapon-Mastery pending
+  pickers target the PRIMARY class** (the derivation reads all classes' choices
+  correctly, but the play-sheet PICKER for these currently only offers the
+  primary's — a secondary class's ASI/expertise isn't yet offered a picker). The
+  per-class subclass picker and single-caster spell picker DO handle secondary
+  classes. Second-caster-of-a-dual-caster spell management (managing two spell
+  lists) also uses the first caster only. Natural next increment.
+- **Hit dice spend** still rolls the primary class's die (the pool is displayed
+  by size in `hitDicePool` but the spend control is single-die).
+- Owner-only flows (the Level Up class chooser, prerequisite gating, secondary
+  subclass picker) are code-/type-verified but couldn't be exercised in the
+  unauthenticated preview — same limitation as other owner-gated flows this
+  project.

@@ -9,7 +9,6 @@ import {
   clericChannelDivinityMax,
   computeArmorClass,
   divineSparkDice,
-  attacksPerAction,
   favoredEnemyMax,
   featHpBonus,
   FIGHTING_STYLE_KNOWN_BY_CLASS,
@@ -44,6 +43,9 @@ import {
   sneakAttackDice,
   CANTRIPS_KNOWN_BY_CLASS,
   SWAPPABLE_CANTRIP_TRAITS,
+  orderedClasses,
+  combinedCasterLevel,
+  multiclassAttacksPerAction,
   type AbilityKey,
   type CharacterDraft,
   type EquipmentItem,
@@ -81,6 +83,35 @@ export interface ResolvedSave {
   proficient: boolean;
 }
 
+// One row per class the character has levels in — primary first, then in the
+// order each was first taken. Drives the multiclass header and per-class
+// pending-choice pickers. subclassName is resolved by the play sheet (which
+// has the subclass options), not here.
+export interface SheetClass {
+  classIndex: string;
+  className: string;
+  level: number;
+  subclassIndex: string | null;
+  hitDie: number;
+  spellcastingAbility: AbilityKey | null;
+}
+
+// One row per spellcasting class. Each caster prepares/knows from its own list
+// with its own save DC/attack (its own ability + the shared total-level
+// proficiency bonus). Spell SLOTS are shared across all non-Warlock casters
+// (combined caster level → CharacterSheet.spellSlots); Warlock's Pact Magic is
+// the separate CharacterSheet.pactSlots pool.
+export interface SpellcastingClass {
+  classIndex: string;
+  className: string;
+  ability: AbilityKey;
+  saveDC: number;
+  attackBonus: number;
+  cantripsKnown: number;
+  preparedCount: number;
+  isWarlock: boolean;
+}
+
 export interface CharacterSheet {
   name: string;
   level: number;
@@ -91,6 +122,15 @@ export interface CharacterSheet {
   className: string;
   classIndex: string;
   hitDie: number;
+  // Multiclass: primary is classIndex/className above (level-1 class); classes[]
+  // lists every class the character has levels in (primary first). classLevels
+  // maps classIndex → that class's level for O(1) lookups in gating. For a
+  // single-class character, classes has one entry and classLevels has one key.
+  classes: SheetClass[];
+  classLevels: Record<string, number>;
+  // Hit dice available to spend, grouped by die size (e.g. [{die:10,count:5},
+  // {die:6,count:3}] for a Fighter 5/Wizard 3). Single-class → one entry.
+  hitDicePool: { die: number; count: number }[];
   maxHpValue: number;
   backgroundName: string;
   backgroundIsHomebrew: boolean;
@@ -108,10 +148,18 @@ export interface CharacterSheet {
   speed: number | null;
   passivePerception: number;
   sneakAttackDice: number | null;
+  // Backward-compat scalars, populated from the FIRST spellcasting class (or
+  // null/[] for a non-caster). New per-class spell UI iterates `spellcasting`
+  // instead; these stay for the print sheet, personality prompt, and any code
+  // that only needs "the character's main caster." spellSlots is the SHARED
+  // multiclass pool (combined caster level, Warlock excluded); pactSlots is
+  // Warlock's separate Pact Magic pool.
   spellcastingAbility: AbilityKey | null;
   spellSaveDC: number | null;
   spellAttackBonus: number | null;
   spellSlots: number[];
+  pactSlots: number[];
+  spellcasting: SpellcastingClass[];
   cantripsKnownCount: number;
   preparedSpellsCount: number;
   sorceryPointsMax: number;
@@ -207,6 +255,36 @@ export function buildCharacterSheet(
 
   if (!species || !cls || !background) return null;
 
+  // ── Multiclass class-level map ──────────────────────────────────────────
+  // Every class the character has levels in (primary first). Each class
+  // resource below is computed from THAT class's level via clvl(), not the
+  // total character level — a Fighter 5/Wizard 3 gets Second Wind at Fighter 5
+  // AND Arcane Recovery at Wizard 3. Total level (draft.level) still drives
+  // proficiency bonus, HP sum, and species traits.
+  const orderedCls = orderedClasses(draft);
+  const classLevels: Record<string, number> = {};
+  for (const oc of orderedCls) classLevels[oc.classIndex] = oc.level;
+  const clvl = (c: string) => classLevels[c] ?? 0;
+  const sheetClasses: SheetClass[] = orderedCls.map((oc) => {
+    const c = refs.classes.find((x) => x.index === oc.classIndex);
+    return {
+      classIndex: oc.classIndex,
+      className: c?.name ?? oc.classIndex,
+      level: oc.level,
+      subclassIndex: oc.subclassIndex,
+      hitDie: c?.hitDie ?? 8,
+      spellcastingAbility: c?.spellcastingAbility ?? null,
+    };
+  });
+  // Hit dice available to spend, grouped by die size (5d10 + 3d6, etc.).
+  const hitDicePool: { die: number; count: number }[] = [];
+  for (const sc of sheetClasses) {
+    const existing = hitDicePool.find((h) => h.die === sc.hitDie);
+    if (existing) existing.count += sc.level;
+    else hitDicePool.push({ die: sc.hitDie, count: sc.level });
+  }
+  hitDicePool.sort((a, b) => b.die - a.die);
+
   const asiBonuses = draft.featChoices
     .filter((fc) => fc.featIndex === "ability-score-improvement")
     .map((fc) => fc.abilityBonus);
@@ -230,11 +308,15 @@ export function buildCharacterSheet(
   // function's cap simple and correct for every other class. Must happen
   // before maxHpValue/proficiencyBonus/savingThrows/skills below so they
   // reflect the boosted scores.
-  const levelTwentyBoost = LEVEL_20_ABILITY_BOOSTS[cls.index];
-  if (levelTwentyBoost && draft.level >= 20) {
-    for (const ability of levelTwentyBoost) {
-      finalScores[ability] = Math.min(25, finalScores[ability] + 4);
-      modifiers[ability] = abilityModifier(finalScores[ability]);
+  // Keyed by class level (20 IN that class), not total level — a multiclass
+  // Barbarian 15/Fighter 5 has total level 20 but no Primal Champion.
+  for (const sc of sheetClasses) {
+    const levelTwentyBoost = LEVEL_20_ABILITY_BOOSTS[sc.classIndex];
+    if (levelTwentyBoost && sc.level >= 20) {
+      for (const ability of levelTwentyBoost) {
+        finalScores[ability] = Math.min(25, finalScores[ability] + 4);
+        modifiers[ability] = abilityModifier(finalScores[ability]);
+      }
     }
   }
 
@@ -286,10 +368,15 @@ export function buildCharacterSheet(
   // every ability check that uses a skill you're NOT proficient in (and, by
   // the rule, not Expertise either — those already double it). Applied only
   // to non-proficient skills below.
-  const jackOfAllTrades = cls.index === "bard" && draft.level >= 2;
+  const jackOfAllTrades = clvl("bard") >= 2;
   const jackBonus = jackOfAllTrades ? Math.floor(proficiencyBonus / 2) : 0;
 
-  const expertiseSkills = new Set(draft.expertiseChoices);
+  // Expertise from every class: the primary's picks in the legacy
+  // expertiseChoices array, every additional class's in classExpertise[cls].
+  const expertiseSkills = new Set([
+    ...draft.expertiseChoices,
+    ...Object.values(draft.classExpertise ?? {}).flat(),
+  ]);
   const skills: ResolvedSkill[] = refs.skills.map((skill) => {
     const ability = skill.abilityScore as AbilityKey;
     const proficient = proficientSkills.has(skill.index);
@@ -316,8 +403,54 @@ export function buildCharacterSheet(
     ...(background.equipmentOptions[bgEquipChoiceIdx] ?? background.equipmentFirstOption),
   ];
 
-  const spellcastingAbility = cls.spellcastingAbility;
-  const spellAbilityMod = spellcastingAbility ? modifiers[spellcastingAbility] : 0;
+  // ── Per-class spellcasting ──────────────────────────────────────────────
+  // One entry per caster class, each with its own save DC/attack (its own
+  // ability + the shared total-level proficiency bonus) and its own cantrip/
+  // prepared counts. Spell SLOTS are shared across all non-Warlock casters
+  // (combined caster level → the full-caster table); Warlock's Pact Magic is
+  // its own pactSlots pool.
+  const spellcasting: SpellcastingClass[] = [];
+  for (const sc of sheetClasses) {
+    if (!sc.spellcastingAbility) continue;
+    const mod = modifiers[sc.spellcastingAbility];
+    const isWarlock = sc.classIndex === "warlock";
+    spellcasting.push({
+      classIndex: sc.classIndex,
+      className: sc.className,
+      ability: sc.spellcastingAbility,
+      saveDC: computeSpellSaveDC(proficiencyBonus, mod),
+      attackBonus: computeSpellAttackBonus(proficiencyBonus, mod),
+      cantripsKnown: CANTRIPS_KNOWN_BY_CLASS[sc.classIndex]?.(sc.level) ?? 0,
+      preparedCount: isWarlock
+        ? warlockPreparedSpellsMax(sc.level)
+        : computePreparedSpellCount(sc.level, mod),
+      isWarlock,
+    });
+  }
+  // Spell slots. A SINGLE non-Warlock caster uses its own class table (a pure
+  // Paladin's half-caster progression differs from the multiclass combined
+  // table); TWO OR MORE caster classes use the multiclass combined-caster-level
+  // full table. Warlock's Pact Magic is always its own separate pool.
+  const nonPactCasters = spellcasting.filter((sc) => !sc.isWarlock);
+  let sharedSpellSlots: number[] = [];
+  if (nonPactCasters.length === 1) {
+    const only = nonPactCasters[0].classIndex;
+    sharedSpellSlots = HALF_CASTER_CLASSES.has(only)
+      ? halfCasterSlots(clvl(only))
+      : fullCasterSlots(clvl(only));
+  } else if (nonPactCasters.length > 1) {
+    sharedSpellSlots = fullCasterSlots(combinedCasterLevel(draft));
+  }
+  const pactSlots = clvl("warlock") > 0 ? warlockSlots(clvl("warlock")) : [];
+  // Backward-compat scalars from the first (usually only) caster.
+  const primaryCaster = spellcasting[0] ?? null;
+
+  // Fighting Style count summed across every class that grants it (Fighter/
+  // Paladin/Ranger) — each class's own picks live in classFightingStyles.
+  let fightingStyleKnownMax = 0;
+  for (const sc of sheetClasses) {
+    fightingStyleKnownMax += FIGHTING_STYLE_KNOWN_BY_CLASS[sc.classIndex]?.(sc.level) ?? 0;
+  }
 
   // Alert feat: "When you roll Initiative, you can add your Proficiency Bonus
   // to the roll." Applied to the static Initiative stat since this app shows
@@ -335,6 +468,9 @@ export function buildCharacterSheet(
     className: cls.name,
     classIndex: cls.index,
     hitDie: cls.hitDie,
+    classes: sheetClasses,
+    classLevels,
+    hitDicePool,
     maxHpValue,
     backgroundName: background.name,
     backgroundIsHomebrew: background.isHomebrew,
@@ -350,54 +486,37 @@ export function buildCharacterSheet(
     initiative,
     speed: species.speed,
     passivePerception,
-    sneakAttackDice: cls.index === "rogue" ? sneakAttackDice(draft.level) : null,
-    spellcastingAbility,
-    spellSaveDC: spellcastingAbility ? computeSpellSaveDC(proficiencyBonus, spellAbilityMod) : null,
-    spellAttackBonus: spellcastingAbility ? computeSpellAttackBonus(proficiencyBonus, spellAbilityMod) : null,
-    spellSlots: spellcastingAbility
-      ? cls.index === "warlock"
-        ? warlockSlots(draft.level)
-        : HALF_CASTER_CLASSES.has(cls.index)
-          ? halfCasterSlots(draft.level)
-          : fullCasterSlots(draft.level)
-      : [],
-    cantripsKnownCount: CANTRIPS_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
-    // Gated on having a spellcasting ability at all, NOT on being in
-    // CANTRIPS_KNOWN_BY_CLASS — Paladin proved those two aren't the same set
-    // (it gets prepared spells but no cantrips at all). Every prepared caster
-    // confirmed so far (Wizard/Sorcerer/Cleric/Bard/Druid/Paladin) uses the
-    // generic level+modifier formula — Warlock is the one exception, with its
-    // own slower, level-only Prepared Spells table (see warlockPreparedSpellsMax).
-    preparedSpellsCount: cls.index === "warlock"
-      ? warlockPreparedSpellsMax(draft.level)
-      : spellcastingAbility
-        ? computePreparedSpellCount(draft.level, spellAbilityMod)
-        : 0,
-    sorceryPointsMax: cls.index === "sorcerer" ? sorceryPointsMax(draft.level) : 0,
-    metamagicKnownMax: cls.index === "sorcerer" ? metamagicKnownMax(draft.level) : 0,
+    sneakAttackDice: clvl("rogue") > 0 ? sneakAttackDice(clvl("rogue")) : null,
+    spellcastingAbility: primaryCaster?.ability ?? null,
+    spellSaveDC: primaryCaster?.saveDC ?? null,
+    spellAttackBonus: primaryCaster?.attackBonus ?? null,
+    spellSlots: sharedSpellSlots,
+    pactSlots,
+    spellcasting,
+    cantripsKnownCount: primaryCaster?.cantripsKnown ?? 0,
+    preparedSpellsCount: primaryCaster?.preparedCount ?? 0,
+    sorceryPointsMax: clvl("sorcerer") > 0 ? sorceryPointsMax(clvl("sorcerer")) : 0,
+    metamagicKnownMax: clvl("sorcerer") > 0 ? metamagicKnownMax(clvl("sorcerer")) : 0,
     channelDivinityMax:
-      cls.index === "cleric"
-        ? clericChannelDivinityMax(draft.level)
-        : cls.index === "paladin"
-          ? paladinChannelDivinityMax(draft.level)
-          : 0,
-    divineSparkDice: cls.index === "cleric" ? divineSparkDice(draft.level) : 0,
-    bardicInspirationMax: cls.index === "bard" ? bardicInspirationMax(modifiers.cha) : 0,
-    bardicInspirationDie: cls.index === "bard" ? bardicInspirationDie(draft.level) : 0,
-    layOnHandsMax: cls.index === "paladin" ? layOnHandsMax(draft.level) : 0,
-    favoredEnemyMax: cls.index === "ranger" ? favoredEnemyMax(draft.level) : 0,
-    wildShapeMax: cls.index === "druid" ? wildShapeMax(draft.level) : 0,
-    fightingStyleKnownMax: FIGHTING_STYLE_KNOWN_BY_CLASS[cls.index]?.(draft.level) ?? 0,
-    secondWindMax: cls.index === "fighter" ? secondWindMax(draft.level) : 0,
-    actionSurgeMax: cls.index === "fighter" ? actionSurgeMax(draft.level) : 0,
-    indomitableMax: cls.index === "fighter" ? indomitableMax(draft.level) : 0,
-    rageMax: cls.index === "barbarian" ? rageMax(draft.level) : 0,
-    rageDamageBonus: cls.index === "barbarian" ? rageDamageBonus(draft.level) : 0,
-    brutalStrikeDice: cls.index === "barbarian" ? brutalStrikeDice(draft.level) : 0,
-    martialArtsDie: cls.index === "monk" ? martialArtsDie(draft.level) : 0,
-    focusPointsMax: cls.index === "monk" ? focusPointsMax(draft.level) : 0,
-    unarmoredMovementBonus: cls.index === "monk" ? unarmoredMovementBonus(draft.level) : 0,
-    wholenessOfBodyMax: cls.index === "monk" ? wholenessOfBodyMax(modifiers.wis) : 0,
+      (clvl("cleric") > 0 ? clericChannelDivinityMax(clvl("cleric")) : 0) +
+      (clvl("paladin") > 0 ? paladinChannelDivinityMax(clvl("paladin")) : 0),
+    divineSparkDice: clvl("cleric") > 0 ? divineSparkDice(clvl("cleric")) : 0,
+    bardicInspirationMax: clvl("bard") > 0 ? bardicInspirationMax(modifiers.cha) : 0,
+    bardicInspirationDie: clvl("bard") > 0 ? bardicInspirationDie(clvl("bard")) : 0,
+    layOnHandsMax: clvl("paladin") > 0 ? layOnHandsMax(clvl("paladin")) : 0,
+    favoredEnemyMax: clvl("ranger") > 0 ? favoredEnemyMax(clvl("ranger")) : 0,
+    wildShapeMax: clvl("druid") > 0 ? wildShapeMax(clvl("druid")) : 0,
+    fightingStyleKnownMax,
+    secondWindMax: clvl("fighter") > 0 ? secondWindMax(clvl("fighter")) : 0,
+    actionSurgeMax: clvl("fighter") > 0 ? actionSurgeMax(clvl("fighter")) : 0,
+    indomitableMax: clvl("fighter") > 0 ? indomitableMax(clvl("fighter")) : 0,
+    rageMax: clvl("barbarian") > 0 ? rageMax(clvl("barbarian")) : 0,
+    rageDamageBonus: clvl("barbarian") > 0 ? rageDamageBonus(clvl("barbarian")) : 0,
+    brutalStrikeDice: clvl("barbarian") > 0 ? brutalStrikeDice(clvl("barbarian")) : 0,
+    martialArtsDie: clvl("monk") > 0 ? martialArtsDie(clvl("monk")) : 0,
+    focusPointsMax: clvl("monk") > 0 ? focusPointsMax(clvl("monk")) : 0,
+    unarmoredMovementBonus: clvl("monk") > 0 ? unarmoredMovementBonus(clvl("monk")) : 0,
+    wholenessOfBodyMax: clvl("monk") > 0 ? wholenessOfBodyMax(modifiers.wis) : 0,
     // Breath Weapon's dice/uses are on the BASE species (every Dragonborn
     // has it), but the damage TYPE is on the chosen Draconic Ancestor
     // subspecies — confirmed from each ancestor's own subspecies row
@@ -444,8 +563,8 @@ export function buildCharacterSheet(
     // Fiendish Legacy subspecies already establishes for this species.
     speciesCantrip: speciesTraits.has("otherworldly-presence") ? "Thaumaturgy" : null,
     jackOfAllTrades,
-    arcaneRecoveryMax: cls.index === "wizard" ? Math.max(1, Math.ceil(draft.level / 2)) : 0,
-    innateSorceryMax: cls.index === "sorcerer" ? innateSorceryMax(draft.level) : 0,
+    arcaneRecoveryMax: clvl("wizard") > 0 ? Math.max(1, Math.ceil(clvl("wizard") / 2)) : 0,
+    innateSorceryMax: clvl("sorcerer") > 0 ? innateSorceryMax(clvl("sorcerer")) : 0,
     healingHandsMax: speciesTraits.has("healing-hands") ? 1 : 0,
     furyOfTheSmallMax: speciesTraits.has("fury-of-the-small") ? 1 : 0,
     shiftingMax: speciesTraits.has("shifting") ? 1 : 0,
@@ -455,10 +574,15 @@ export function buildCharacterSheet(
         ? 30
         : null,
     naturalWeapon: SPECIES_NATURAL_WEAPONS[species.index] ?? null,
-    subclassPreparedSpells: (SUBCLASS_PREPARED_SPELLS[draft.subclassIndex ?? ""] ?? [])
-      .filter((m) => draft.level >= m.level)
-      .flatMap((m) => m.spells.map((s) => ({ ...s, unlockLevel: m.level }))),
-    attacksPerAction: attacksPerAction(cls.index, draft.level),
+    // Every class's subclass always-prepared spells, each gated on THAT class's
+    // level (a Cleric 3/Paladin 5 gets Life Domain's L3 spells and the oath's
+    // L5 spells independently).
+    subclassPreparedSpells: sheetClasses.flatMap((sc) =>
+      (SUBCLASS_PREPARED_SPELLS[sc.subclassIndex ?? ""] ?? [])
+        .filter((m) => sc.level >= m.level)
+        .flatMap((m) => m.spells.map((s) => ({ ...s, unlockLevel: m.level }))),
+    ),
+    attacksPerAction: multiclassAttacksPerAction(draft),
   };
 }
 

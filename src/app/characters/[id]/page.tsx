@@ -20,10 +20,11 @@ import {
   getTraitDescriptions,
 } from "@/lib/srd";
 import {
-  EMPTY_DRAFT,
   LINEAGE_CANTRIP_CLASS,
   SPECIES_CANTRIP_SPELL,
   SUBCLASS_PREPARED_SPELLS,
+  normalizeDraft,
+  orderedClasses,
   type CharacterDraft,
 } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
@@ -116,14 +117,46 @@ export default async function CharacterPlaySheet({
   // saved before that field shipped — confirmed live with a hand-inserted
   // pre-Weapon-Mastery draft, the same trap CLAUDE.md already documents for
   // the builder wizard's own localStorage path, just never fixed here too.
-  const draft = { ...EMPTY_DRAFT, ...(character.draft as unknown as CharacterDraft) };
-  const [features, subclassOptions, classSpells] = draft.classIndex
-    ? await Promise.all([
-        getFeaturesForClass(draft.classIndex),
-        getSubclassesForClass(draft.classIndex),
-        getSpellsForClass(draft.classIndex),
-      ])
-    : [[], [], []];
+  // normalizeDraft merges against EMPTY_DRAFT (surviving the missing-key trap
+  // for rows saved before a field existed) AND backfills the multiclass fields
+  // for legacy single-class rows — see character.ts.
+  const draft = normalizeDraft(character.draft as unknown as CharacterDraft);
+
+  // Every class the character has levels in (primary first). Features,
+  // subclasses, and spell lists are fetched per class so a multiclass sheet
+  // shows both classes' content (a single-class character just has one entry).
+  const classList = orderedClasses(draft);
+  const perClass = await Promise.all(
+    classList.map(async (c) => {
+      const [classFeatures, classSubclasses, classSpellList] = await Promise.all([
+        getFeaturesForClass(c.classIndex),
+        getSubclassesForClass(c.classIndex),
+        getSpellsForClass(c.classIndex),
+      ]);
+      return {
+        classIndex: c.classIndex,
+        subclassIndex: c.subclassIndex,
+        features: classFeatures,
+        subclassOptions: classSubclasses,
+        classSpells: classSpellList,
+      };
+    }),
+  );
+
+  // Base-class features, each tagged with its owning class so the Features list
+  // can filter by that class's level (a Wizard-3 feature shows only if the
+  // character has ≥3 Wizard levels, regardless of total level).
+  const features = perClass.flatMap((p) =>
+    p.features.map((f) => ({ ...f, classIndex: p.classIndex })),
+  );
+  // Flat union of every class's subclass options (for name lookups + the
+  // base-feature dedup) plus a per-class map (for the per-class subclass picker).
+  const subclassOptions = perClass.flatMap((p) => p.subclassOptions);
+  const subclassOptionsByClass = Object.fromEntries(
+    perClass.map((p) => [p.classIndex, p.subclassOptions]),
+  );
+  const classSpellsByClass = Object.fromEntries(perClass.map((p) => [p.classIndex, p.classSpells]));
+  const classSpells = perClass[0]?.classSpells ?? [];
 
   // Fetch description/combat data for the specific spells this subspecies
   // grants (Fire Bolt for Infernal Tiefling, Dancing Lights for Drow, etc.)
@@ -170,8 +203,11 @@ export default async function CharacterPlaySheet({
   // spells (Life Domain / Fiend / Draconic Sorcery), fetched by slug. A few
   // 2024-only spells aren't in the 2014 dataset and simply won't resolve here —
   // the play sheet shows those as name-only rows.
-  const subclassSpellIndexes = (SUBCLASS_PREPARED_SPELLS[draft.subclassIndex ?? ""] ?? [])
-    .flatMap((m) => m.spells.map((s) => s.index));
+  const subclassSpellIndexes = classList.flatMap((c) =>
+    (SUBCLASS_PREPARED_SPELLS[c.subclassIndex ?? ""] ?? []).flatMap((m) =>
+      m.spells.map((s) => s.index),
+    ),
+  );
   const subclassSpellData = await getSpellsByIndex(subclassSpellIndexes);
 
   return (
@@ -188,6 +224,8 @@ export default async function CharacterPlaySheet({
       magicItemLookup={Array.from(magicItemLookup.values())}
       features={features}
       subclassOptions={subclassOptions}
+      subclassOptionsByClass={subclassOptionsByClass}
+      classSpellsByClass={classSpellsByClass}
       generalFeats={allGeneralFeats}
       epicBoonFeats={epicBoonFeats}
       fightingStyleFeats={fightingStyleFeats}

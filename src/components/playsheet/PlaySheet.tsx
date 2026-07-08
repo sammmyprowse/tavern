@@ -18,6 +18,9 @@ import {
   WEAPON_MASTERY_KNOWN_BY_CLASS,
   WEAPON_MASTERY_MELEE_ONLY_CLASSES,
   magicalCunningRegain,
+  meetsMulticlassPrereq,
+  MULTICLASS_PREREQUISITES,
+  MULTICLASS_PREREQ_MIN,
   type AbilityKey,
   type AbilityBonusChoice,
   type CharacterDraft,
@@ -95,14 +98,21 @@ interface PlaySheetProps {
   equipment: EquipmentLookupItem[];
   languages: LanguageOption[];
   magicItemLookup: MagicItemLookupEntry[];
-  features: ClassFeature[];
+  // Base-class features across every class the character has, each tagged with
+  // its owning class so the Features list can gate on that class's level.
+  features: (ClassFeature & { classIndex: string })[];
+  // Flat union of every class's subclass options (name lookups + dedup) plus a
+  // per-class map (the per-class subclass pickers).
   subclassOptions: SubclassOption[];
+  subclassOptionsByClass: Record<string, SubclassOption[]>;
   generalFeats: FeatOption[];
   epicBoonFeats: FeatOption[];
   fightingStyleFeats: FeatOption[];
   masteryProperties: MasteryPropertyInfo[];
   traitDescriptions: Record<string, string>;
   classSpells: SpellOption[];
+  // Spell list per caster class (each caster prepares from its own list).
+  classSpellsByClass: Record<string, SpellOption[]>;
   lineageCantripSpells: SpellOption[];
   subclassSpellData: SpellOption[];
   isOwner: boolean;
@@ -134,6 +144,11 @@ interface PlayState {
   // expendedSlots[i] = slots used at spell level i+1. Play state, not part of
   // the saved draft — resets every Long Rest the same way hit dice used does.
   expendedSlots: number[];
+  // Warlock's Pact Magic slots are a SEPARATE pool from the shared spell slots
+  // (they never share a counter, even when a multiclass caster has regular
+  // slots at the same level), recovered on a Short OR Long Rest.
+  // expendedPactSlots[i] = pact slots used at spell level i+1.
+  expendedPactSlots: number[];
   // Sorcery Points (Sorcerer only) — same play-state treatment as spell
   // slots: resets on Long Rest, not part of the saved draft.
   expendedSorceryPoints: number;
@@ -265,12 +280,14 @@ export default function PlaySheet({
   magicItemLookup,
   features,
   subclassOptions,
+  subclassOptionsByClass,
   generalFeats,
   epicBoonFeats,
   fightingStyleFeats,
   masteryProperties,
   traitDescriptions,
   classSpells,
+  classSpellsByClass,
   lineageCantripSpells,
   subclassSpellData,
   isOwner,
@@ -368,6 +385,10 @@ export default function PlaySheet({
   const [levelingUp, setLevelingUp] = useState(false);
   const [levelUpError, setLevelUpError] = useState<string | null>(null);
   const [levelUpPending, setLevelUpPending] = useState(false);
+  // Multiclass level-up: which class the next level goes into (null = the
+  // primary class), and whether the "add a new class" grid is open.
+  const [levelUpClass, setLevelUpClass] = useState<string | null>(null);
+  const [addingClass, setAddingClass] = useState(false);
   const [levelingDown, setLevelingDown] = useState(false);
   const [levelDownError, setLevelDownError] = useState<string | null>(null);
   const [levelDownPending, setLevelDownPending] = useState(false);
@@ -422,6 +443,7 @@ export default function PlaySheet({
     attunedMagicItemIndexes: [],
     rollMode: "normal",
     expendedSlots: [],
+    expendedPactSlots: [],
     expendedSorceryPoints: 0,
     expendedChannelDivinity: 0,
     expendedBardicInspiration: 0,
@@ -499,23 +521,38 @@ export default function PlaySheet({
 
   if (!loaded) return null;
 
+  // Multiclass helpers: a class's level (0 if the character has no levels in
+  // it), and the freely-re-settable per-class choices flattened across every
+  // class (the primary's in the legacy flat array, each additional class's in
+  // its keyed bucket) for the derivations that don't care which class granted
+  // them (Defense/Archery AC & attack bonuses, mastered weapons).
+  const clsLvl = (c: string) => sheet.classLevels[c] ?? 0;
+  const allFightingStyles = [
+    ...currentDraft.fightingStyleChoices,
+    ...Object.values(currentDraft.classFightingStyles ?? {}).flat(),
+  ];
+  const allWeaponMastery = [
+    ...currentDraft.weaponMasteryChoices,
+    ...Object.values(currentDraft.classWeaponMastery ?? {}).flat(),
+  ];
+
   const equippedSet = new Set(play.equippedIndexes);
-  const hasDefenseFightingStyle = currentDraft.fightingStyleChoices.includes("defense");
-  const hasArcheryFightingStyle = currentDraft.fightingStyleChoices.includes("archery");
+  const hasDefenseFightingStyle = allFightingStyles.includes("defense");
+  const hasArcheryFightingStyle = allFightingStyles.includes("archery");
   // Unarmored Defense (Barbarian: 10+DEX+CON; Monk: 10+DEX+WIS — both "while
   // you aren't wearing armor," Monk also excludes wielding a Shield, already
   // handled by computeArmorClass's existing bodyArmor branch either way).
   // Only takes effect while unarmored, so passing it unconditionally for
   // either class is safe.
   const unarmoredDefenseBonus =
-    sheet.classIndex === "barbarian"
+    clsLvl("barbarian") > 0
       ? sheet.modifiers.con
-      : sheet.classIndex === "monk"
+      : clsLvl("monk") > 0
         ? sheet.modifiers.wis
         : 0;
   const rageDamageBonusWhileRaging =
-    sheet.classIndex === "barbarian" && play.isRaging ? sheet.rageDamageBonus : 0;
-  const monkMartialArtsDie = sheet.classIndex === "monk" ? sheet.martialArtsDie : null;
+    clsLvl("barbarian") > 0 && play.isRaging ? sheet.rageDamageBonus : 0;
+  const monkMartialArtsDie = clsLvl("monk") > 0 ? sheet.martialArtsDie : null;
   const allOwnedBundleItems = [...sheet.ownedEquipment, ...inventoryBundleItems];
   // Magic items aren't anchored to a piece of armor (a Cloak of Protection
   // isn't a buffed Cloak), so they don't go through computeAC's equipment-
@@ -608,8 +645,7 @@ export default function PlaySheet({
   // recorded a choice" — both cases fall back to null (show mastery
   // unconditionally, the pre-existing behavior), rather than silently
   // hiding every weapon's mastery the instant this feature shipped.
-  const masteredWeaponIndexes =
-    currentDraft.weaponMasteryChoices.length > 0 ? new Set(currentDraft.weaponMasteryChoices) : null;
+  const masteredWeaponIndexes = allWeaponMastery.length > 0 ? new Set(allWeaponMastery) : null;
   const weapons = [
     ...(monkUnarmedStrike ? [monkUnarmedStrike] : []),
     ...(naturalWeapon ? [naturalWeapon] : []),
@@ -634,7 +670,7 @@ export default function PlaySheet({
     return Boolean(equipmentByIndex.get(item.index)?.armorClass);
   });
   const baseSpeed =
-    sheet.classIndex === "monk" && sheet.speed != null && !wearingArmorOrShield
+    clsLvl("monk") > 0 && sheet.speed != null && !wearingArmorOrShield
       ? sheet.speed + sheet.unarmoredMovementBonus
       : sheet.speed;
   // Exhaustion cuts Speed by 5 ft per level (floored at 0).
@@ -660,27 +696,87 @@ export default function PlaySheet({
   const needsGiantAncestryChoice = sheet.speciesIndex === "goliath" && !currentDraft.giantAncestryChoice;
   const chosenAncestry = GIANT_ANCESTRY_OPTIONS.find((o) => o.key === currentDraft.giantAncestryChoice) ?? null;
 
-  const needsSubclassChoice =
-    sheet.level >= 3 && !currentDraft.subclassIndex && subclassOptions.length > 0;
-  const chosenSubclass = subclassOptions.find((s) => s.index === currentDraft.subclassIndex) ?? null;
+  // Each class the character has (primary + any additional). The primary's
+  // subclass lives in currentDraft.subclassIndex, additional classes' in
+  // secondarySubclasses. Resolved against the flat subclassOptions union.
+  const classEntries = sheet.classes.map((c) => ({
+    classIndex: c.classIndex,
+    className: c.className,
+    level: c.level,
+    subclassIndex: c.subclassIndex,
+    subclass: subclassOptions.find((s) => s.index === c.subclassIndex) ?? null,
+  }));
+  // The primary class's chosen subclass — used by the header and the
+  // (primary-class) subclass picker; per-class pickers loop classEntries.
+  const chosenSubclass =
+    subclassOptions.find((s) => s.index === currentDraft.subclassIndex) ?? null;
+  // Header subtitle. Single class: "Fighter (Champion)" (no level, as before).
+  // Multiclass: "Fighter 5 (Champion) / Wizard 3 (Evoker — Homebrew)".
+  const classSubtitle = classEntries
+    .map((c) => {
+      const lvl = classEntries.length > 1 ? ` ${c.level}` : "";
+      const sub = c.subclass ? ` (${c.subclass.name}${c.subclass.isHomebrew ? " — Homebrew" : ""})` : "";
+      return `${c.className}${lvl}${sub}`;
+    })
+    .join(" / ");
+
+  // Level-up class targeting. levelUpClass null → continue the primary class.
+  const levelUpTarget = levelUpClass ?? sheet.classIndex;
+  const levelUpHitDie = classes.find((c) => c.index === levelUpTarget)?.hitDie ?? sheet.hitDie;
+  const formatPrereq = (classIndex: string): string => {
+    const req = MULTICLASS_PREREQUISITES[classIndex];
+    if (!req) return "";
+    const joiner = req.mode === "any" ? " or " : " and ";
+    return req.abilities.map((a) => `${a.toUpperCase()} ${MULTICLASS_PREREQ_MIN}`).join(joiner);
+  };
+  // Classes the character doesn't have yet — the "add a new class" options,
+  // each flagged with whether its ability prerequisites are met.
+  const addableClasses = classes
+    .filter((c) => clsLvl(c.index) === 0)
+    .map((c) => ({
+      index: c.index,
+      name: c.name,
+      meets: meetsMulticlassPrereq(sheet.finalScores, c.index),
+      prereq: formatPrereq(c.index),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // Classes that have reached level 3 with subclass options but no pick yet.
+  const classesNeedingSubclass = classEntries.filter(
+    (c) => c.level >= 3 && !c.subclassIndex && (subclassOptionsByClass[c.classIndex]?.length ?? 0) > 0,
+  );
+  const needsSubclassChoice = classesNeedingSubclass.length > 0;
+
   // For classes with only one SRD subclass, the source data already flattens
   // some subclass features into the base `features` table too (e.g. Cleric's
   // "Disciple of Life") — dedupe by name so those don't show twice.
   const baseFeatureNames = new Set(features.map((f) => f.name));
-  const subclassFeatures: ClassFeature[] = chosenSubclass
-    ? chosenSubclass.features
-        .filter((f) => !baseFeatureNames.has(f.name))
-        .map((f) => ({
-          index: `${chosenSubclass.index}-${f.name}`,
-          name: f.name,
-          level: f.level,
-          description: f.description,
-        }))
-    : [];
-
-  const pendingAsiLevels = ASI_LEVELS.filter(
-    (lvl) => lvl <= sheet.level && !currentDraft.featChoices.some((fc) => fc.level === lvl),
+  // Subclass features across every class, each gated on that class's level.
+  const subclassFeatures: ClassFeature[] = classEntries.flatMap((c) =>
+    (c.subclass?.features ?? [])
+      .filter((f) => f.level <= c.level && !baseFeatureNames.has(f.name))
+      .map((f) => ({
+        index: `${c.subclass!.index}-${f.name}`,
+        name: f.name,
+        level: f.level,
+        description: f.description,
+      })),
   );
+
+  // ASI milestones owed per class (4/8/12/16/19 of THAT class). A pending entry
+  // carries the owning class so chooseFeat targets the right one.
+  const pendingAsi = classEntries.flatMap((c) =>
+    ASI_LEVELS.filter(
+      (lvl) =>
+        lvl <= c.level &&
+        !currentDraft.featChoices.some(
+          (fc) => (fc.classIndex ?? sheet.classIndex) === c.classIndex && fc.level === lvl,
+        ),
+    ).map((lvl) => ({ classIndex: c.classIndex, className: c.className, level: lvl })),
+  );
+  // Backward-compat: the existing single-class ASI picker keys off these.
+  const pendingAsiLevels = pendingAsi
+    .filter((p) => p.classIndex === sheet.classIndex)
+    .map((p) => p.level);
   const takenFeatIndexes = new Set(currentDraft.featChoices.map((fc) => fc.featIndex));
   const featFeatures: ClassFeature[] = currentDraft.featChoices.map((fc) => {
     // Epic boons live in a separate list from general feats — check both so a
@@ -701,7 +797,13 @@ export default function PlaySheet({
   // data, just the one mention) — once that level's choice is actually
   // resolved below, drop the generic marker so it doesn't sit next to the
   // real pick (which might not even be Ability Score Improvement).
-  const resolvedFeatLevels = new Set(currentDraft.featChoices.map((fc) => fc.level));
+  // A generic "Ability Score Improvement" marker is dropped once its owning
+  // class's ASI at that level is resolved (keyed per class for multiclass).
+  const isResolvedAsiMarker = (f: { classIndex: string; level: number; name: string }) =>
+    f.name === "Ability Score Improvement" &&
+    currentDraft.featChoices.some(
+      (fc) => (fc.classIndex ?? sheet.classIndex) === f.classIndex && fc.level === f.level,
+    );
   // The base features table also flattens the official SRD subclass's own
   // features into the base class (the "Disciple of Life" case noted above,
   // dedupe in the other direction) — this only ever looked correct before
@@ -713,10 +815,15 @@ export default function PlaySheet({
   // Barbarian who picked Path of the Bloodletter would still see Berserker's
   // "Frenzy" leak into their Features list.
   const allSubclassFeatureNames = new Set(subclassOptions.flatMap((s) => s.features.map((f) => f.name)));
-  const chosenSubclassFeatureNames = new Set(chosenSubclass?.features.map((f) => f.name) ?? []);
+  const chosenSubclassFeatureNames = new Set(
+    classEntries.flatMap((c) => c.subclass?.features.map((f) => f.name) ?? []),
+  );
   const baseFeaturesWithoutResolvedAsi = features.filter(
     (f) =>
-      !(f.name === "Ability Score Improvement" && resolvedFeatLevels.has(f.level)) &&
+      // Base features only show up to their OWNING class's level (a Wizard-5
+      // feature is hidden for a character with only 3 Wizard levels).
+      f.level <= clsLvl(f.classIndex) &&
+      !isResolvedAsiMarker(f) &&
       (!allSubclassFeatureNames.has(f.name) || chosenSubclassFeatureNames.has(f.name)),
   );
 
@@ -803,21 +910,39 @@ export default function PlaySheet({
     sheet.furyOfTheSmallMax > 0 ||
     sheet.shiftingMax > 0 ||
     sheet.arcaneRecoveryMax > 0 ||
-    (sheet.classIndex === "warlock" && sheet.spellSlots.some((n) => n > 0));
+    sheet.pactSlots.some((n) => n > 0);
 
-  const cantripOptions = classSpells.filter((s) => s.level === 0);
+  // The caster class the Spells card's cantrip/prepared pickers manage — the
+  // character's first spellcasting class (usually the only one). Its spell list
+  // comes from classSpellsByClass; its picks live in the legacy flat arrays if
+  // it's the primary class, otherwise in its per-class bucket. (A character
+  // with two caster classes manages this first one here; the second caster's
+  // list is a documented follow-up.)
+  const spellClass = sheet.spellcasting[0]?.classIndex ?? sheet.classIndex;
+  const spellClassIsPrimary = spellClass === sheet.classIndex;
+  const spellClassSpells = classSpellsByClass[spellClass] ?? classSpells;
+  const currentKnownCantrips = spellClassIsPrimary
+    ? currentDraft.knownCantrips
+    : currentDraft.classCantrips[spellClass] ?? [];
+  const currentPreparedSpells = spellClassIsPrimary
+    ? currentDraft.preparedSpells
+    : currentDraft.classPreparedSpells[spellClass] ?? [];
+
+  const cantripOptions = spellClassSpells.filter((s) => s.level === 0);
   // Spells of a level you have no slots for yet aren't preparable.
   // Exception: half-casters (Paladin, Ranger) have no slots at level 1 but
   // do have a prepared-spell count, so fall back to showing level-1 spells
   // so they can make picks before their first slots arrive at level 2.
+  const slotLevelReach = (arr: number[]) =>
+    arr.reduce((max, count, i) => (count > 0 ? i + 1 : max), 0);
   const maxSpellLevel =
-    sheet.spellSlots.reduce((max, count, i) => (count > 0 ? i + 1 : max), 0) ||
+    Math.max(slotLevelReach(sheet.spellSlots), slotLevelReach(sheet.pactSlots)) ||
     (sheet.preparedSpellsCount > 0 && sheet.cantripsKnownCount === 0 ? 1 : 0);
-  const preparedOptions = classSpells.filter((s) => s.level >= 1 && s.level <= maxSpellLevel);
-  const knownCantripDetails = currentDraft.knownCantrips
+  const preparedOptions = spellClassSpells.filter((s) => s.level >= 1 && s.level <= maxSpellLevel);
+  const knownCantripDetails = currentKnownCantrips
     .map((index) => cantripOptions.find((s) => s.index === index))
     .filter((s): s is SpellOption => Boolean(s));
-  const preparedSpellDetails = currentDraft.preparedSpells
+  const preparedSpellDetails = currentPreparedSpells
     .map((index) => preparedOptions.find((s) => s.index === index))
     .filter((s): s is SpellOption => Boolean(s))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
@@ -844,7 +969,7 @@ export default function PlaySheet({
     ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip ? ["spells"] : []),
     ...(speciesTraits.length > 0 ? ["species-traits"] : []),
     ...(unlockedFeatures.length > 0 ? ["features"] : []),
-    ...(weapons.length > 0 || sheet.classIndex === "paladin" ? ["attacks"] : []),
+    ...(weapons.length > 0 || clsLvl("paladin") > 0 ? ["attacks"] : []),
     "equipment",
   ];
   const allSectionsCollapsed = collapsibleSectionIds.every((id) => collapsedSections.has(id));
@@ -1150,6 +1275,7 @@ export default function PlaySheet({
       deathSaveSuccesses: 0,
       deathSaveFailures: 0,
       expendedSlots: [],
+    expendedPactSlots: [],
       expendedSorceryPoints: 0,
       expendedChannelDivinity: 0,
       expendedBardicInspiration: 0,
@@ -1202,14 +1328,15 @@ export default function PlaySheet({
   // (confirmed "finish a Short or Long Rest" for each), unlike Second
   // Wind/Rage which only regain 1.
   function shortRest() {
-    const bardFontOfInspiration = sheet?.classIndex === "bard" && sheet.level >= 5;
-    const warlockPactMagic = sheet?.classIndex === "warlock";
+    const bardFontOfInspiration = (sheet?.classLevels?.["bard"] ?? 0) >= 5;
+    const warlockPactMagic = (sheet?.classLevels?.["warlock"] ?? 0) > 0;
     setPlay((prev) => ({
       ...prev,
       expendedChannelDivinity: Math.max(0, prev.expendedChannelDivinity - 1),
       expendedBardicInspiration: bardFontOfInspiration ? 0 : prev.expendedBardicInspiration,
       expendedWildShape: Math.max(0, prev.expendedWildShape - 1),
-      expendedSlots: warlockPactMagic ? [] : prev.expendedSlots,
+      // Pact Magic slots fully recover on a Short Rest (their own pool).
+      expendedPactSlots: warlockPactMagic ? [] : prev.expendedPactSlots,
       expendedSecondWind: Math.max(0, prev.expendedSecondWind - 1),
       expendedActionSurge: 0,
       expendedRage: Math.max(0, prev.expendedRage - 1),
@@ -1230,13 +1357,30 @@ export default function PlaySheet({
   // refund against.
   function useMagicalCunning() {
     if (!sheet || play.usedMagicalCunning) return;
-    const idx = sheet.spellSlots.findIndex((n) => n > 0);
+    const idx = sheet.pactSlots.findIndex((n) => n > 0);
     if (idx < 0) return;
-    const regain = magicalCunningRegain(sheet.spellSlots[idx]);
+    const regain = magicalCunningRegain(sheet.pactSlots[idx]);
     setPlay((prev) => {
-      const next = [...prev.expendedSlots];
+      const next = [...prev.expendedPactSlots];
       next[idx] = Math.max(0, (next[idx] ?? 0) - regain);
-      return { ...prev, expendedSlots: next, usedMagicalCunning: true };
+      return { ...prev, expendedPactSlots: next, usedMagicalCunning: true };
+    });
+  }
+
+  // Pact Magic slot expend/restore — its own pool, separate from the shared
+  // spell slots' expendSpellSlot/restoreSpellSlot below.
+  function expendPactSlot(levelIndex: number) {
+    setPlay((prev) => {
+      const next = [...prev.expendedPactSlots];
+      next[levelIndex] = (next[levelIndex] ?? 0) + 1;
+      return { ...prev, expendedPactSlots: next };
+    });
+  }
+  function restorePactSlot(levelIndex: number) {
+    setPlay((prev) => {
+      const next = [...prev.expendedPactSlots];
+      next[levelIndex] = Math.max(0, (next[levelIndex] ?? 0) - 1);
+      return { ...prev, expendedPactSlots: next };
     });
   }
 
@@ -1677,27 +1821,34 @@ export default function PlaySheet({
     }));
   }
 
-  async function handleLevelUp(mode: "roll" | "average") {
+  async function handleLevelUp(mode: "roll" | "average", chosenClass?: string) {
     if (!sheet || sheet.level >= MAX_LEVEL) return;
+    // Which class the new level goes into (defaults to the primary class). The
+    // HP roll uses THAT class's hit die.
+    const targetClass = chosenClass ?? sheet.classIndex;
+    const hitDie = classes.find((c) => c.index === targetClass)?.hitDie ?? sheet.hitDie;
     setLevelUpPending(true);
     setLevelUpError(null);
 
-    const dieResult = mode === "roll" ? rollFlatDie(sheet.hitDie) : fixedAverageHpGain(sheet.hitDie);
-    const gain = hpGainForLevelUp(sheet.hitDie, sheet.modifiers.con, dieResult);
+    const dieResult = mode === "roll" ? rollFlatDie(hitDie) : fixedAverageHpGain(hitDie);
+    const gain = hpGainForLevelUp(hitDie, sheet.modifiers.con, dieResult);
 
-    const result = await levelUpCharacter(characterId, gain);
+    const result = await levelUpCharacter(characterId, gain, targetClass);
     if (result.success && result.draft) {
+      const targetName = classes.find((c) => c.index === targetClass)?.name ?? targetClass;
       pushLog({
-        label: `Level Up → ${result.draft.level}`,
+        label: `Level Up → ${result.draft.level} (${targetName})`,
         detail:
           mode === "roll"
-            ? `d${sheet.hitDie} ${dieResult} ${formatModifier(sheet.modifiers.con)}`
-            : `avg d${sheet.hitDie} (${dieResult}) ${formatModifier(sheet.modifiers.con)}`,
+            ? `d${hitDie} ${dieResult} ${formatModifier(sheet.modifiers.con)}`
+            : `avg d${hitDie} (${dieResult}) ${formatModifier(sheet.modifiers.con)}`,
         total: gain,
       });
       setCurrentDraft(result.draft);
       setPlay((prev) => ({ ...prev, currentHp: prev.currentHp + gain }));
       setLevelingUp(false);
+      setLevelUpClass(null);
+      setAddingClass(false);
     } else {
       setLevelUpError(result.error ?? "Couldn't level up.");
     }
@@ -1752,10 +1903,10 @@ export default function PlaySheet({
     setLevelingPending(false);
   }
 
-  async function handleChooseSubclass(subclassIndex: string) {
+  async function handleChooseSubclass(subclassIndex: string, classIndex: string) {
     setSubclassPending(true);
     setChoiceError(null);
-    const result = await chooseSubclass(characterId, subclassIndex);
+    const result = await chooseSubclass(characterId, subclassIndex, classIndex);
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
       setSelectedSubclassIndex(null);
@@ -1902,7 +2053,7 @@ export default function PlaySheet({
   }
 
   function openCantripPicker() {
-    setSelectedCantrips(currentDraft.knownCantrips);
+    setSelectedCantrips(currentKnownCantrips);
     setCantripPickerOpen(true);
     setChoiceError(null);
   }
@@ -1918,7 +2069,7 @@ export default function PlaySheet({
   async function saveCantrips() {
     setSpellsPending(true);
     setChoiceError(null);
-    const result = await setKnownCantrips(characterId, selectedCantrips);
+    const result = await setKnownCantrips(characterId, selectedCantrips, spellClass);
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
       setCantripPickerOpen(false);
@@ -1929,7 +2080,7 @@ export default function PlaySheet({
   }
 
   function openPreparedPicker() {
-    setSelectedPrepared(currentDraft.preparedSpells);
+    setSelectedPrepared(currentPreparedSpells);
     setPreparedPickerOpen(true);
     setChoiceError(null);
   }
@@ -1945,7 +2096,7 @@ export default function PlaySheet({
   async function savePrepared() {
     setSpellsPending(true);
     setChoiceError(null);
-    const result = await setPreparedSpells(characterId, selectedPrepared);
+    const result = await setPreparedSpells(characterId, selectedPrepared, spellClass);
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
       setPreparedPickerOpen(false);
@@ -2145,10 +2296,7 @@ export default function PlaySheet({
                   {sheet.name || "Unnamed"}
                 </h1>
                 <p className="font-heading text-base font-bold tracking-wide text-tavern-gold-light">
-                  {sheet.className}
-                  {chosenSubclass
-                    ? ` (${chosenSubclass.name}${chosenSubclass.isHomebrew ? " — Homebrew" : ""})`
-                    : ""}
+                  {classSubtitle}
                 </p>
                 <p className="text-tavern-muted">
                   Level {sheet.level} {sheet.subspeciesName ?? sheet.speciesName}
@@ -2225,7 +2373,7 @@ export default function PlaySheet({
             ...(sheet.spellcastingAbility || sheet.lineageSpells.length > 0 || sheet.lineageCantripTrait !== null || sheet.speciesCantrip ? [{ id: "spells", label: "Spells" }] : []),
             ...(speciesTraits.length > 0 ? [{ id: "species-traits", label: "Species Traits" }] : []),
             ...(unlockedFeatures.length > 0 ? [{ id: "features", label: "Features" }] : []),
-            ...(weapons.length > 0 || sheet.classIndex === "paladin" ? [{ id: "attacks", label: "Attacks" }] : []),
+            ...(weapons.length > 0 || clsLvl("paladin") > 0 ? [{ id: "attacks", label: "Attacks" }] : []),
             { id: "equipment", label: "Equipment" },
             ...(personality || isOwner ? [{ id: "personality", label: "Personality" }] : []),
             { id: "notes", label: "Notes" },
@@ -2328,35 +2476,114 @@ export default function PlaySheet({
                   : `Need ${nextLevelXp !== null ? (nextLevelXp - currentDraft.xp).toLocaleString() : ""} more XP`}
               </button>
             ) : (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-tavern-gold/40 bg-tavern-card p-3">
-                <span className="text-xs text-tavern-muted">
-                  Hit points for level {sheet.level + 1} (d{sheet.hitDie}
-                  {formatModifier(sheet.modifiers.con)}):
-                </span>
-                <button
-                  onClick={() => handleLevelUp("roll")}
-                  disabled={levelUpPending}
-                  className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                >
-                  Roll d{sheet.hitDie}
-                </button>
-                <button
-                  onClick={() => handleLevelUp("average")}
-                  disabled={levelUpPending}
-                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light uppercase hover:border-tavern-gold-light disabled:opacity-50"
-                >
-                  Take Average ({fixedAverageHpGain(sheet.hitDie)})
-                </button>
-                <button
-                  onClick={() => {
-                    setLevelingUp(false);
-                    setLevelUpError(null);
-                  }}
-                  disabled={levelUpPending}
-                  className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+              <div className="flex flex-col gap-3 rounded-lg border border-tavern-gold/40 bg-tavern-card p-3">
+                {/* Which class does this level go into? */}
+                <div>
+                  <div className="text-xs text-tavern-muted">Level {sheet.level + 1} goes into:</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {sheet.classes.map((c) => {
+                      const active = levelUpTarget === c.classIndex && !addingClass;
+                      return (
+                        <button
+                          key={c.classIndex}
+                          onClick={() => {
+                            setLevelUpClass(c.classIndex);
+                            setAddingClass(false);
+                          }}
+                          disabled={levelUpPending}
+                          className={`rounded-md border px-2.5 py-1 text-xs font-bold ${
+                            active
+                              ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold-light"
+                              : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                          } disabled:opacity-50`}
+                        >
+                          {c.className} {c.level}
+                        </button>
+                      );
+                    })}
+                    {addableClasses.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setAddingClass((v) => !v);
+                          setLevelUpClass(null);
+                        }}
+                        disabled={levelUpPending}
+                        className={`rounded-md border px-2.5 py-1 text-xs font-bold ${
+                          addingClass
+                            ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold-light"
+                            : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                        } disabled:opacity-50`}
+                      >
+                        + New class…
+                      </button>
+                    )}
+                  </div>
+                  {addingClass && (
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                      {addableClasses.map((c) => (
+                        <button
+                          key={c.index}
+                          onClick={() => setLevelUpClass(c.index)}
+                          disabled={levelUpPending || !c.meets}
+                          title={c.meets ? undefined : `Requires ${c.prereq}`}
+                          className={`rounded-md border px-2 py-1.5 text-left text-xs ${
+                            levelUpClass === c.index
+                              ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold-light"
+                              : "border-tavern-border text-tavern-text hover:border-tavern-gold-light"
+                          } disabled:cursor-not-allowed disabled:opacity-40`}
+                        >
+                          <div className="font-bold">{c.name}</div>
+                          <div className="text-[10px] text-tavern-muted">
+                            {c.meets ? c.prereq : `Needs ${c.prereq}`}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {addingClass && (
+                    <p className="mt-1.5 text-[10px] text-tavern-muted">
+                      Multiclassing grants a subset of the new class&apos;s proficiencies (see the
+                      Player&apos;s Handbook). Saving throws and starting equipment come only from
+                      your first class.
+                    </p>
+                  )}
+                </div>
+
+                {/* HP for the chosen class's die. */}
+                {(!addingClass || levelUpClass) && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-tavern-border pt-3">
+                    <span className="text-xs text-tavern-muted">
+                      Hit points (d{levelUpHitDie}
+                      {formatModifier(sheet.modifiers.con)}):
+                    </span>
+                    <button
+                      onClick={() => handleLevelUp("roll", levelUpTarget)}
+                      disabled={levelUpPending}
+                      className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                    >
+                      Roll d{levelUpHitDie}
+                    </button>
+                    <button
+                      onClick={() => handleLevelUp("average", levelUpTarget)}
+                      disabled={levelUpPending}
+                      className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold text-tavern-gold-light uppercase hover:border-tavern-gold-light disabled:opacity-50"
+                    >
+                      Take Average ({fixedAverageHpGain(levelUpHitDie)})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setLevelingUp(false);
+                        setLevelUpError(null);
+                        setLevelUpClass(null);
+                        setAddingClass(false);
+                      }}
+                      disabled={levelUpPending}
+                      className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {levelUpError && (
@@ -2448,18 +2675,21 @@ export default function PlaySheet({
           </div>
         )}
 
-        {isOwner && needsSubclassChoice && (
-          <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+        {isOwner &&
+          classesNeedingSubclass.map((needCls) => {
+            const opts = subclassOptionsByClass[needCls.classIndex] ?? [];
+            return (
+          <div key={needCls.classIndex} className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
             <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
-              Choose your subclass
+              Choose your {needCls.className} subclass
             </p>
-            {subclassOptions.length === 1 && (
+            {opts.length === 1 && (
               <p className="mt-1 text-xs text-tavern-muted">
                 Only one subclass is in the free SRD right now — more options are coming later.
               </p>
             )}
             <div className="mt-2 space-y-2">
-              {subclassOptions.map((opt) => {
+              {opts.map((opt) => {
                 const isSelected = selectedSubclassIndex === opt.index;
                 return (
                   <div
@@ -2517,14 +2747,14 @@ export default function PlaySheet({
                 );
               })}
             </div>
-            {selectedSubclassIndex && (
+            {selectedSubclassIndex && opts.some((o) => o.index === selectedSubclassIndex) && (
               <div className="mt-3 flex items-center gap-3">
                 <button
-                  onClick={() => handleChooseSubclass(selectedSubclassIndex)}
+                  onClick={() => handleChooseSubclass(selectedSubclassIndex, needCls.classIndex)}
                   disabled={subclassPending}
                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
                 >
-                  Confirm {subclassOptions.find((o) => o.index === selectedSubclassIndex)?.name}
+                  Confirm {opts.find((o) => o.index === selectedSubclassIndex)?.name}
                 </button>
                 <button
                   onClick={() => setSelectedSubclassIndex(null)}
@@ -2536,7 +2766,8 @@ export default function PlaySheet({
               </div>
             )}
           </div>
-        )}
+            );
+          })}
 
         {isOwner &&
           pendingAsiLevels.map((lvl) => (
@@ -4184,36 +4415,45 @@ export default function PlaySheet({
               </span>
             </button>
             {(!collapsedSections.has("spells") || cantripPickerOpen || preparedPickerOpen || metamagicPickerOpen || lineageCantripPickerOpen) && (<>
-            {sheet.spellcastingAbility && (
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
-                <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
-                  Spell Save DC
-                </div>
-                <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
-                  {sheet.spellSaveDC}
+            {/* One Save DC / Attack pair per caster class (each uses its own
+                ability). A single-class caster shows just its own. */}
+            {sheet.spellcasting.map((sc) => (
+              <div key={sc.classIndex} className="mt-3">
+                {sheet.spellcasting.length > 1 && (
+                  <div className="mb-1 font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                    {sc.className} — {sc.ability.toUpperCase()}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
+                    <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                      Spell Save DC
+                    </div>
+                    <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
+                      {sc.saveDC}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
+                    <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                      Spell Attack
+                    </div>
+                    <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
+                      {formatModifier(sc.attackBonus)}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="rounded-lg border border-tavern-border bg-tavern-bg p-3 text-center">
-                <div className="font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
-                  Spell Attack
-                </div>
-                <div className="mt-1 font-heading text-xl font-bold text-tavern-gold-light">
-                  {formatModifier(sheet.spellAttackBonus ?? 0)}
-                </div>
-              </div>
-            </div>
-            )}
+            ))}
 
             {sheet.spellSlots.some((n) => n > 0) && (
               <div className="mt-4">
                 <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
                   Spell Slots
                 </h3>
-                {sheet.classIndex === "warlock" && (
+                {sheet.spellcasting.filter((sc) => !sc.isWarlock).length > 1 && (
                   <p className="text-xs text-tavern-muted">
-                    Pact Magic — all slots are the same level, and recover fully on a Short or
-                    Long Rest.
+                    Shared multiclass spell slots (combined caster level) — any class&apos;s prepared
+                    spells can be cast using them.
                   </p>
                 )}
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -4253,22 +4493,68 @@ export default function PlaySheet({
               </div>
             )}
 
-            {sheet.classIndex === "warlock" && sheet.level >= 2 && (
+            {/* Warlock Pact Magic — a separate pool from the shared slots above. */}
+            {sheet.pactSlots.some((n) => n > 0) && (
+              <div className="mt-4">
+                <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
+                  Pact Magic Slots
+                </h3>
+                <p className="text-xs text-tavern-muted">
+                  All the same level, and recover fully on a Short or Long Rest.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {sheet.pactSlots.map((total, i) => {
+                    if (total === 0) return null;
+                    const used = play.expendedPactSlots[i] ?? 0;
+                    const remaining = total - used;
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between rounded-md border border-tavern-border px-3 py-2"
+                      >
+                        <span className="text-sm text-tavern-muted">Level {i + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => restorePactSlot(i)}
+                            disabled={remaining >= total}
+                            className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                          <span className="font-heading font-bold text-tavern-text">
+                            {remaining}/{total}
+                          </span>
+                          <button
+                            onClick={() => expendPactSlot(i)}
+                            disabled={remaining <= 0}
+                            className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
+                          >
+                            &minus;
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {clsLvl("warlock") >= 2 && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
                 <div>
                   <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
                     Magical Cunning
                   </div>
                   <div className="text-xs text-tavern-muted">
-                    1-minute rite to regain {magicalCunningRegain(Math.max(0, ...sheet.spellSlots))}{" "}
+                    1-minute rite to regain {magicalCunningRegain(Math.max(0, ...sheet.pactSlots))}{" "}
                     expended Pact Magic slot
-                    {magicalCunningRegain(Math.max(0, ...sheet.spellSlots)) === 1 ? "" : "s"}. Once
+                    {magicalCunningRegain(Math.max(0, ...sheet.pactSlots)) === 1 ? "" : "s"}. Once
                     per Long Rest.
                   </div>
                 </div>
                 <button
                   onClick={useMagicalCunning}
-                  disabled={play.usedMagicalCunning || !play.expendedSlots.some((n) => n > 0)}
+                  disabled={play.usedMagicalCunning || !play.expendedPactSlots.some((n) => n > 0)}
                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {play.usedMagicalCunning ? "Used" : "Use"}
@@ -5142,7 +5428,7 @@ export default function PlaySheet({
         )}
 
         {/* Attacks */}
-        {(weapons.length > 0 || sheet.classIndex === "paladin") && (
+        {(weapons.length > 0 || clsLvl("paladin") > 0) && (
           <div id="attacks" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
             <button onClick={() => toggleSection("attacks")} className="flex w-full items-center justify-between">
               <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
@@ -5197,7 +5483,7 @@ export default function PlaySheet({
                 </button>
               </div>
             )}
-            {sheet.classIndex === "monk" && (
+            {clsLvl("monk") > 0 && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
                 <div>
                   <div className="font-heading font-bold text-tavern-text">Deflect Attacks</div>
@@ -5214,7 +5500,7 @@ export default function PlaySheet({
                 </button>
               </div>
             )}
-            {sheet.classIndex === "monk" && sheet.level >= 17 && (
+            {clsLvl("monk") >= 17 && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
                 <div>
                   <div className="font-heading font-bold text-tavern-text">Quivering Palm</div>
@@ -5231,7 +5517,7 @@ export default function PlaySheet({
                 </button>
               </div>
             )}
-            {sheet.classIndex === "paladin" && (
+            {clsLvl("paladin") > 0 && (
               <div className="mt-3 rounded-md border border-tavern-border p-3">
                 <div className="mb-2">
                   <div className="font-heading font-bold text-tavern-text">Divine Smite</div>
@@ -5264,7 +5550,7 @@ export default function PlaySheet({
                 </div>
               </div>
             )}
-            {sheet.classIndex === "paladin" && sheet.level >= 11 && (
+            {clsLvl("paladin") >= 11 && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-tavern-border p-3">
                 <div>
                   <div className="font-heading font-bold text-tavern-text">Improved Divine Smite</div>
