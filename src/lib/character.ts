@@ -154,6 +154,11 @@ export interface CharacterDraft {
   classFightingStyles: Record<string, string[]>;
   classMetamagic: Record<string, string[]>;
   classWeaponMastery: Record<string, string[]>;
+  // Skill proficiencies granted when multiclassing INTO a class (Bard/Ranger/
+  // Rogue each grant one — see MULTICLASS_SKILL_GRANTS). Keyed by classIndex;
+  // only ever holds ADDITIONAL classes (the primary's skills come from the
+  // builder). Bare skill indexes, folded into proficientSkills.
+  multiclassSkills: Record<string, string[]>;
 }
 
 export interface ExpertiseMilestone {
@@ -360,9 +365,20 @@ export const EMPTY_DRAFT: CharacterDraft = {
   classFightingStyles: {},
   classMetamagic: {},
   classWeaponMastery: {},
+  multiclassSkills: {},
 };
 
 export const MAX_LEVEL = 20;
+
+// Classes that grant a skill proficiency (of your choice) when you multiclass
+// INTO them, and how many — the mechanically-relevant part of the 2024
+// multiclass proficiency table (armor/weapon/tool grants aren't tracked as
+// mechanics in this app, so they're shown as info text, not pickers).
+export const MULTICLASS_SKILL_GRANTS: Record<string, number> = {
+  bard: 1,
+  ranger: 1,
+  rogue: 1,
+};
 
 // ── Multiclassing ──────────────────────────────────────────────────────────
 // A character's level in one specific class. Primary contributes its level-1,
@@ -498,6 +514,7 @@ export function normalizeDraft(raw: Partial<CharacterDraft>): CharacterDraft {
   d.classFightingStyles = { ...(d.classFightingStyles ?? {}) };
   d.classMetamagic = { ...(d.classMetamagic ?? {}) };
   d.classWeaponMastery = { ...(d.classWeaponMastery ?? {}) };
+  d.multiclassSkills = { ...(d.multiclassSkills ?? {}) };
 
   // Attribute each feat choice to its owning class (primary for legacy rows).
   d.featChoices = (d.featChoices ?? []).map((fc) => ({

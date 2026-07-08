@@ -362,6 +362,10 @@ export function buildCharacterSheet(
     // exactly like any class/background skill.
     ...(draft.humanSkillChoice ? [draft.humanSkillChoice.replace(/^skill-/, "")] : []),
     ...draft.skilledChoices.map((s) => s.replace(/^skill-/, "")),
+    // Skills granted by multiclassing into Bard/Ranger/Rogue.
+    ...Object.values(draft.multiclassSkills ?? {})
+      .flat()
+      .map((s) => s.replace(/^skill-/, "")),
   ]);
 
   // Bard's Jack of All Trades adds half proficiency bonus (rounded down) to

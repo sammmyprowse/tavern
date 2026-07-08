@@ -17,6 +17,7 @@ import {
   METAMAGIC_OPTIONS,
   WEAPON_MASTERY_KNOWN_BY_CLASS,
   WEAPON_MASTERY_MELEE_ONLY_CLASSES,
+  MULTICLASS_SKILL_GRANTS,
   magicalCunningRegain,
   meetsMulticlassPrereq,
   MULTICLASS_PREREQUISITES,
@@ -49,6 +50,7 @@ import {
   setMetamagicChoices,
   setFightingStyleChoices,
   setWeaponMasteryChoices,
+  setMulticlassSkills,
   setHumanSkillChoice,
   setSkilledChoices,
   setCharacterInventory,
@@ -129,7 +131,10 @@ interface PlaySheetProps {
 interface PlayState {
   currentHp: number;
   tempHp: number;
+  // Legacy single-pool hit-dice-used counter (kept for older saved play state).
+  // Multiclass tracks per die size instead — hitDiceUsedByDie[dieSize] = spent.
   hitDiceUsed: number;
+  hitDiceUsedByDie: Record<string, number>;
   deathSaveSuccesses: number;
   deathSaveFailures: number;
   equippedIndexes: string[];
@@ -400,13 +405,24 @@ export default function PlaySheet({
   const [orderPending, setOrderPending] = useState(false);
   const [ancestryPending, setAncestryPending] = useState(false);
   const [choiceError, setChoiceError] = useState<string | null>(null);
-  const [featPickerLevel, setFeatPickerLevel] = useState<number | null>(null);
+  // Which class + level milestone the feat picker is open for (per-class for
+  // multiclass — a Fighter 4/Wizard 4 owes two separate ASIs).
+  const [featPicker, setFeatPicker] = useState<{ classIndex: string; level: number } | null>(null);
   const [selectedFeatIndex, setSelectedFeatIndex] = useState<string | null>(null);
   const [asiBonus, setAsiBonus] = useState<AbilityBonusChoice | null>(null);
   const [featPending, setFeatPending] = useState(false);
-  const [expertisePickerLevel, setExpertisePickerLevel] = useState<number | null>(null);
+  const [expertisePicker, setExpertisePicker] = useState<{ classIndex: string; level: number } | null>(
+    null,
+  );
+  // Multiclass skill grant (Bard/Ranger/Rogue joined as a secondary class).
+  const [mcSkillPicker, setMcSkillPicker] = useState<string | null>(null);
+  const [selectedMcSkills, setSelectedMcSkills] = useState<string[]>([]);
+  const [mcSkillPending, setMcSkillPending] = useState(false);
   const [selectedExpertiseSkills, setSelectedExpertiseSkills] = useState<string[]>([]);
   const [expertisePending, setExpertisePending] = useState(false);
+  // When a character has two spellcasting classes, this selects which one the
+  // Cantrips/Prepared pickers manage (null → the first caster).
+  const [activeCasterClass, setActiveCasterClass] = useState<string | null>(null);
   const [cantripPickerOpen, setCantripPickerOpen] = useState(false);
   const [lineageCantripPickerOpen, setLineageCantripPickerOpen] = useState(false);
   const [selectedCantrips, setSelectedCantrips] = useState<string[]>([]);
@@ -436,6 +452,7 @@ export default function PlaySheet({
     currentHp: sheet ? sheet.maxHpValue : 1,
     tempHp: 0,
     hitDiceUsed: 0,
+    hitDiceUsedByDie: {},
     deathSaveSuccesses: 0,
     deathSaveFailures: 0,
     equippedIndexes: allOwnedIndexes,
@@ -678,6 +695,7 @@ export default function PlaySheet({
     baseSpeed != null ? Math.max(0, baseSpeed - exhaustionSpeedPenalty(play.exhaustionLevel)) : baseSpeed;
   const maxHp = sheet.maxHpValue;
   const totalHitDice = sheet.level;
+  const hitDiceUsedByDie = play.hitDiceUsedByDie ?? {};
   const isDying = play.currentHp <= 0;
   const isHalfling = sheet.speciesIndex === "halfling";
 
@@ -746,6 +764,16 @@ export default function PlaySheet({
   );
   const needsSubclassChoice = classesNeedingSubclass.length > 0;
 
+  // Secondary classes (Bard/Ranger/Rogue) that grant a skill on multiclass and
+  // haven't had it chosen yet.
+  const pendingMulticlassSkills = classEntries.filter(
+    (c) =>
+      c.classIndex !== sheet.classIndex &&
+      (MULTICLASS_SKILL_GRANTS[c.classIndex] ?? 0) >
+        (currentDraft.multiclassSkills[c.classIndex]?.length ?? 0),
+  );
+  const mcSkillEligible = sheet.skills.filter((s) => !s.proficient);
+
   // For classes with only one SRD subclass, the source data already flattens
   // some subclass features into the base `features` table too (e.g. Cleric's
   // "Disciple of Life") — dedupe by name so those don't show twice.
@@ -773,10 +801,6 @@ export default function PlaySheet({
         ),
     ).map((lvl) => ({ classIndex: c.classIndex, className: c.className, level: lvl })),
   );
-  // Backward-compat: the existing single-class ASI picker keys off these.
-  const pendingAsiLevels = pendingAsi
-    .filter((p) => p.classIndex === sheet.classIndex)
-    .map((p) => p.level);
   const takenFeatIndexes = new Set(currentDraft.featChoices.map((fc) => fc.featIndex));
   const featFeatures: ClassFeature[] = currentDraft.featChoices.map((fc) => {
     // Epic boons live in a separate list from general feats — check both so a
@@ -873,16 +897,29 @@ export default function PlaySheet({
     .filter((t) => t.level <= sheet.level)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
-  const expertiseSchedule = EXPERTISE_SCHEDULE[sheet.classIndex] ?? [];
-  const pendingExpertiseMilestone = expertiseSchedule.find((m) => {
-    const priorCount = expertiseSchedule
-      .filter((x) => x.level < m.level)
-      .reduce((sum, x) => sum + x.count, 0);
-    return m.level <= sheet.level && currentDraft.expertiseChoices.length === priorCount;
+  // Expertise pending choices, per class that grants it (Rogue/Bard/Ranger).
+  // Each class's existing picks live in the primary's legacy expertiseChoices
+  // or a secondary class's classExpertise bucket.
+  const pendingExpertise = classEntries.flatMap((c) => {
+    const schedule = EXPERTISE_SCHEDULE[c.classIndex];
+    if (!schedule) return [];
+    const existing =
+      c.classIndex === sheet.classIndex
+        ? currentDraft.expertiseChoices
+        : currentDraft.classExpertise[c.classIndex] ?? [];
+    const milestone = schedule.find((m) => {
+      const priorCount = schedule
+        .filter((x) => x.level < m.level)
+        .reduce((sum, x) => sum + x.count, 0);
+      return m.level <= c.level && existing.length === priorCount;
+    });
+    return milestone
+      ? [{ classIndex: c.classIndex, className: c.className, milestone }]
+      : [];
   });
-  const expertiseEligibleSkills = sheet.skills.filter(
-    (s) => s.proficient && !currentDraft.expertiseChoices.includes(s.index),
-  );
+  // Eligible = proficient skills that don't already have Expertise (from any
+  // class — sheet.skills.expertise is the cross-class union).
+  const expertiseEligibleSkills = sheet.skills.filter((s) => s.proficient && !s.expertise);
 
   // Bonus skill proficiencies: Human's Skillful (1) and the Skilled feat (3
   // per time taken). The picker shows when either source applies.
@@ -918,7 +955,15 @@ export default function PlaySheet({
   // it's the primary class, otherwise in its per-class bucket. (A character
   // with two caster classes manages this first one here; the second caster's
   // list is a documented follow-up.)
-  const spellClass = sheet.spellcasting[0]?.classIndex ?? sheet.classIndex;
+  const spellClass =
+    (activeCasterClass && sheet.spellcasting.some((sc) => sc.classIndex === activeCasterClass)
+      ? activeCasterClass
+      : sheet.spellcasting[0]?.classIndex) ?? sheet.classIndex;
+  const activeCaster = sheet.spellcasting.find((sc) => sc.classIndex === spellClass) ?? null;
+  const activeCantripsKnown = activeCaster?.cantripsKnown ?? 0;
+  const activePreparedCount = activeCaster?.preparedCount ?? 0;
+  const activeSaveDC = activeCaster?.saveDC ?? sheet.spellSaveDC ?? 0;
+  const activeAttackBonus = activeCaster?.attackBonus ?? sheet.spellAttackBonus ?? 0;
   const spellClassIsPrimary = spellClass === sheet.classIndex;
   const spellClassSpells = classSpellsByClass[spellClass] ?? classSpells;
   const currentKnownCantrips = spellClassIsPrimary
@@ -937,7 +982,7 @@ export default function PlaySheet({
     arr.reduce((max, count, i) => (count > 0 ? i + 1 : max), 0);
   const maxSpellLevel =
     Math.max(slotLevelReach(sheet.spellSlots), slotLevelReach(sheet.pactSlots)) ||
-    (sheet.preparedSpellsCount > 0 && sheet.cantripsKnownCount === 0 ? 1 : 0);
+    (activePreparedCount > 0 && activeCantripsKnown === 0 ? 1 : 0);
   const preparedOptions = spellClassSpells.filter((s) => s.level >= 1 && s.level <= maxSpellLevel);
   const knownCantripDetails = currentKnownCantrips
     .map((index) => cantripOptions.find((s) => s.index === index))
@@ -953,8 +998,22 @@ export default function PlaySheet({
     .map((index) => fightingStyleFeats.find((f) => f.index === index))
     .filter((f): f is FeatOption => Boolean(f));
 
-  const weaponMasteryMax = sheet ? WEAPON_MASTERY_KNOWN_BY_CLASS[sheet.classIndex] ?? 0 : 0;
-  const weaponMasteryMeleeOnly = sheet ? WEAPON_MASTERY_MELEE_ONLY_CLASSES.has(sheet.classIndex) : false;
+  // Weapon Mastery known count is summed across every granting class (Barbarian/
+  // Fighter/Paladin/Ranger/Rogue). The picks are a single re-editable pool
+  // stored on the primary and applied via the union (allWeaponMastery), same
+  // shape as Fighting Style. Melee-only restriction (Barbarian) only applies if
+  // EVERY granting class is melee-only — a Fighter/Barbarian can still master
+  // ranged weapons via the Fighter grant.
+  const weaponMasteryClasses = sheet.classes.filter(
+    (c) => (WEAPON_MASTERY_KNOWN_BY_CLASS[c.classIndex] ?? 0) > 0,
+  );
+  const weaponMasteryMax = weaponMasteryClasses.reduce(
+    (sum, c) => sum + (WEAPON_MASTERY_KNOWN_BY_CLASS[c.classIndex] ?? 0),
+    0,
+  );
+  const weaponMasteryMeleeOnly =
+    weaponMasteryClasses.length > 0 &&
+    weaponMasteryClasses.every((c) => WEAPON_MASTERY_MELEE_ONLY_CLASSES.has(c.classIndex));
   const masterableWeapons = equipment
     .filter((e) => e.mastery && (!weaponMasteryMeleeOnly || (e.categories ?? []).includes("melee-weapons")))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -1271,7 +1330,7 @@ export default function PlaySheet({
       ...prev,
       currentHp: maxHp,
       tempHp: 0,
-      hitDiceUsed: Math.max(0, prev.hitDiceUsed - Math.max(1, Math.ceil(totalHitDice / 2))),
+      hitDiceUsedByDie: recoverHitDice(prev.hitDiceUsedByDie, Math.max(1, Math.ceil(totalHitDice / 2))),
       deathSaveSuccesses: 0,
       deathSaveFailures: 0,
       expendedSlots: [],
@@ -1805,20 +1864,38 @@ export default function PlaySheet({
     });
   }
 
-  function spendHitDie() {
-    if (play.hitDiceUsed >= totalHitDice) return;
-    const roll = rollFlatDie(sheet!.hitDie);
+  function spendHitDie(die: number) {
+    const pool = sheet!.hitDicePool.find((h) => h.die === die);
+    const used = play.hitDiceUsedByDie[String(die)] ?? 0;
+    if (!pool || used >= pool.count) return;
+    const roll = rollFlatDie(die);
     const healed = Math.max(1, roll + sheet!.modifiers.con);
     pushLog({
       label: "Hit Die",
-      detail: `d${sheet!.hitDie} ${roll} ${formatModifier(sheet!.modifiers.con)}`,
+      detail: `d${die} ${roll} ${formatModifier(sheet!.modifiers.con)}`,
       total: healed,
     });
     setPlay((prev) => ({
       ...prev,
-      hitDiceUsed: prev.hitDiceUsed + 1,
+      hitDiceUsedByDie: {
+        ...prev.hitDiceUsedByDie,
+        [String(die)]: (prev.hitDiceUsedByDie[String(die)] ?? 0) + 1,
+      },
       currentHp: Math.min(maxHp, prev.currentHp + healed),
     }));
+  }
+
+  // Long Rest recovers half your total Hit Dice (rounded up, min 1), taken
+  // greedily from whichever die sizes have been spent.
+  function recoverHitDice(usedByDie: Record<string, number>, budget: number): Record<string, number> {
+    const next = { ...usedByDie };
+    for (const key of Object.keys(next)) {
+      if (budget <= 0) break;
+      const restore = Math.min(next[key], budget);
+      next[key] -= restore;
+      budget -= restore;
+    }
+    return next;
   }
 
   async function handleLevelUp(mode: "roll" | "average", chosenClass?: string) {
@@ -1940,15 +2017,15 @@ export default function PlaySheet({
     setAncestryPending(false);
   }
 
-  function openFeatPicker(level: number) {
-    setFeatPickerLevel(level);
+  function openFeatPicker(classIndex: string, level: number) {
+    setFeatPicker({ classIndex, level });
     setSelectedFeatIndex(null);
     setAsiBonus(null);
     setChoiceError(null);
   }
 
   function cancelFeatPicker() {
-    setFeatPickerLevel(null);
+    setFeatPicker(null);
     setSelectedFeatIndex(null);
     setAsiBonus(null);
     setChoiceError(null);
@@ -1994,10 +2071,16 @@ export default function PlaySheet({
   }
 
   async function confirmFeatChoice() {
-    if (featPickerLevel == null || !selectedFeatIndex) return;
+    if (!featPicker || !selectedFeatIndex) return;
     setFeatPending(true);
     setChoiceError(null);
-    const result = await chooseFeat(characterId, featPickerLevel, selectedFeatIndex, asiBonus);
+    const result = await chooseFeat(
+      characterId,
+      featPicker.level,
+      selectedFeatIndex,
+      asiBonus,
+      featPicker.classIndex,
+    );
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
       cancelFeatPicker();
@@ -2007,14 +2090,14 @@ export default function PlaySheet({
     setFeatPending(false);
   }
 
-  function openExpertisePicker(level: number) {
-    setExpertisePickerLevel(level);
+  function openExpertisePicker(classIndex: string, level: number) {
+    setExpertisePicker({ classIndex, level });
     setSelectedExpertiseSkills([]);
     setChoiceError(null);
   }
 
   function cancelExpertisePicker() {
-    setExpertisePickerLevel(null);
+    setExpertisePicker(null);
     setSelectedExpertiseSkills([]);
     setChoiceError(null);
   }
@@ -2027,11 +2110,43 @@ export default function PlaySheet({
     });
   }
 
+  function openMcSkillPicker(classIndex: string) {
+    setMcSkillPicker(classIndex);
+    setSelectedMcSkills([]);
+    setChoiceError(null);
+  }
+  function toggleMcSkill(skillIndex: string, count: number) {
+    setSelectedMcSkills((prev) => {
+      if (prev.includes(skillIndex)) return prev.filter((s) => s !== skillIndex);
+      if (prev.length >= count) return prev;
+      return [...prev, skillIndex];
+    });
+  }
+  async function confirmMcSkills() {
+    if (!mcSkillPicker) return;
+    setMcSkillPending(true);
+    setChoiceError(null);
+    const result = await setMulticlassSkills(characterId, mcSkillPicker, selectedMcSkills);
+    if (result.success && result.draft) {
+      setCurrentDraft(result.draft);
+      setMcSkillPicker(null);
+      setSelectedMcSkills([]);
+    } else {
+      setChoiceError(result.error ?? "Couldn't save skills.");
+    }
+    setMcSkillPending(false);
+  }
+
   async function confirmExpertise() {
-    if (expertisePickerLevel == null) return;
+    if (!expertisePicker) return;
     setExpertisePending(true);
     setChoiceError(null);
-    const result = await chooseExpertise(characterId, expertisePickerLevel, selectedExpertiseSkills);
+    const result = await chooseExpertise(
+      characterId,
+      expertisePicker.level,
+      selectedExpertiseSkills,
+      expertisePicker.classIndex,
+    );
     if (result.success && result.draft) {
       setCurrentDraft(result.draft);
       cancelExpertisePicker();
@@ -2770,19 +2885,86 @@ export default function PlaySheet({
           })}
 
         {isOwner &&
-          pendingAsiLevels.map((lvl) => (
-            <div key={lvl} className="mt-4">
-              {featPickerLevel !== lvl ? (
+          pendingMulticlassSkills.map((c) => {
+            const count = MULTICLASS_SKILL_GRANTS[c.classIndex] ?? 0;
+            const isOpen = mcSkillPicker === c.classIndex;
+            return (
+              <div key={`mcskill-${c.classIndex}`} className="mt-4">
+                {!isOpen ? (
+                  <button
+                    onClick={() => openMcSkillPicker(c.classIndex)}
+                    className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
+                  >
+                    Choose {c.className} Multiclass Skill ({count})
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
+                    <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
+                      {c.className} grants {count} skill proficiency
+                    </p>
+                    <p className="mt-1 text-xs text-tavern-muted">
+                      Multiclassing into {c.className} grants a skill of your choice. (It also grants
+                      some armor/weapon{c.classIndex === "rogue" ? "/tool" : ""} proficiencies, which
+                      this sheet doesn&apos;t track mechanically.)
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {mcSkillEligible.map((s) => (
+                        <button
+                          key={s.index}
+                          onClick={() => toggleMcSkill(s.index, count)}
+                          className={`rounded-md border p-2 text-left text-sm transition-colors ${
+                            selectedMcSkills.includes(s.index)
+                              ? "border-tavern-gold bg-tavern-bg text-tavern-text"
+                              : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                          }`}
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <button
+                        onClick={confirmMcSkills}
+                        disabled={mcSkillPending || selectedMcSkills.length !== count}
+                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMcSkillPicker(null);
+                          setSelectedMcSkills([]);
+                        }}
+                        disabled={mcSkillPending}
+                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+        {isOwner &&
+          pendingAsi.map((p) => {
+            const lvl = p.level;
+            const isOpen = featPicker?.classIndex === p.classIndex && featPicker?.level === p.level;
+            const classLabel = sheet.classes.length > 1 ? `${p.className} ` : "";
+            return (
+            <div key={`${p.classIndex}-${p.level}`} className="mt-4">
+              {!isOpen ? (
                 <button
-                  onClick={() => openFeatPicker(lvl)}
+                  onClick={() => openFeatPicker(p.classIndex, p.level)}
                   className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
                 >
-                  Choose a Feat (Level {lvl})
+                  Choose a Feat ({classLabel}Level {lvl})
                 </button>
               ) : (
                 <div className="rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
                   <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
-                    Choose a Feat — Level {lvl}
+                    Choose a Feat — {classLabel}Level {lvl}
                   </p>
                   {lvl >= 19 && (
                     <p className="mt-1 text-xs text-tavern-muted">
@@ -2915,21 +3097,28 @@ export default function PlaySheet({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
-        {isOwner && pendingExpertiseMilestone && (
-          <div className="mt-4">
-            {expertisePickerLevel !== pendingExpertiseMilestone.level ? (
+        {isOwner &&
+          pendingExpertise.map((pe) => {
+            const isOpen =
+              expertisePicker?.classIndex === pe.classIndex &&
+              expertisePicker?.level === pe.milestone.level;
+            const classLabel = sheet.classes.length > 1 ? `${pe.className} ` : "";
+            return (
+          <div key={`${pe.classIndex}-${pe.milestone.level}`} className="mt-4">
+            {!isOpen ? (
               <button
-                onClick={() => openExpertisePicker(pendingExpertiseMilestone.level)}
+                onClick={() => openExpertisePicker(pe.classIndex, pe.milestone.level)}
                 className="rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
               >
-                Choose Expertise ({pendingExpertiseMilestone.count}) — Level {pendingExpertiseMilestone.level}
+                Choose {classLabel}Expertise ({pe.milestone.count}) — Level {pe.milestone.level}
               </button>
             ) : (
               <div className="rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
                 <p className="font-heading text-sm font-bold tracking-wide text-tavern-gold-light uppercase">
-                  Choose {pendingExpertiseMilestone.count} Skills for Expertise
+                  Choose {pe.milestone.count} Skills for {classLabel}Expertise
                 </p>
                 <p className="mt-1 text-xs text-tavern-muted">
                   Expertise doubles your proficiency bonus on the chosen skill. Only skills you&apos;re
@@ -2939,7 +3128,7 @@ export default function PlaySheet({
                   {expertiseEligibleSkills.map((s) => (
                     <button
                       key={s.index}
-                      onClick={() => toggleExpertiseSkill(s.index, pendingExpertiseMilestone.count)}
+                      onClick={() => toggleExpertiseSkill(s.index, pe.milestone.count)}
                       className={`rounded-md border p-2 text-left text-sm transition-colors ${
                         selectedExpertiseSkills.includes(s.index)
                           ? "border-tavern-gold bg-tavern-bg text-tavern-text"
@@ -2954,7 +3143,7 @@ export default function PlaySheet({
                   <button
                     onClick={confirmExpertise}
                     disabled={
-                      expertisePending || selectedExpertiseSkills.length !== pendingExpertiseMilestone.count
+                      expertisePending || selectedExpertiseSkills.length !== pe.milestone.count
                     }
                     className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
                   >
@@ -2971,7 +3160,8 @@ export default function PlaySheet({
               </div>
             )}
           </div>
-        )}
+            );
+          })}
 
         {choiceError && <p className="mt-1 text-xs text-tavern-oxblood-light">{choiceError}</p>}
 
@@ -3101,13 +3291,21 @@ export default function PlaySheet({
                 Short Rest
               </button>
             )}
-            <button
-              onClick={spendHitDie}
-              disabled={play.hitDiceUsed >= totalHitDice}
-              className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              Spend Hit Die ({totalHitDice - play.hitDiceUsed} left)
-            </button>
+            {/* One Spend button per die size (a multiclass character has a
+                mixed pool, e.g. 5d10 + 3d6). Single-class shows just one. */}
+            {sheet.hitDicePool.map((h) => {
+              const remaining = h.count - (hitDiceUsedByDie[String(h.die)] ?? 0);
+              return (
+                <button
+                  key={h.die}
+                  onClick={() => spendHitDie(h.die)}
+                  disabled={remaining <= 0}
+                  className="rounded-md border border-tavern-border px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold-light disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Spend d{h.die} ({remaining} left)
+                </button>
+              );
+            })}
           </div>
 
           {sheet.channelDivinityMax > 0 && (
@@ -4755,11 +4953,36 @@ export default function PlaySheet({
               </div>
             )}
 
-            {sheet.cantripsKnownCount > 0 && (
+            {/* Which caster class's cantrips/prepared spells to manage (only
+                shown for a multiclass with two spellcasting classes). */}
+            {sheet.spellcasting.length > 1 && (
+              <div className="mt-4">
+                <div className="mb-1 font-heading text-[10px] tracking-wider text-tavern-muted uppercase">
+                  Manage spells for
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {sheet.spellcasting.map((sc) => (
+                    <button
+                      key={sc.classIndex}
+                      onClick={() => setActiveCasterClass(sc.classIndex)}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-bold ${
+                        spellClass === sc.classIndex
+                          ? "border-tavern-gold bg-tavern-gold/10 text-tavern-gold-light"
+                          : "border-tavern-border text-tavern-muted hover:border-tavern-gold-light"
+                      }`}
+                    >
+                      {sc.className}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeCantripsKnown > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                    Cantrips Known ({knownCantripDetails.length}/{sheet.cantripsKnownCount})
+                    Cantrips Known ({knownCantripDetails.length}/{activeCantripsKnown})
                   </h3>
                   {isOwner && !cantripPickerOpen && (
                     <button
@@ -4777,8 +5000,8 @@ export default function PlaySheet({
                       const key = `spell-${s.index}`;
                       const expanded = expandedFeatures.has(key);
                       const damageDice = getCantripDamageDice(s);
-                      const attackBonus = sheet.spellAttackBonus ?? 0;
-                      const saveDC = sheet.spellSaveDC ?? 0;
+                      const attackBonus = activeAttackBonus;
+                      const saveDC = activeSaveDC;
                       return (
                         <div key={key} className="rounded-md border border-tavern-border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -4840,7 +5063,7 @@ export default function PlaySheet({
                 ) : (
                   <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
                     <p className="text-xs text-tavern-muted">
-                      Choose up to {sheet.cantripsKnownCount} ({selectedCantrips.length} selected).
+                      Choose up to {activeCantripsKnown} ({selectedCantrips.length} selected).
                     </p>
                     <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                       {cantripOptions.map((s) => {
@@ -4855,7 +5078,7 @@ export default function PlaySheet({
                             }`}
                           >
                             <button
-                              onClick={() => toggleCantripSelection(s.index, sheet.cantripsKnownCount)}
+                              onClick={() => toggleCantripSelection(s.index, activeCantripsKnown)}
                               className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
                             >
                               <span className="text-tavern-text">{s.name}</span>
@@ -4899,11 +5122,11 @@ export default function PlaySheet({
               </div>
             )}
 
-            {sheet.preparedSpellsCount > 0 && (
+            {activePreparedCount > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                    Prepared Spells ({preparedSpellDetails.length}/{sheet.preparedSpellsCount})
+                    Prepared Spells ({preparedSpellDetails.length}/{activePreparedCount})
                   </h3>
                   {isOwner && !preparedPickerOpen && (
                     <button
@@ -4920,8 +5143,8 @@ export default function PlaySheet({
                     {preparedSpellDetails.map((s) => {
                       const key = `spell-${s.index}`;
                       const expanded = expandedFeatures.has(key);
-                      const attackBonus = sheet.spellAttackBonus ?? 0;
-                      const saveDC = sheet.spellSaveDC ?? 0;
+                      const attackBonus = activeAttackBonus;
+                      const saveDC = activeSaveDC;
                       return (
                         <div key={key} className="rounded-md border border-tavern-border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -4981,7 +5204,7 @@ export default function PlaySheet({
                 ) : (
                   <div className="mt-2 rounded-lg border border-tavern-gold/40 bg-tavern-bg p-3">
                     <p className="text-xs text-tavern-muted">
-                      Choose up to {sheet.preparedSpellsCount} ({selectedPrepared.length} selected).
+                      Choose up to {activePreparedCount} ({selectedPrepared.length} selected).
                     </p>
                     <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                       {preparedOptions.map((s) => {
@@ -4996,7 +5219,7 @@ export default function PlaySheet({
                             }`}
                           >
                             <button
-                              onClick={() => togglePreparedSelection(s.index, sheet.preparedSpellsCount)}
+                              onClick={() => togglePreparedSelection(s.index, activePreparedCount)}
                               className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
                             >
                               <span className="text-tavern-text">{s.name}</span>

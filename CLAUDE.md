@@ -3293,20 +3293,32 @@ present, Spell Slots 4/2 (`fullCasterSlots(3)`), Spell Save DC 12 (INT + total
 prof), +3 proficiency on total level 8, Extra Attack (no stack), HP 48 (per-class
 dice summed). `tsc` clean throughout.
 
-**Deliberately scoped / disclosed simplifications:**
-- **Multiclass proficiency grants** (the armor/weapon/skill subset when joining a
-  class) are shown as info text in the add-class flow, not wired to new skill
-  pickers — the app already resolves weapons regardless of proficiency.
-- **Per-class ASI/Expertise/Fighting-Style/Metamagic/Weapon-Mastery pending
-  pickers target the PRIMARY class** (the derivation reads all classes' choices
-  correctly, but the play-sheet PICKER for these currently only offers the
-  primary's — a secondary class's ASI/expertise isn't yet offered a picker). The
-  per-class subclass picker and single-caster spell picker DO handle secondary
-  classes. Second-caster-of-a-dual-caster spell management (managing two spell
-  lists) also uses the first caster only. Natural next increment.
-- **Hit dice spend** still rolls the primary class's die (the pool is displayed
-  by size in `hitDicePool` but the spend control is single-die).
-- Owner-only flows (the Level Up class chooser, prerequisite gating, secondary
-  subclass picker) are code-/type-verified but couldn't be exercised in the
-  unauthenticated preview — same limitation as other owner-gated flows this
-  project.
+**Follow-up pass — the per-class pickers are now fully wired** (all verified
+`tsc` + `npm run build` clean; the non-owner-visible parts verified live):
+- **Per-class ASI/feat picker** — `pendingAsi` carries the owning class; the
+  picker state is `{classIndex, level}`; `chooseFeat` gets the classIndex. A
+  Fighter 4/Wizard 4 is offered two separate ASIs.
+- **Per-class Expertise** — `pendingExpertise` loops every class with an
+  `EXPERTISE_SCHEDULE` (Rogue/Bard/Ranger), each reading its own picks (primary
+  legacy / secondary bucket); eligible skills = proficient-and-not-already-
+  Expertise (cross-class union).
+- **Weapon Mastery** count is now summed across every granting class (was
+  primary-only, so a secondary Fighter's grant was invisible); melee-only
+  restriction applies only if EVERY granting class is melee-only. Fighting Style
+  already worked (summed count + union application).
+- **Dual-caster spell management** — a "Manage spells for: {ClassA} {ClassB}"
+  selector (`activeCasterClass`) drives the existing Cantrips/Prepared block per
+  caster (its own list, counts, DC/attack). Verified live switching Wizard↔Cleric.
+- **Hit dice by die size** — `PlayState.hitDiceUsedByDie` + one Spend button per
+  die in `hitDicePool` (e.g. "Spend d8 (3)" / "Spend d6 (5)"); Long Rest recovers
+  half greedily across sizes.
+- **Multiclass skill grants** — Bard/Ranger/Rogue grant one skill when joined as
+  a secondary class (`MULTICLASS_SKILL_GRANTS` + `CharacterDraft.multiclassSkills`
+  + `setMulticlassSkills`); a pending picker feeds `proficientSkills`. Armor/
+  weapon/tool grants remain info-text only (not tracked mechanically anywhere).
+
+**Still disclosed:** the subclass-always-prepared-spells block uses the first
+caster's DC (a rare dual-caster-with-subclass-spells edge); armor/weapon/tool
+multiclass proficiency grants are informational; owner-gated pending pickers
+(ASI/Expertise/skill/subclass, Level Up class chooser + prereq gating) are
+type-/build-verified but not exercisable in the unauthenticated preview.

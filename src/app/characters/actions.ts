@@ -923,6 +923,34 @@ export async function setWeaponMasteryChoices(
   return { success: true, draft: nextDraft };
 }
 
+// Skill proficiency granted by multiclassing into a class (Bard/Ranger/Rogue).
+// Overwrites that class's granted-skill list. Owner-gated overwrite, same shape
+// as the other choice setters.
+export async function setMulticlassSkills(
+  characterId: string,
+  classIndex: string,
+  skillIndexes: string[],
+): Promise<SetSpellsResult> {
+  const loaded = await loadOwnedDraft(characterId);
+  if (!loaded.ok) return { success: false, error: loaded.error };
+  const { supabase, userId, draft } = loaded;
+
+  if (!Array.isArray(skillIndexes) || skillIndexes.length > 6) {
+    return { success: false, error: "Invalid skill selection." };
+  }
+
+  const nextDraft: CharacterDraft = {
+    ...draft,
+    multiclassSkills: { ...draft.multiclassSkills, [classIndex]: skillIndexes },
+  };
+
+  const { error } = await saveDraft(supabase, characterId, userId, nextDraft);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/characters/${characterId}`);
+  return { success: true, draft: nextDraft };
+}
+
 // Human's Skillful trait — proficiency in one skill of choice. A single bare
 // skill index, or null. Same owner-gated overwrite shape as the choices above.
 export async function setHumanSkillChoice(
