@@ -3206,11 +3206,28 @@ the shared `USER_FEAT_PREFIX` const and `UserContentResult` type had to move to
 does, and the dev server caches the failed parse — a restart was needed to
 clear it, same stale-cache pattern noted elsewhere in this file).
 
-**Not yet built (natural next increments, each its own form + picker/sheet
-integration):** custom species (traits/ASI/speed → species picker + sheet),
-subclasses (features array → subclass picker), spells (full spell shape →
-compendium + spell pickers), backgrounds, classes. All auth-gated, so the
-create flow can't be exercised in an unauthenticated preview.
+**Custom subclasses (second increment).** `user_content` kind='subclass',
+`data = {classIndex, summary, description, features:[{name,level,description}]}`.
+`getUserSubclasses()` returns `SubclassOption & {classIndex}` (index
+`user-subclass:{id}`, isHomebrew). `src/app/characters/[id]/page.tsx` merges the
+owner's subclasses into `subclassOptions`/`subclassOptionsByClass` for the
+matching class, so they appear in the play-sheet subclass picker (level 3, per
+class — reuses the multiclass per-class picker) and their features flow through
+the existing Features list. UI: `SubclassManager.tsx` (class dropdown +
+per-level features editor) on `/homebrew`. `CLASS_OPTIONS`/`UserSubclassFeature`
+live in `user-content.ts` (the "use server" file may only export async
+functions — types/consts stay in the lib; type-only exports like `UserSubclass`
+in actions.ts are fine, only VALUE exports must be async). jsonb `data` needs
+`as unknown as Json` on insert/update.
+
+**Not yet built (each its own increment):** custom **backgrounds** (2 skills +
+3 ability options + origin feat → merge into `getBackgroundsList` at the builder
+page + play sheet, both of which already have `userData` for the auth check) and
+custom **species** (traits + speed/size; traits also need description text
+merged into `getTraitDescriptions`). Both are larger than feats/subclasses — a
+complex multi-field form plus builder-flow integration — and, being auth-gated,
+can't be exercised in an unauthenticated preview. Custom spells (full spell
+shape → compendium + pickers) and custom classes remain the specialized types.
 
 ## Multiclassing
 The largest refactor in the project — every class resource in
