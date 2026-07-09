@@ -10,6 +10,7 @@ import {
   getWeaponMasteryProperties,
 } from "@/lib/srd";
 import { createClient } from "@/lib/supabase-server";
+import { getUserBackgrounds, getUserSpecies } from "@/app/homebrew/actions";
 import BuilderWizard from "@/components/builder/BuilderWizard";
 
 export default async function Builder() {
@@ -38,14 +39,22 @@ export default async function Builder() {
     getWeaponMasteryProperties(),
   ]);
 
+  // The signed-in user's own homebrew backgrounds/species are offered alongside
+  // the SRD + dev-authored ones (tagged homebrew in the pickers).
+  const [userBackgrounds, userSpecies] = userData.user
+    ? await Promise.all([getUserBackgrounds(), getUserSpecies()])
+    : [[], []];
+  const allBackgrounds = [...backgrounds, ...userBackgrounds];
+  const allSpecies = [...species, ...userSpecies];
+
   return (
     <div className="flex flex-1 flex-col px-4 py-10 sm:px-8">
       <BuilderWizard
         isSignedIn={Boolean(userData.user)}
-        species={species}
+        species={allSpecies}
         subspecies={subspecies}
         classes={classes}
-        backgrounds={backgrounds}
+        backgrounds={allBackgrounds}
         abilityScores={abilityScores}
         equipment={Array.from(equipment.values())}
         languages={languages}

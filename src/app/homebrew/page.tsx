@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
+import { getSkillsList } from "@/lib/srd";
 import HomebrewManager, { type HomebrewFeat } from "@/components/homebrew/HomebrewManager";
 import SubclassManager, { type HomebrewSubclass } from "@/components/homebrew/SubclassManager";
-import type { UserSubclassFeature } from "@/lib/user-content";
+import BackgroundManager, { type HomebrewBackground } from "@/components/homebrew/BackgroundManager";
+import SpeciesManager, { type HomebrewSpecies } from "@/components/homebrew/SpeciesManager";
+import type { UserSubclassFeature, UserSpeciesTrait } from "@/lib/user-content";
 
 export const metadata = { title: "Homebrew — Tavern" };
 
@@ -27,12 +30,15 @@ export default async function HomebrewPage() {
     );
   }
 
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, kind, data")
-    .eq("user_id", userData.user.id)
-    .in("kind", ["feat", "subclass"])
-    .order("name");
+  const [{ data }, skills] = await Promise.all([
+    supabase
+      .from("user_content")
+      .select("id, name, kind, data")
+      .eq("user_id", userData.user.id)
+      .in("kind", ["feat", "subclass", "background", "species"])
+      .order("name"),
+    getSkillsList(),
+  ]);
 
   const rows = data ?? [];
   const feats: HomebrewFeat[] = rows
@@ -60,6 +66,43 @@ export default async function HomebrewPage() {
         features: d.features ?? [],
       };
     });
+  const backgrounds: HomebrewBackground[] = rows
+    .filter((r) => r.kind === "background")
+    .map((row) => {
+      const d = row.data as {
+        description?: string;
+        skills?: string[];
+        abilities?: string[];
+        featIndex?: string;
+      };
+      return {
+        id: row.id,
+        name: row.name,
+        description: d.description ?? "",
+        skills: d.skills ?? [],
+        abilities: d.abilities ?? [],
+        featIndex: d.featIndex ?? "",
+      };
+    });
+  const speciesList: HomebrewSpecies[] = rows
+    .filter((r) => r.kind === "species")
+    .map((row) => {
+      const d = row.data as {
+        description?: string;
+        size?: string;
+        speed?: number;
+        traits?: UserSpeciesTrait[];
+      };
+      return {
+        id: row.id,
+        name: row.name,
+        description: d.description ?? "",
+        size: d.size ?? "Medium",
+        speed: typeof d.speed === "number" ? d.speed : 30,
+        traits: d.traits ?? [],
+      };
+    });
+  const skillOptions = skills.map((s) => ({ index: s.index, name: s.name }));
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -84,6 +127,24 @@ export default async function HomebrewPage() {
         </h2>
         <div className="mt-2">
           <SubclassManager subclasses={subclasses} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Backgrounds
+        </h2>
+        <div className="mt-2">
+          <BackgroundManager backgrounds={backgrounds} skills={skillOptions} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Species
+        </h2>
+        <div className="mt-2">
+          <SpeciesManager species={speciesList} />
         </div>
       </div>
     </div>

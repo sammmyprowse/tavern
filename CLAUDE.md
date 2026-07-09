@@ -3220,14 +3220,34 @@ functions — types/consts stay in the lib; type-only exports like `UserSubclass
 in actions.ts are fine, only VALUE exports must be async). jsonb `data` needs
 `as unknown as Json` on insert/update.
 
-**Not yet built (each its own increment):** custom **backgrounds** (2 skills +
-3 ability options + origin feat → merge into `getBackgroundsList` at the builder
-page + play sheet, both of which already have `userData` for the auth check) and
-custom **species** (traits + speed/size; traits also need description text
-merged into `getTraitDescriptions`). Both are larger than feats/subclasses — a
-complex multi-field form plus builder-flow integration — and, being auth-gated,
-can't be exercised in an unauthenticated preview. Custom spells (full spell
-shape → compendium + pickers) and custom classes remain the specialized types.
+**Custom backgrounds + species (third increment).** Both merge into the builder
+step lists (`src/app/builder/page.tsx`, which has `userData`) AND the play sheet
+(`characters/[id]/page.tsx`, owner-gated) so a character built on them resolves.
+- **Backgrounds** (kind='background', `data={description, skills:[bare index],
+  abilities:[3 indexes], featIndex}`): `getUserBackgrounds()` returns a
+  `BackgroundOption` (index `user-background:{id}`) — 2 skill proficiencies
+  (stored bare, returned "skill-" prefixed per the prefix trap), a 3-ability
+  bonus choice, and one Origin feat (`ORIGIN_FEAT_OPTIONS`, real SRD feats;
+  description resolved from the `feats` table). **No starting equipment/gold** —
+  a disclosed simplification. `BackgroundManager.tsx` (skill/ability chip
+  multiselect + feat dropdown); the page passes `getSkillsList()` for the chips.
+- **Species** (kind='species', `data={description, size, speed, traits:[{name,
+  description}]}`): `getUserSpecies()` returns `UserSpecies = SpeciesOption &
+  {traitDescriptions}` (index `user-species:{id}`). Traits get a synthetic
+  `user-trait:{rowId}:{i}` index; their descriptions ride on the option and are
+  merged into the play sheet's `traitDescriptions` lookup (the SRD keeps trait
+  text in a separate table — this mirrors it). Flat scope: no subspecies/
+  lineages, and special-cased trait mechanics (Darkvision/Breath Weapon/etc.)
+  aren't simulated — traits show in the Species Traits list. `SpeciesManager.tsx`
+  (size/speed + traits editor).
+- `ABILITY_OPTIONS`/`ORIGIN_FEAT_OPTIONS`/`UserSpeciesTrait` live in
+  `user-content.ts`; jsonb payloads use `as unknown as Json`. `tsc` + `build`
+  clean; `/homebrew`, `/builder`, and the play sheet all render with no console
+  errors. The create + owner-only display flows are auth-gated, so (like the feat/
+  subclass increments) they can't be exercised in an unauthenticated preview.
+
+**Still open:** custom **spells** (full spell shape → compendium + spell pickers)
+and custom **classes** — the two largest/most specialized types.
 
 ## Multiclassing
 The largest refactor in the project — every class resource in

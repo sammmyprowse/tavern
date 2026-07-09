@@ -35,3 +35,35 @@ export interface UserSubclassFeature {
   level: number;
   description: string;
 }
+
+// A homebrew species trait (name + full rules text), stored in
+// user_content.data.traits for kind='species'.
+export interface UserSpeciesTrait {
+  name: string;
+  description: string;
+}
+
+// The six abilities, for the custom-background ability-choice picker.
+export const ABILITY_OPTIONS: { index: string; name: string }[] = [
+  { index: "str", name: "Strength" },
+  { index: "dex", name: "Dexterity" },
+  { index: "con", name: "Constitution" },
+  { index: "int", name: "Intelligence" },
+  { index: "wis", name: "Wisdom" },
+  { index: "cha", name: "Charisma" },
+];
+
+// The SRD Origin feats a background can grant (real feats in the `feats`
+// table). A background grants exactly one.
+export const ORIGIN_FEAT_OPTIONS: { index: string; name: string }[] = [
+  { index: "alert", name: "Alert" },
+  { index: "crafter", name: "Crafter" },
+  { index: "healer", name: "Healer" },
+  { index: "lucky", name: "Lucky" },
+  { index: "magic-initiate", name: "Magic Initiate" },
+  { index: "musician", name: "Musician" },
+  { index: "savage-attacker", name: "Savage Attacker" },
+  { index: "skilled", name: "Skilled" },
+  { index: "tavern-brawler", name: "Tavern Brawler" },
+  { index: "tough", name: "Tough" },
+];

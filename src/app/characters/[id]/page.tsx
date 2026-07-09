@@ -31,7 +31,12 @@ import type { PersonalityAnswers } from "@/lib/personality";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
-import { getUserFeats, getUserSubclasses } from "@/app/homebrew/actions";
+import {
+  getUserFeats,
+  getUserSubclasses,
+  getUserBackgrounds,
+  getUserSpecies,
+} from "@/app/homebrew/actions";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
 export default async function CharacterPlaySheet({
@@ -111,6 +116,11 @@ export default async function CharacterPlaySheet({
   // The owner's custom subclasses are offered in the play-sheet subclass picker
   // for the matching class (tagged Homebrew like the dev-authored ones).
   const userSubclasses = isOwner ? await getUserSubclasses() : [];
+  // Owner's homebrew backgrounds/species so a character built on them resolves
+  // correctly on the sheet (name, skills, traits, feat).
+  const [userBackgrounds, userSpecies] = isOwner
+    ? await Promise.all([getUserBackgrounds(), getUserSpecies()])
+    : [[], []];
   // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
   // hydration already is — a character saved before some later CharacterDraft
   // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
@@ -124,6 +134,14 @@ export default async function CharacterPlaySheet({
   // for rows saved before a field existed) AND backfills the multiclass fields
   // for legacy single-class rows — see character.ts.
   const draft = normalizeDraft(character.draft as unknown as CharacterDraft);
+  const allSpecies = [...species, ...userSpecies];
+  const allBackgrounds = [...backgrounds, ...userBackgrounds];
+  // Merge the owner's homebrew species trait text into the trait-description
+  // lookup so their Species Traits render with full descriptions.
+  const allTraitDescriptions = {
+    ...traitDescriptions,
+    ...Object.fromEntries(userSpecies.flatMap((s) => Object.entries(s.traitDescriptions))),
+  };
 
   // Every class the character has levels in (primary first). Features,
   // subclasses, and spell lists are fetched per class so a multiclass sheet
@@ -179,7 +197,7 @@ export default async function CharacterPlaySheet({
   // Base-species cantrips (e.g. Tiefling's Thaumaturgy via Otherworldly
   // Presence) live on the species, not a lineage-spell-* subspecies trait —
   // collect their spell indexes too so the at-will cantrip can be surfaced.
-  const characterSpecies = species.find((s) => s.index === draft.speciesIndex) ?? null;
+  const characterSpecies = allSpecies.find((s) => s.index === draft.speciesIndex) ?? null;
   const speciesCantripIndexes = (characterSpecies?.traits ?? [])
     .map((t) => SPECIES_CANTRIP_SPELL[t.index])
     .filter((idx): idx is string => Boolean(idx));
@@ -224,10 +242,10 @@ export default async function CharacterPlaySheet({
     <PlaySheet
       characterId={character.id}
       draft={draft}
-      species={species}
+      species={allSpecies}
       subspecies={subspecies}
       classes={classes}
-      backgrounds={backgrounds}
+      backgrounds={allBackgrounds}
       skills={skills}
       equipment={Array.from(equipment.values())}
       languages={languages}
@@ -240,7 +258,7 @@ export default async function CharacterPlaySheet({
       epicBoonFeats={epicBoonFeats}
       fightingStyleFeats={fightingStyleFeats}
       masteryProperties={masteryProperties}
-      traitDescriptions={traitDescriptions}
+      traitDescriptions={allTraitDescriptions}
       classSpells={classSpells}
       lineageCantripSpells={lineageCantripSpells}
       subclassSpellData={subclassSpellData}
