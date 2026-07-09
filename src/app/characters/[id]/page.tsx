@@ -37,6 +37,7 @@ import {
   getUserBackgrounds,
   getUserSpecies,
   getUserSpells,
+  getUserClasses,
 } from "@/app/homebrew/actions";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
@@ -119,9 +120,9 @@ export default async function CharacterPlaySheet({
   const userSubclasses = isOwner ? await getUserSubclasses() : [];
   // Owner's homebrew backgrounds/species so a character built on them resolves
   // correctly on the sheet (name, skills, traits, feat).
-  const [userBackgrounds, userSpecies, userSpells] = isOwner
-    ? await Promise.all([getUserBackgrounds(), getUserSpecies(), getUserSpells()])
-    : [[], [], []];
+  const [userBackgrounds, userSpecies, userSpells, userClasses] = isOwner
+    ? await Promise.all([getUserBackgrounds(), getUserSpecies(), getUserSpells(), getUserClasses()])
+    : [[], [], [], []];
   // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
   // hydration already is — a character saved before some later CharacterDraft
   // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
@@ -137,6 +138,7 @@ export default async function CharacterPlaySheet({
   const draft = normalizeDraft(character.draft as unknown as CharacterDraft);
   const allSpecies = [...species, ...userSpecies];
   const allBackgrounds = [...backgrounds, ...userBackgrounds];
+  const allClasses = [...classes, ...userClasses];
   // Merge the owner's homebrew species trait text into the trait-description
   // lookup so their Species Traits render with full descriptions.
   const allTraitDescriptions = {
@@ -168,9 +170,12 @@ export default async function CharacterPlaySheet({
   // Base-class features, each tagged with its owning class so the Features list
   // can filter by that class's level (a Wizard-3 feature shows only if the
   // character has ≥3 Wizard levels, regardless of total level).
-  const features = perClass.flatMap((p) =>
-    p.features.map((f) => ({ ...f, classIndex: p.classIndex })),
-  );
+  const features = [
+    ...perClass.flatMap((p) => p.features.map((f) => ({ ...f, classIndex: p.classIndex }))),
+    // Homebrew class features aren't in the `features` table — they ride on the
+    // UserClass and are filtered by class level in the Features list.
+    ...userClasses.flatMap((uc) => uc.features),
+  ];
   // Flat union of every class's subclass options (for name lookups + the
   // base-feature dedup) plus a per-class map (for the per-class subclass picker).
   // Merge the owner's custom subclasses into each class's option list.
@@ -255,7 +260,7 @@ export default async function CharacterPlaySheet({
       draft={draft}
       species={allSpecies}
       subspecies={subspecies}
-      classes={classes}
+      classes={allClasses}
       backgrounds={allBackgrounds}
       skills={skills}
       equipment={Array.from(equipment.values())}

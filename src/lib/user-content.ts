@@ -8,6 +8,7 @@ export const USER_SUBCLASS_PREFIX = "user-subclass:";
 export const USER_BACKGROUND_PREFIX = "user-background:";
 export const USER_SPECIES_PREFIX = "user-species:";
 export const USER_SPELL_PREFIX = "user-spell:";
+export const USER_CLASS_PREFIX = "user-class:";
 
 export interface UserContentResult {
   success: boolean;
@@ -43,6 +44,29 @@ export interface UserSpeciesTrait {
   name: string;
   description: string;
 }
+
+// A homebrew class's per-level feature, stored in user_content.data.features
+// for kind='class'.
+export interface UserClassFeature {
+  name: string;
+  level: number;
+  description: string;
+}
+
+// Homebrew class payload (kind='class'). A homebrew class is intentionally
+// scoped: hit die + two save proficiencies + optional FULL-caster spellcasting
+// (its spell list = homebrew spells assigned to it; no cantrip progression) +
+// per-level features (listed, not simulated — no Rage/Second-Wind-style
+// interactive resources, no starting equipment or class skill choices).
+export interface UserClassData {
+  hitDie: number; // 6 | 8 | 10 | 12
+  savingThrows: string[]; // exactly 2 ability indexes
+  spellcastingAbility: string | null; // an ability index → full caster, or null
+  description: string;
+  features: UserClassFeature[];
+}
+
+export const HIT_DIE_OPTIONS = [6, 8, 10, 12];
 
 // The eight schools of magic, for the custom-spell school picker.
 export const SPELL_SCHOOL_OPTIONS = [

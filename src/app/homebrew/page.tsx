@@ -6,10 +6,14 @@ import SubclassManager, { type HomebrewSubclass } from "@/components/homebrew/Su
 import BackgroundManager, { type HomebrewBackground } from "@/components/homebrew/BackgroundManager";
 import SpeciesManager, { type HomebrewSpecies } from "@/components/homebrew/SpeciesManager";
 import SpellManager, { type HomebrewSpell } from "@/components/homebrew/SpellManager";
-import type {
-  UserSubclassFeature,
-  UserSpeciesTrait,
-  UserSpellData,
+import ClassManager, { type HomebrewClass } from "@/components/homebrew/ClassManager";
+import {
+  CLASS_OPTIONS,
+  USER_CLASS_PREFIX,
+  type UserSubclassFeature,
+  type UserSpeciesTrait,
+  type UserSpellData,
+  type UserClassData,
 } from "@/lib/user-content";
 
 export const metadata = { title: "Homebrew — Tavern" };
@@ -40,7 +44,7 @@ export default async function HomebrewPage() {
       .from("user_content")
       .select("id, name, kind, data")
       .eq("user_id", userData.user.id)
-      .in("kind", ["feat", "subclass", "background", "species", "spell"])
+      .in("kind", ["feat", "subclass", "background", "species", "spell", "class"])
       .order("name"),
     getSkillsList(),
   ]);
@@ -110,7 +114,15 @@ export default async function HomebrewPage() {
   const homebrewSpells: HomebrewSpell[] = rows
     .filter((r) => r.kind === "spell")
     .map((row) => ({ id: row.id, name: row.name, ...(row.data as unknown as UserSpellData) }));
+  const homebrewClasses: HomebrewClass[] = rows
+    .filter((r) => r.kind === "class")
+    .map((row) => ({ id: row.id, name: row.name, ...(row.data as unknown as UserClassData) }));
   const skillOptions = skills.map((s) => ({ index: s.index, name: s.name }));
+  // A homebrew spell can target a homebrew (caster) class too.
+  const spellClassOptions = [
+    ...CLASS_OPTIONS,
+    ...homebrewClasses.map((c) => ({ index: `${USER_CLASS_PREFIX}${c.id}`, name: c.name })),
+  ];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -158,10 +170,19 @@ export default async function HomebrewPage() {
 
       <div className="mt-10">
         <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Classes
+        </h2>
+        <div className="mt-2">
+          <ClassManager classes={homebrewClasses} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
           Spells
         </h2>
         <div className="mt-2">
-          <SpellManager spells={homebrewSpells} />
+          <SpellManager spells={homebrewSpells} classOptions={spellClassOptions} />
         </div>
       </div>
     </div>

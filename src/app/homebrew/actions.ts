@@ -9,7 +9,10 @@ import type {
   SpeciesOption,
   SpellOption,
   CompendiumSpell,
+  ClassOption,
+  ClassFeature,
 } from "@/lib/srd";
+import type { AbilityKey } from "@/lib/character";
 import type { Json } from "@/lib/database.types";
 import {
   USER_FEAT_PREFIX,
@@ -17,13 +20,16 @@ import {
   USER_BACKGROUND_PREFIX,
   USER_SPECIES_PREFIX,
   USER_SPELL_PREFIX,
+  USER_CLASS_PREFIX,
   ABILITY_OPTIONS,
   ORIGIN_FEAT_OPTIONS,
   CLASS_OPTIONS,
+  HIT_DIE_OPTIONS,
   type UserContentResult,
   type UserSubclassFeature,
   type UserSpeciesTrait,
   type UserSpellData,
+  type UserClassData,
 } from "@/lib/user-content";
 
 // User-created homebrew feats. Stored in user_content (kind='feat'), owned by
@@ -749,6 +755,173 @@ export async function deleteUserSpell(id: string): Promise<UserContentResult> {
     .eq("id", id)
     .eq("user_id", userData.user.id)
     .eq("kind", "spell");
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+// ── Custom classes (kind='class') ──────────────────────────────────────────
+// A homebrew class: hit die + two save proficiencies + optional full-caster
+// spellcasting + per-level features. Merged into the class list (builder + play
+// sheet), and its features into the play sheet's Features list. See UserClassData
+// for the scope (no interactive class resources / starting gear / skill grants).
+const ABILITY_KEY_NAME = Object.fromEntries(ABILITY_OPTIONS.map((a) => [a.index, a.name]));
+
+// ClassOption plus the class's per-level features (which the SRD keeps in a
+// separate `features` table — this carries them alongside).
+export type UserClass = ClassOption & { features: (ClassFeature & { classIndex: string })[] };
+
+export async function getUserClasses(): Promise<UserClass[]> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return [];
+
+  const { data } = await supabase
+    .from("user_content")
+    .select("id, name, data")
+    .eq("user_id", userData.user.id)
+    .eq("kind", "class")
+    .order("name");
+
+  return (data ?? []).map((row) => {
+    const d = row.data as unknown as UserClassData;
+    const index = `${USER_CLASS_PREFIX}${row.id}`;
+    const spellcastingAbility =
+      d.spellcastingAbility && ABILITY_KEY_NAME[d.spellcastingAbility]
+        ? (d.spellcastingAbility as AbilityKey)
+        : null;
+    const features = [...(d.features ?? [])]
+      .sort((a, b) => a.level - b.level)
+      .map((f, i) => ({
+        index: `user-classfeat:${row.id}:${i}`,
+        name: f.name,
+        level: f.level,
+        description: f.description ?? null,
+        classIndex: index,
+      }));
+    return {
+      index,
+      name: row.name,
+      hitDie: HIT_DIE_OPTIONS.includes(d.hitDie) ? d.hitDie : 8,
+      primaryAbilityDesc: null,
+      savingThrows: (d.savingThrows ?? [])
+        .filter((s) => ABILITY_KEY_NAME[s])
+        .map((s) => ({ index: s, name: ABILITY_KEY_NAME[s] })),
+      proficiencyChoices: [],
+      startingEquipmentDesc: null,
+      startingEquipmentFirstOption: [],
+      startingEquipmentOptions: [],
+      spellcastingAbility,
+      description: d.description ?? null,
+      features,
+    };
+  });
+}
+
+// Lightweight {index, name} list of the user's homebrew classes — for the
+// custom-spell form's class picker (a homebrew spell can target a homebrew
+// caster class).
+export async function getUserClassOptions(): Promise<{ index: string; name: string }[]> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return [];
+  const { data } = await supabase
+    .from("user_content")
+    .select("id, name")
+    .eq("user_id", userData.user.id)
+    .eq("kind", "class")
+    .order("name");
+  return (data ?? []).map((row) => ({ index: `${USER_CLASS_PREFIX}${row.id}`, name: row.name }));
+}
+
+function cleanClassData(d: UserClassData): UserClassData {
+  const features = (Array.isArray(d.features) ? d.features : [])
+    .map((f) => {
+      const level = Number(f.level);
+      return {
+        name: typeof f.name === "string" ? f.name.trim().slice(0, 100) : "",
+        level: Number.isFinite(level) ? Math.min(20, Math.max(1, Math.round(level))) : 1,
+        description: typeof f.description === "string" ? f.description.trim().slice(0, 4000) : "",
+      };
+    })
+    .filter((f) => f.name)
+    .slice(0, 40);
+  const saves = (Array.isArray(d.savingThrows) ? d.savingThrows : []).filter((s) =>
+    ["str", "dex", "con", "int", "wis", "cha"].includes(s),
+  );
+  return {
+    hitDie: HIT_DIE_OPTIONS.includes(d.hitDie) ? d.hitDie : 8,
+    savingThrows: [...new Set(saves)].slice(0, 2),
+    spellcastingAbility: ["int", "wis", "cha"].includes(d.spellcastingAbility ?? "")
+      ? d.spellcastingAbility
+      : null,
+    description: typeof d.description === "string" ? d.description.trim().slice(0, 4000) : "",
+    features,
+  };
+}
+
+function validateClass(name: string, d: UserClassData): string | null {
+  if (!name.trim()) return "Give the class a name.";
+  if (name.length > 100) return "That name's too long.";
+  if (d.savingThrows.length !== 2) return "Choose exactly 2 saving throw proficiencies.";
+  return null;
+}
+
+export async function createUserClass(name: string, data: UserClassData): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+  const clean = cleanClassData(data);
+  const err = validateClass(name, clean);
+  if (err) return { success: false, error: err };
+
+  const { error } = await supabase.from("user_content").insert({
+    user_id: userData.user.id,
+    kind: "class",
+    name: name.trim(),
+    data: clean as unknown as Json,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+export async function updateUserClass(
+  id: string,
+  name: string,
+  data: UserClassData,
+): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+  const clean = cleanClassData(data);
+  const err = validateClass(name, clean);
+  if (err) return { success: false, error: err };
+
+  const { error } = await supabase
+    .from("user_content")
+    .update({ name: name.trim(), data: clean as unknown as Json, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userData.user.id);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+export async function deleteUserClass(id: string): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+
+  const { error } = await supabase
+    .from("user_content")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userData.user.id)
+    .eq("kind", "class");
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/homebrew");

@@ -3246,8 +3246,32 @@ step lists (`src/app/builder/page.tsx`, which has `userData`) AND the play sheet
   errors. The create + owner-only display flows are auth-gated, so (like the feat/
   subclass increments) they can't be exercised in an unauthenticated preview.
 
-**Still open:** custom **spells** (full spell shape → compendium + spell pickers)
-and custom **classes** — the two largest/most specialized types.
+**Custom spells + classes (fourth increment — completes the builder).**
+- **Spells** (kind='spell', full `UserSpellData` shape): `getUserSpells()` returns
+  `SpellOption & {classes}` (index `user-spell:{id}`, `isHomebrew:true`) merged into
+  each assigned class's list in `classSpellsByClass` (play sheet), plus
+  `getUserCompendiumSpells()` merged into `/spells` for the signed-in user.
+  `SpellOption` gained optional `isHomebrew` for the picker/compendium badges.
+  Attack/save/damage fields drive the Attack/Damage buttons; no cantrip scaling
+  (base damage only). `SpellManager.tsx`; the class multiselect can also target
+  homebrew classes (`classOptions` prop).
+- **Classes** (kind='class', `UserClassData`): `getUserClasses()` returns
+  `ClassOption & {features}` (index `user-class:{id}`), merged into the class list
+  at the **builder** page and the **play sheet** (so you can build on or multiclass
+  into one); its features (which the SRD keeps in a separate table) are appended to
+  the play-sheet `features` array, tagged with the class and filtered by class level.
+  Scope: hit die + two save proficiencies + optional **full-caster** spellcasting
+  (its spell list = homebrew spells assigned to it) + per-level features. Disclosed
+  gaps: no half-caster/pact progression, no cantrip progression, **no interactive
+  class resources** (Rage/Second Wind/etc.), no starting equipment, no class skill
+  choices. `ClassManager.tsx`. `getUserClassOptions()` feeds the spell form.
+
+**The homebrew content builder now covers all six types** (feats, subclasses,
+backgrounds, species, spells, classes), each a `kind` on `user_content`, owner-
+gated, tagged homebrew in the real pickers. `tsc` + `build` clean; every affected
+page (`/homebrew`, `/builder`, `/spells`, play sheet) renders with no console
+errors. The create + owner-only display flows remain unexercisable in an
+unauthenticated preview.
 
 ## Multiclassing
 The largest refactor in the project — every class resource in

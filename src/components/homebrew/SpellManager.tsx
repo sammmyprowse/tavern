@@ -14,8 +14,6 @@ export interface HomebrewSpell extends UserSpellData {
   name: string;
 }
 
-const CLASS_NAME = Object.fromEntries(CLASS_OPTIONS.map((c) => [c.index, c.name]));
-
 const blank = (): UserSpellData => ({
   level: 0,
   school: "Evocation",
@@ -38,7 +36,14 @@ const blank = (): UserSpellData => ({
 const input =
   "w-full rounded-md border border-tavern-border bg-tavern-bg px-2 py-1.5 text-sm text-tavern-text placeholder:text-tavern-muted";
 
-export default function SpellManager({ spells: initial }: { spells: HomebrewSpell[] }) {
+export default function SpellManager({
+  spells: initial,
+  classOptions = CLASS_OPTIONS,
+}: {
+  spells: HomebrewSpell[];
+  classOptions?: { index: string; name: string }[];
+}) {
+  const CLASS_NAME = Object.fromEntries(classOptions.map((c) => [c.index, c.name]));
   const [spells, setSpells] = useState(initial);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -185,7 +190,7 @@ export default function SpellManager({ spells: initial }: { spells: HomebrewSpel
             Classes ({f.classes.length})
           </p>
           <div className="mt-1 flex flex-wrap gap-1.5">
-            {CLASS_OPTIONS.map((c) => (
+            {classOptions.map((c) => (
               <button
                 key={c.index}
                 onClick={() => toggleClass(c.index)}
