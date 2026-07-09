@@ -1,4 +1,6 @@
 import { getAllSpells } from "@/lib/srd";
+import { createClient } from "@/lib/supabase-server";
+import { getUserCompendiumSpells } from "@/app/homebrew/actions";
 import SpellCompendium from "@/components/spells/SpellCompendium";
 
 export const metadata = {
@@ -6,7 +8,16 @@ export const metadata = {
 };
 
 export default async function SpellsPage() {
-  const spells = await getAllSpells();
+  const supabase = await createClient();
+  const [{ data: userData }, srdSpells] = await Promise.all([
+    supabase.auth.getUser(),
+    getAllSpells(),
+  ]);
+  // A signed-in user also sees their own homebrew spells in the compendium.
+  const userSpells = userData.user ? await getUserCompendiumSpells() : [];
+  const spells = [...srdSpells, ...userSpells].sort(
+    (a, b) => a.level - b.level || a.name.localeCompare(b.name),
+  );
 
   return (
     <div className="mx-auto w-full max-w-4xl px-6 py-8">

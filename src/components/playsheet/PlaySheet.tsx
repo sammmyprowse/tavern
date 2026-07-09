@@ -5010,7 +5010,14 @@ export default function PlaySheet({
                               className="flex-1 text-left"
                             >
                               <div className="flex items-center gap-1.5">
-                                <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                                <span className="font-heading font-bold text-tavern-text">
+                                {s.name}
+                                {s.isHomebrew && (
+                                  <span className="ml-1.5 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
+                                    HB
+                                  </span>
+                                )}
+                              </span>
                                 <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
                               </div>
                               <div className="mt-0.5 text-xs text-tavern-muted">
@@ -5153,7 +5160,14 @@ export default function PlaySheet({
                               className="flex-1 text-left"
                             >
                               <div className="flex items-center gap-1.5">
-                                <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                                <span className="font-heading font-bold text-tavern-text">
+                                {s.name}
+                                {s.isHomebrew && (
+                                  <span className="ml-1.5 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
+                                    HB
+                                  </span>
+                                )}
+                              </span>
                                 <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
                               </div>
                               <div className="mt-0.5 text-xs text-tavern-muted">

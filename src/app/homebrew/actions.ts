@@ -2,18 +2,28 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
-import type { FeatOption, SubclassOption, BackgroundOption, SpeciesOption } from "@/lib/srd";
+import type {
+  FeatOption,
+  SubclassOption,
+  BackgroundOption,
+  SpeciesOption,
+  SpellOption,
+  CompendiumSpell,
+} from "@/lib/srd";
 import type { Json } from "@/lib/database.types";
 import {
   USER_FEAT_PREFIX,
   USER_SUBCLASS_PREFIX,
   USER_BACKGROUND_PREFIX,
   USER_SPECIES_PREFIX,
+  USER_SPELL_PREFIX,
   ABILITY_OPTIONS,
   ORIGIN_FEAT_OPTIONS,
+  CLASS_OPTIONS,
   type UserContentResult,
   type UserSubclassFeature,
   type UserSpeciesTrait,
+  type UserSpellData,
 } from "@/lib/user-content";
 
 // User-created homebrew feats. Stored in user_content (kind='feat'), owned by
@@ -563,6 +573,182 @@ export async function deleteUserSpecies(id: string): Promise<UserContentResult> 
     .eq("id", id)
     .eq("user_id", userData.user.id)
     .eq("kind", "species");
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+// ── Custom spells (kind='spell') ───────────────────────────────────────────
+// Stored data: the full UserSpellData shape. Merged into getSpellsForClass's
+// result (per class the spell lists) on the owner's characters and into the
+// /spells compendium for the owner. Index `user-spell:{id}`.
+const CLASS_NAME = Object.fromEntries(CLASS_OPTIONS.map((c) => [c.index, c.name]));
+
+// The play-sheet form: a SpellOption plus the class indexes it belongs to.
+export type UserSpell = SpellOption & { classes: string[] };
+
+function toSpellOption(id: string, name: string, d: UserSpellData): UserSpell {
+  return {
+    index: `${USER_SPELL_PREFIX}${id}`,
+    name,
+    level: d.level ?? 0,
+    school: d.school ?? null,
+    concentration: Boolean(d.concentration),
+    ritual: Boolean(d.ritual),
+    description: d.description ?? null,
+    range: d.range ?? null,
+    attackType: d.attackType ?? null,
+    dcType: d.dcAbility ?? null,
+    damageDice: d.damageDice ?? null,
+    damageType: d.damageType ?? null,
+    cantripScaling: null,
+    isHomebrew: true,
+    classes: d.classes ?? [],
+  };
+}
+
+export async function getUserSpells(): Promise<UserSpell[]> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return [];
+
+  const { data } = await supabase
+    .from("user_content")
+    .select("id, name, data")
+    .eq("user_id", userData.user.id)
+    .eq("kind", "spell")
+    .order("name");
+
+  return (data ?? []).map((row) => toSpellOption(row.id, row.name, row.data as unknown as UserSpellData));
+}
+
+// The owner's homebrew spells as CompendiumSpell rows, for the /spells page.
+export async function getUserCompendiumSpells(): Promise<CompendiumSpell[]> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return [];
+
+  const { data } = await supabase
+    .from("user_content")
+    .select("id, name, data")
+    .eq("user_id", userData.user.id)
+    .eq("kind", "spell")
+    .order("name");
+
+  return (data ?? []).map((row) => {
+    const d = row.data as unknown as UserSpellData;
+    return {
+      index: `${USER_SPELL_PREFIX}${row.id}`,
+      name: row.name,
+      level: d.level ?? 0,
+      school: d.school ?? null,
+      castingTime: d.castingTime || null,
+      range: d.range || null,
+      components: d.components ?? [],
+      material: d.material || null,
+      duration: d.duration || null,
+      concentration: Boolean(d.concentration),
+      ritual: Boolean(d.ritual),
+      classes: (d.classes ?? []).map((c) => CLASS_NAME[c] ?? c),
+      description: d.description || null,
+      higherLevel: d.higherLevel || null,
+    };
+  });
+}
+
+function validateSpell(name: string, data: UserSpellData): string | null {
+  if (!name.trim()) return "Give the spell a name.";
+  if (name.length > 100) return "That name's too long.";
+  if (!Number.isInteger(data.level) || data.level < 0 || data.level > 9)
+    return "Level must be 0 (cantrip) to 9.";
+  if (!data.classes || data.classes.length === 0)
+    return "Choose at least one class that can prepare it.";
+  if ((data.description ?? "").length > 4000) return "The description is too long.";
+  return null;
+}
+
+// Trim/clamp every field to safe bounds before persisting.
+function cleanSpellData(d: UserSpellData): UserSpellData {
+  const s = (v: unknown, n = 200) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  return {
+    level: Math.min(9, Math.max(0, Math.round(Number(d.level) || 0))),
+    school: s(d.school, 40),
+    classes: (Array.isArray(d.classes) ? d.classes : []).filter((c) => CLASS_NAME[c]),
+    castingTime: s(d.castingTime),
+    range: s(d.range),
+    duration: s(d.duration),
+    components: (Array.isArray(d.components) ? d.components : []).filter((c) =>
+      ["V", "S", "M"].includes(c),
+    ),
+    material: s(d.material, 500),
+    concentration: Boolean(d.concentration),
+    ritual: Boolean(d.ritual),
+    description: s(d.description, 4000),
+    higherLevel: s(d.higherLevel, 2000),
+    attackType: d.attackType === "melee" || d.attackType === "ranged" ? d.attackType : null,
+    dcAbility: ["str", "dex", "con", "int", "wis", "cha"].includes(d.dcAbility ?? "")
+      ? d.dcAbility
+      : null,
+    damageDice: d.damageDice ? s(d.damageDice, 20) : null,
+    damageType: d.damageType ? s(d.damageType, 40) : null,
+  };
+}
+
+export async function createUserSpell(name: string, data: UserSpellData): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+  const clean = cleanSpellData(data);
+  const err = validateSpell(name, clean);
+  if (err) return { success: false, error: err };
+
+  const { error } = await supabase.from("user_content").insert({
+    user_id: userData.user.id,
+    kind: "spell",
+    name: name.trim(),
+    data: clean as unknown as Json,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+export async function updateUserSpell(
+  id: string,
+  name: string,
+  data: UserSpellData,
+): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+  const clean = cleanSpellData(data);
+  const err = validateSpell(name, clean);
+  if (err) return { success: false, error: err };
+
+  const { error } = await supabase
+    .from("user_content")
+    .update({ name: name.trim(), data: clean as unknown as Json, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userData.user.id);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+export async function deleteUserSpell(id: string): Promise<UserContentResult> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { success: false, error: "You need to sign in." };
+
+  const { error } = await supabase
+    .from("user_content")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userData.user.id)
+    .eq("kind", "spell");
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/homebrew");

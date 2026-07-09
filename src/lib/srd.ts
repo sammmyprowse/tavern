@@ -531,6 +531,9 @@ export interface SpellOption {
   damageDice: string | null;
   damageType: string | null;
   cantripScaling: Record<string, string> | null;
+  // Set on user-created homebrew spells so the pickers can tag them; undefined
+  // (falsy) for every SRD spell.
+  isHomebrew?: boolean;
 }
 
 // A fully-detailed spell for the reference compendium — every field a player

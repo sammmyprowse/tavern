@@ -7,6 +7,7 @@ export const USER_FEAT_PREFIX = "user-feat:";
 export const USER_SUBCLASS_PREFIX = "user-subclass:";
 export const USER_BACKGROUND_PREFIX = "user-background:";
 export const USER_SPECIES_PREFIX = "user-species:";
+export const USER_SPELL_PREFIX = "user-spell:";
 
 export interface UserContentResult {
   success: boolean;
@@ -41,6 +42,40 @@ export interface UserSubclassFeature {
 export interface UserSpeciesTrait {
   name: string;
   description: string;
+}
+
+// The eight schools of magic, for the custom-spell school picker.
+export const SPELL_SCHOOL_OPTIONS = [
+  "Abjuration",
+  "Conjuration",
+  "Divination",
+  "Enchantment",
+  "Evocation",
+  "Illusion",
+  "Necromancy",
+  "Transmutation",
+];
+
+// Homebrew spell payload (kind='spell'). Mirrors the fields the SRD spell
+// resolver produces, so a user spell flows through the same class pickers,
+// compendium, and roll buttons.
+export interface UserSpellData {
+  level: number;
+  school: string;
+  classes: string[]; // class indexes that can prepare it
+  castingTime: string;
+  range: string;
+  duration: string;
+  components: string[]; // any of "V" | "S" | "M"
+  material: string;
+  concentration: boolean;
+  ritual: boolean;
+  description: string;
+  higherLevel: string;
+  attackType: "melee" | "ranged" | null;
+  dcAbility: string | null; // ability index for the save, or null
+  damageDice: string | null; // e.g. "2d6" (base; a cantrip scales in the text)
+  damageType: string | null;
 }
 
 // The six abilities, for the custom-background ability-choice picker.

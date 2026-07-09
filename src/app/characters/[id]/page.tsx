@@ -36,6 +36,7 @@ import {
   getUserSubclasses,
   getUserBackgrounds,
   getUserSpecies,
+  getUserSpells,
 } from "@/app/homebrew/actions";
 import PlaySheet from "@/components/playsheet/PlaySheet";
 
@@ -118,9 +119,9 @@ export default async function CharacterPlaySheet({
   const userSubclasses = isOwner ? await getUserSubclasses() : [];
   // Owner's homebrew backgrounds/species so a character built on them resolves
   // correctly on the sheet (name, skills, traits, feat).
-  const [userBackgrounds, userSpecies] = isOwner
-    ? await Promise.all([getUserBackgrounds(), getUserSpecies()])
-    : [[], []];
+  const [userBackgrounds, userSpecies, userSpells] = isOwner
+    ? await Promise.all([getUserBackgrounds(), getUserSpecies(), getUserSpells()])
+    : [[], [], []];
   // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
   // hydration already is — a character saved before some later CharacterDraft
   // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
@@ -183,8 +184,18 @@ export default async function CharacterPlaySheet({
   const subclassOptionsByClass = Object.fromEntries(
     perClass.map((p) => [p.classIndex, subclassesForClass(p.classIndex, p.subclassOptions)]),
   );
-  const classSpellsByClass = Object.fromEntries(perClass.map((p) => [p.classIndex, p.classSpells]));
-  const classSpells = perClass[0]?.classSpells ?? [];
+  // Merge the owner's homebrew spells into each class's spell list (a spell can
+  // belong to several classes).
+  const spellsForClass = (classIndex: string, base: typeof perClass[number]["classSpells"]) => [
+    ...base,
+    ...userSpells
+      .filter((us) => us.classes.includes(classIndex))
+      .map(({ classes: _c, ...option }) => option),
+  ];
+  const classSpellsByClass = Object.fromEntries(
+    perClass.map((p) => [p.classIndex, spellsForClass(p.classIndex, p.classSpells)]),
+  );
+  const classSpells = perClass[0] ? spellsForClass(perClass[0].classIndex, perClass[0].classSpells) : [];
 
   // Fetch description/combat data for the specific spells this subspecies
   // grants (Fire Bolt for Infernal Tiefling, Dancing Lights for Drow, etc.)

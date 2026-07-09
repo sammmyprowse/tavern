@@ -5,7 +5,12 @@ import HomebrewManager, { type HomebrewFeat } from "@/components/homebrew/Homebr
 import SubclassManager, { type HomebrewSubclass } from "@/components/homebrew/SubclassManager";
 import BackgroundManager, { type HomebrewBackground } from "@/components/homebrew/BackgroundManager";
 import SpeciesManager, { type HomebrewSpecies } from "@/components/homebrew/SpeciesManager";
-import type { UserSubclassFeature, UserSpeciesTrait } from "@/lib/user-content";
+import SpellManager, { type HomebrewSpell } from "@/components/homebrew/SpellManager";
+import type {
+  UserSubclassFeature,
+  UserSpeciesTrait,
+  UserSpellData,
+} from "@/lib/user-content";
 
 export const metadata = { title: "Homebrew — Tavern" };
 
@@ -35,7 +40,7 @@ export default async function HomebrewPage() {
       .from("user_content")
       .select("id, name, kind, data")
       .eq("user_id", userData.user.id)
-      .in("kind", ["feat", "subclass", "background", "species"])
+      .in("kind", ["feat", "subclass", "background", "species", "spell"])
       .order("name"),
     getSkillsList(),
   ]);
@@ -102,6 +107,9 @@ export default async function HomebrewPage() {
         traits: d.traits ?? [],
       };
     });
+  const homebrewSpells: HomebrewSpell[] = rows
+    .filter((r) => r.kind === "spell")
+    .map((row) => ({ id: row.id, name: row.name, ...(row.data as unknown as UserSpellData) }));
   const skillOptions = skills.map((s) => ({ index: s.index, name: s.name }));
 
   return (
@@ -145,6 +153,15 @@ export default async function HomebrewPage() {
         </h2>
         <div className="mt-2">
           <SpeciesManager species={speciesList} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Spells
+        </h2>
+        <div className="mt-2">
+          <SpellManager spells={homebrewSpells} />
         </div>
       </div>
     </div>

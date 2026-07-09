@@ -104,6 +104,11 @@ export default function SpellCompendium({ spells }: { spells: CompendiumSpell[] 
               >
                 <span>
                   <span className="font-heading font-bold text-tavern-text">{s.name}</span>
+                  {s.index.startsWith("user-spell:") && (
+                    <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
+                      Homebrew
+                    </span>
+                  )}
                   <span className="ml-2 text-xs text-tavern-muted">
                     {levelLabel(s.level)}
                     {s.school ? ` · ${s.school}` : ""}
