@@ -7,6 +7,12 @@ import {
   deleteUserSubclass,
 } from "@/app/homebrew/actions";
 import { CLASS_OPTIONS, type UserSubclassFeature } from "@/lib/user-content";
+import {
+  ManagerHeader,
+  ManagerItemCard,
+  ManagerFormActions,
+  ManagerEmptyNote,
+} from "@/components/homebrew/shell";
 
 export interface HomebrewSubclass {
   id: string;
@@ -100,21 +106,12 @@ export default function SubclassManager({ subclasses: initial }: { subclasses: H
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-tavern-muted">
-          Custom subclasses appear in the subclass picker for that class on your own characters (at
-          level 3), tagged homebrew. Their features show in the Features list — the effects are
-          listed, not auto-simulated, same as every subclass.
-        </p>
-        {!formOpen && (
-          <button
-            onClick={startCreate}
-            className="shrink-0 rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
-          >
-            + New Subclass
-          </button>
-        )}
-      </div>
+      <ManagerHeader
+        blurb="Custom subclasses appear in the subclass picker for that class on your own characters (at level 3), tagged homebrew. Their features show in the Features list — the effects are listed, not auto-simulated, same as every subclass."
+        buttonLabel="+ New Subclass"
+        formOpen={formOpen}
+        onCreate={startCreate}
+      />
 
       {formOpen && (
         <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
@@ -213,60 +210,39 @@ export default function SubclassManager({ subclasses: initial }: { subclasses: H
             + Add feature
           </button>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={save}
-              disabled={pending || !name.trim() || !classIndex}
-              className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-            <button onClick={cancel} disabled={pending} className="text-xs text-tavern-muted hover:text-tavern-gold-light">
-              Cancel
-            </button>
-            {error && <span className="text-xs text-tavern-oxblood-light">{error}</span>}
-          </div>
+          <ManagerFormActions
+            pending={pending}
+            disabled={!name.trim() || !classIndex}
+            error={error}
+            onSave={save}
+            onCancel={cancel}
+          />
         </div>
       )}
 
       <div className="mt-4 space-y-2">
         {subclasses.length === 0 && !formOpen && (
-          <p className="text-sm text-tavern-muted italic">
+          <ManagerEmptyNote>
             No custom subclasses yet. Create one and it&apos;ll be selectable on your characters of
             that class.
-          </p>
+          </ManagerEmptyNote>
         )}
         {subclasses.map((s) => (
-          <div key={s.id} className="rounded-md border border-tavern-border bg-tavern-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-heading font-bold text-tavern-text">
-                  {s.name}
-                  <span className="ml-2 text-xs font-normal text-tavern-muted">
-                    {CLASS_NAME[s.classIndex] ?? s.classIndex}
-                  </span>
-                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                    Homebrew
-                  </span>
-                </div>
-                {s.summary && <p className="mt-1 text-xs text-tavern-muted">{s.summary}</p>}
-                {s.features.length > 0 && (
-                  <p className="mt-1 text-[11px] text-tavern-muted">
-                    {s.features.length} feature{s.features.length === 1 ? "" : "s"}:{" "}
-                    {s.features.map((f) => `${f.name} (${f.level})`).join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button onClick={() => startEdit(s)} className="text-xs text-tavern-gold-light hover:text-tavern-gold">
-                  Edit
-                </button>
-                <button onClick={() => remove(s.id)} className="text-xs text-tavern-muted hover:text-tavern-oxblood-light">
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <ManagerItemCard
+            key={s.id}
+            name={s.name}
+            meta={CLASS_NAME[s.classIndex] ?? s.classIndex}
+            onEdit={() => startEdit(s)}
+            onDelete={() => remove(s.id)}
+          >
+            {s.summary && <p className="mt-1 text-xs text-tavern-muted">{s.summary}</p>}
+            {s.features.length > 0 && (
+              <p className="mt-1 text-[11px] text-tavern-muted">
+                {s.features.length} feature{s.features.length === 1 ? "" : "s"}:{" "}
+                {s.features.map((f) => `${f.name} (${f.level})`).join(", ")}
+              </p>
+            )}
+          </ManagerItemCard>
         ))}
       </div>
     </div>

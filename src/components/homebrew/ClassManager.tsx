@@ -8,6 +8,12 @@ import {
   type UserClassData,
   type UserClassFeature,
 } from "@/lib/user-content";
+import {
+  ManagerHeader,
+  ManagerItemCard,
+  ManagerFormActions,
+  ManagerEmptyNote,
+} from "@/components/homebrew/shell";
 
 export interface HomebrewClass extends UserClassData {
   id: string;
@@ -106,22 +112,12 @@ export default function ClassManager({ classes: initial }: { classes: HomebrewCl
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-tavern-muted">
-          Custom classes appear in the builder&apos;s Class step and the multiclass picker, tagged
-          homebrew: a hit die, two saving throws, optional full-caster spellcasting, and per-level
-          features (listed, not simulated). They don&apos;t grant the interactive class resources
-          (Rage, Second Wind, …), starting equipment, or class skill choices.
-        </p>
-        {!formOpen && (
-          <button
-            onClick={startCreate}
-            className="shrink-0 rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
-          >
-            + New Class
-          </button>
-        )}
-      </div>
+      <ManagerHeader
+        blurb="Custom classes appear in the builder's Class step and the multiclass picker, tagged homebrew: a hit die, two saving throws, optional full-caster spellcasting, and per-level features (listed, not simulated). They don't grant the interactive class resources (Rage, Second Wind, …), starting equipment, or class skill choices."
+        buttonLabel="+ New Class"
+        formOpen={formOpen}
+        onCreate={startCreate}
+      />
 
       {formOpen && (
         <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
@@ -249,58 +245,38 @@ export default function ClassManager({ classes: initial }: { classes: HomebrewCl
             + Add feature
           </button>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={save}
-              disabled={pending || !name.trim() || saves.length !== 2}
-              className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-            <button onClick={cancel} disabled={pending} className="text-xs text-tavern-muted hover:text-tavern-gold-light">
-              Cancel
-            </button>
-            {error && <span className="text-xs text-tavern-oxblood-light">{error}</span>}
-          </div>
+          <ManagerFormActions
+            pending={pending}
+            disabled={!name.trim() || saves.length !== 2}
+            error={error}
+            onSave={save}
+            onCancel={cancel}
+          />
         </div>
       )}
 
       <div className="mt-4 space-y-2">
         {classes.length === 0 && !formOpen && (
-          <p className="text-sm text-tavern-muted italic">
+          <ManagerEmptyNote>
             No custom classes yet. Create one and it&apos;ll be selectable in the builder.
-          </p>
+          </ManagerEmptyNote>
         )}
         {classes.map((c) => (
-          <div key={c.id} className="rounded-md border border-tavern-border bg-tavern-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-heading font-bold text-tavern-text">
-                  {c.name}
-                  <span className="ml-2 text-xs font-normal text-tavern-muted">
-                    d{c.hitDie} · {c.savingThrows.map((s) => ABILITY_NAME[s] ?? s).join("/")} saves
-                    {c.spellcastingAbility ? ` · ${ABILITY_NAME[c.spellcastingAbility]} caster` : ""}
-                  </span>
-                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                    Homebrew
-                  </span>
-                </div>
-                {c.features.length > 0 && (
-                  <p className="mt-1 text-[11px] text-tavern-muted">
-                    {c.features.length} feature{c.features.length === 1 ? "" : "s"}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button onClick={() => startEdit(c)} className="text-xs text-tavern-gold-light hover:text-tavern-gold">
-                  Edit
-                </button>
-                <button onClick={() => remove(c.id)} className="text-xs text-tavern-muted hover:text-tavern-oxblood-light">
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <ManagerItemCard
+            key={c.id}
+            name={c.name}
+            meta={`d${c.hitDie} · ${c.savingThrows.map((s) => ABILITY_NAME[s] ?? s).join("/")} saves${
+              c.spellcastingAbility ? ` · ${ABILITY_NAME[c.spellcastingAbility]} caster` : ""
+            }`}
+            onEdit={() => startEdit(c)}
+            onDelete={() => remove(c.id)}
+          >
+            {c.features.length > 0 && (
+              <p className="mt-1 text-[11px] text-tavern-muted">
+                {c.features.length} feature{c.features.length === 1 ? "" : "s"}
+              </p>
+            )}
+          </ManagerItemCard>
         ))}
       </div>
     </div>

@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { createUserSpecies, updateUserSpecies, deleteUserSpecies } from "@/app/homebrew/actions";
 import type { UserSpeciesTrait } from "@/lib/user-content";
+import {
+  ManagerHeader,
+  ManagerItemCard,
+  ManagerFormActions,
+  ManagerEmptyNote,
+} from "@/components/homebrew/shell";
 
 export interface HomebrewSpecies {
   id: string;
@@ -92,21 +98,12 @@ export default function SpeciesManager({ species: initial }: { species: Homebrew
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-tavern-muted">
-          Custom species appear in the builder&apos;s Species step for you, tagged homebrew — with
-          your size, speed, and traits. Traits show in the Species Traits list (listed, not
-          auto-simulated). No subspecies/lineages.
-        </p>
-        {!formOpen && (
-          <button
-            onClick={startCreate}
-            className="shrink-0 rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
-          >
-            + New Species
-          </button>
-        )}
-      </div>
+      <ManagerHeader
+        blurb="Custom species appear in the builder's Species step for you, tagged homebrew — with your size, speed, and traits. Traits show in the Species Traits list (listed, not auto-simulated). No subspecies/lineages."
+        buttonLabel="+ New Species"
+        formOpen={formOpen}
+        onCreate={startCreate}
+      />
 
       {formOpen && (
         <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
@@ -199,58 +196,37 @@ export default function SpeciesManager({ species: initial }: { species: Homebrew
             + Add trait
           </button>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={save}
-              disabled={pending || !name.trim()}
-              className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-            <button onClick={cancel} disabled={pending} className="text-xs text-tavern-muted hover:text-tavern-gold-light">
-              Cancel
-            </button>
-            {error && <span className="text-xs text-tavern-oxblood-light">{error}</span>}
-          </div>
+          <ManagerFormActions
+            pending={pending}
+            disabled={!name.trim()}
+            error={error}
+            onSave={save}
+            onCancel={cancel}
+          />
         </div>
       )}
 
       <div className="mt-4 space-y-2">
         {species.length === 0 && !formOpen && (
-          <p className="text-sm text-tavern-muted italic">
+          <ManagerEmptyNote>
             No custom species yet. Create one and it&apos;ll be selectable in the builder.
-          </p>
+          </ManagerEmptyNote>
         )}
         {species.map((s) => (
-          <div key={s.id} className="rounded-md border border-tavern-border bg-tavern-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-heading font-bold text-tavern-text">
-                  {s.name}
-                  <span className="ml-2 text-xs font-normal text-tavern-muted">
-                    {s.size} · {s.speed} ft
-                  </span>
-                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                    Homebrew
-                  </span>
-                </div>
-                {s.traits.length > 0 && (
-                  <p className="mt-1 text-[11px] text-tavern-muted">
-                    {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}:{" "}
-                    {s.traits.map((t) => t.name).join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button onClick={() => startEdit(s)} className="text-xs text-tavern-gold-light hover:text-tavern-gold">
-                  Edit
-                </button>
-                <button onClick={() => remove(s.id)} className="text-xs text-tavern-muted hover:text-tavern-oxblood-light">
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <ManagerItemCard
+            key={s.id}
+            name={s.name}
+            meta={`${s.size} · ${s.speed} ft`}
+            onEdit={() => startEdit(s)}
+            onDelete={() => remove(s.id)}
+          >
+            {s.traits.length > 0 && (
+              <p className="mt-1 text-[11px] text-tavern-muted">
+                {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}:{" "}
+                {s.traits.map((t) => t.name).join(", ")}
+              </p>
+            )}
+          </ManagerItemCard>
         ))}
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
+import { supabase as srd } from "@/lib/supabase";
 import type {
   FeatOption,
   SubclassOption,
@@ -32,25 +33,93 @@ import {
   type UserClassData,
 } from "@/lib/user-content";
 
-// User-created homebrew feats. Stored in user_content (kind='feat'), owned by
-// the creating user via RLS. Surfaced in the feat picker for that user's own
-// characters, tagged homebrew like the built-in homebrew feats.
+// ── Shared user_content plumbing ────────────────────────────────────────────
+// All six homebrew content types live in the one user_content table, keyed by
+// `kind`, owner-scoped by RLS + an explicit user_id filter. Every read/write
+// below goes through these helpers — the per-type exports only own their
+// validation and shaping. ("use server" only restricts EXPORTED values to
+// async functions; these internal helpers are fine.)
 
-// Every custom feat the signed-in user has made, as FeatOptions ready to merge
-// into the feat picker. Returns [] when signed out.
-export async function getUserFeats(): Promise<FeatOption[]> {
+interface ContentRow {
+  id: string;
+  name: string;
+  data: Json;
+}
+
+async function requireUser() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return null;
+  return { supabase, userId: data.user.id };
+}
 
-  const { data } = await supabase
+// The signed-in user's rows of one kind, name-ordered. [] when signed out.
+async function listContent(kind: string): Promise<ContentRow[]> {
+  const auth = await requireUser();
+  if (!auth) return [];
+  const { data } = await auth.supabase
     .from("user_content")
     .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "feat")
+    .eq("user_id", auth.userId)
+    .eq("kind", kind)
     .order("name");
+  return (data ?? []) as ContentRow[];
+}
 
-  return (data ?? []).map((row) => ({
+async function insertContent(kind: string, name: string, data: Json): Promise<UserContentResult> {
+  const auth = await requireUser();
+  if (!auth) return { success: false, error: "You need to sign in." };
+  const { error } = await auth.supabase
+    .from("user_content")
+    .insert({ user_id: auth.userId, kind, name: name.trim(), data });
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+async function updateContent(
+  kind: string,
+  id: string,
+  name: string,
+  data: Json,
+): Promise<UserContentResult> {
+  const auth = await requireUser();
+  if (!auth) return { success: false, error: "You need to sign in." };
+  const { error } = await auth.supabase
+    .from("user_content")
+    .update({ name: name.trim(), data, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", auth.userId)
+    .eq("kind", kind);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+async function deleteContent(kind: string, id: string): Promise<UserContentResult> {
+  const auth = await requireUser();
+  if (!auth) return { success: false, error: "You need to sign in." };
+  const { error } = await auth.supabase
+    .from("user_content")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", auth.userId)
+    .eq("kind", kind);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/homebrew");
+  return { success: true };
+}
+
+const ABILITY_NAME = Object.fromEntries(ABILITY_OPTIONS.map((a) => [a.index, a.name]));
+const ORIGIN_FEAT_NAME = Object.fromEntries(ORIGIN_FEAT_OPTIONS.map((f) => [f.index, f.name]));
+const CLASS_NAME = Object.fromEntries(CLASS_OPTIONS.map((c) => [c.index, c.name]));
+
+// ── Custom feats (kind='feat') ──────────────────────────────────────────────
+// Surfaced in the feat picker on the owner's own characters, tagged homebrew
+// like the built-in homebrew feats. Index `user-feat:{id}`.
+
+export async function getUserFeats(): Promise<FeatOption[]> {
+  return (await listContent("feat")).map((row) => ({
     index: `${USER_FEAT_PREFIX}${row.id}`,
     name: row.name,
     description: (row.data as { description?: string }).description ?? null,
@@ -58,25 +127,16 @@ export async function getUserFeats(): Promise<FeatOption[]> {
   }));
 }
 
+function validateFeat(name: string, description: string): string | null {
+  if (!name.trim()) return "Give the feat a name.";
+  if (name.length > 100 || description.length > 4000) return "That's too long.";
+  return null;
+}
+
 export async function createUserFeat(name: string, description: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-  if (!name.trim()) return { success: false, error: "Give the feat a name." };
-  if (name.length > 100 || description.length > 4000) {
-    return { success: false, error: "That's too long." };
-  }
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "feat",
-    name: name.trim(),
-    data: { description: description.trim() },
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  const err = validateFeat(name, description);
+  if (err) return { success: false, error: err };
+  return insertContent("feat", name, { description: description.trim() });
 }
 
 export async function updateUserFeat(
@@ -84,39 +144,13 @@ export async function updateUserFeat(
   name: string,
   description: string,
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-  if (!name.trim()) return { success: false, error: "Give the feat a name." };
-  if (name.length > 100 || description.length > 4000) {
-    return { success: false, error: "That's too long." };
-  }
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({ name: name.trim(), data: { description: description.trim() }, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  const err = validateFeat(name, description);
+  if (err) return { success: false, error: err };
+  return updateContent("feat", id, name, { description: description.trim() });
 }
 
 export async function deleteUserFeat(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("feat", id);
 }
 
 // ── Custom subclasses (kind='subclass') ────────────────────────────────────
@@ -146,18 +180,7 @@ function sanitizeFeatures(features: unknown): UserSubclassFeature[] {
 }
 
 export async function getUserSubclasses(): Promise<UserSubclass[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "subclass")
-    .order("name");
-
-  return (data ?? []).map((row) => {
+  return (await listContent("subclass")).map((row) => {
     const d = row.data as {
       classIndex?: string;
       summary?: string;
@@ -176,6 +199,34 @@ export async function getUserSubclasses(): Promise<UserSubclass[]> {
   });
 }
 
+function validateSubclass(
+  name: string,
+  classIndex: string,
+  summary: string,
+  description: string,
+): string | null {
+  if (!name.trim()) return "Give the subclass a name.";
+  if (!classIndex) return "Pick which class this subclass is for.";
+  if (name.length > 100 || summary.length > 500 || description.length > 4000) {
+    return "That's too long.";
+  }
+  return null;
+}
+
+function subclassData(
+  classIndex: string,
+  summary: string,
+  description: string,
+  features: UserSubclassFeature[],
+): Json {
+  return {
+    classIndex,
+    summary: summary.trim(),
+    description: description.trim(),
+    features: sanitizeFeatures(features),
+  } as unknown as Json;
+}
+
 export async function createUserSubclass(
   name: string,
   classIndex: string,
@@ -183,30 +234,9 @@ export async function createUserSubclass(
   description: string,
   features: UserSubclassFeature[],
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-  if (!name.trim()) return { success: false, error: "Give the subclass a name." };
-  if (!classIndex) return { success: false, error: "Pick which class this subclass is for." };
-  if (name.length > 100 || summary.length > 500 || description.length > 4000) {
-    return { success: false, error: "That's too long." };
-  }
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "subclass",
-    name: name.trim(),
-    data: {
-      classIndex,
-      summary: summary.trim(),
-      description: description.trim(),
-      features: sanitizeFeatures(features),
-    } as unknown as Json,
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  const err = validateSubclass(name, classIndex, summary, description);
+  if (err) return { success: false, error: err };
+  return insertContent("subclass", name, subclassData(classIndex, summary, description, features));
 }
 
 export async function updateUserSubclass(
@@ -217,50 +247,13 @@ export async function updateUserSubclass(
   description: string,
   features: UserSubclassFeature[],
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-  if (!name.trim()) return { success: false, error: "Give the subclass a name." };
-  if (!classIndex) return { success: false, error: "Pick which class this subclass is for." };
-  if (name.length > 100 || summary.length > 500 || description.length > 4000) {
-    return { success: false, error: "That's too long." };
-  }
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({
-      name: name.trim(),
-      data: {
-        classIndex,
-        summary: summary.trim(),
-        description: description.trim(),
-        features: sanitizeFeatures(features),
-      } as unknown as Json,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  const err = validateSubclass(name, classIndex, summary, description);
+  if (err) return { success: false, error: err };
+  return updateContent("subclass", id, name, subclassData(classIndex, summary, description, features));
 }
 
 export async function deleteUserSubclass(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id)
-    .eq("kind", "subclass");
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("subclass", id);
 }
 
 // ── Custom backgrounds (kind='background') ─────────────────────────────────
@@ -270,8 +263,6 @@ export async function deleteUserSubclass(id: string): Promise<UserContentResult>
 // dev-authored homebrew backgrounds (2 skills + a 3-ability bonus choice + an
 // Origin feat), minus starting equipment (a disclosed simplification — user
 // backgrounds grant no gear/gold).
-const ABILITY_NAME = Object.fromEntries(ABILITY_OPTIONS.map((a) => [a.index, a.name]));
-const ORIGIN_FEAT_NAME = Object.fromEntries(ORIGIN_FEAT_OPTIONS.map((f) => [f.index, f.name]));
 
 interface UserBackgroundData {
   description?: string;
@@ -281,30 +272,21 @@ interface UserBackgroundData {
 }
 
 export async function getUserBackgrounds(): Promise<BackgroundOption[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "background")
-    .order("name");
-  const rows = data ?? [];
+  const rows = await listContent("background");
   if (rows.length === 0) return [];
 
-  // Resolve skill display names and Origin-feat descriptions from the SRD.
+  // Resolve skill display names and Origin-feat descriptions from the SRD
+  // (public reference tables — the anon client, same as srd.ts).
   const skillIndexes = [...new Set(rows.flatMap((r) => (r.data as UserBackgroundData).skills ?? []))];
   const featIndexes = [
     ...new Set(rows.map((r) => (r.data as UserBackgroundData).featIndex).filter(Boolean) as string[]),
   ];
   const [{ data: skillRows }, { data: featRows }] = await Promise.all([
     skillIndexes.length
-      ? supabase.from("skills").select("index, name").in("index", skillIndexes)
+      ? srd.from("skills").select("index, name").in("index", skillIndexes)
       : Promise.resolve({ data: [] as { index: string; name: string }[] }),
     featIndexes.length
-      ? supabase.from("feats").select("index, data").in("index", featIndexes)
+      ? srd.from("feats").select("index, data").in("index", featIndexes)
       : Promise.resolve({ data: [] as { index: string; data: unknown }[] }),
   ]);
   const skillName = new Map((skillRows ?? []).map((s) => [s.index, s.name]));
@@ -365,22 +347,14 @@ export async function createUserBackground(
   abilities: string[],
   featIndex: string,
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const err = validateBackground(name, description, skills, abilities, featIndex);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "background",
-    name: name.trim(),
-    data: { description: description.trim(), skills, abilities, featIndex } as unknown as Json,
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return insertContent("background", name, {
+    description: description.trim(),
+    skills,
+    abilities,
+    featIndex,
+  } as unknown as Json);
 }
 
 export async function updateUserBackground(
@@ -391,42 +365,18 @@ export async function updateUserBackground(
   abilities: string[],
   featIndex: string,
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const err = validateBackground(name, description, skills, abilities, featIndex);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({
-      name: name.trim(),
-      data: { description: description.trim(), skills, abilities, featIndex } as unknown as Json,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return updateContent("background", id, name, {
+    description: description.trim(),
+    skills,
+    abilities,
+    featIndex,
+  } as unknown as Json);
 }
 
 export async function deleteUserBackground(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id)
-    .eq("kind", "background");
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("background", id);
 }
 
 // ── Custom species (kind='species') ────────────────────────────────────────
@@ -450,18 +400,7 @@ interface UserSpeciesData {
 }
 
 export async function getUserSpecies(): Promise<UserSpecies[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "species")
-    .order("name");
-
-  return (data ?? []).map((row) => {
+  return (await listContent("species")).map((row) => {
     const d = row.data as UserSpeciesData;
     const rawTraits = d.traits ?? [];
     const traits = rawTraits.map((t, i) => ({ index: `user-trait:${row.id}:${i}`, name: t.name }));
@@ -504,6 +443,15 @@ function validateSpecies(name: string, speed: number, size: string): string | nu
   return null;
 }
 
+function speciesData(description: string, size: string, speed: number, traits: UserSpeciesTrait[]): Json {
+  return {
+    description: description.trim().slice(0, 4000),
+    size,
+    speed,
+    traits: sanitizeTraits(traits),
+  } as unknown as Json;
+}
+
 export async function createUserSpecies(
   name: string,
   description: string,
@@ -511,27 +459,9 @@ export async function createUserSpecies(
   speed: number,
   traits: UserSpeciesTrait[],
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const err = validateSpecies(name, speed, size);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "species",
-    name: name.trim(),
-    data: {
-      description: description.trim().slice(0, 4000),
-      size,
-      speed,
-      traits: sanitizeTraits(traits),
-    } as unknown as Json,
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return insertContent("species", name, speciesData(description, size, speed, traits));
 }
 
 export async function updateUserSpecies(
@@ -542,54 +472,19 @@ export async function updateUserSpecies(
   speed: number,
   traits: UserSpeciesTrait[],
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const err = validateSpecies(name, speed, size);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({
-      name: name.trim(),
-      data: {
-        description: description.trim().slice(0, 4000),
-        size,
-        speed,
-        traits: sanitizeTraits(traits),
-      } as unknown as Json,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return updateContent("species", id, name, speciesData(description, size, speed, traits));
 }
 
 export async function deleteUserSpecies(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id)
-    .eq("kind", "species");
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("species", id);
 }
 
 // ── Custom spells (kind='spell') ───────────────────────────────────────────
 // Stored data: the full UserSpellData shape. Merged into getSpellsForClass's
 // result (per class the spell lists) on the owner's characters and into the
 // /spells compendium for the owner. Index `user-spell:{id}`.
-const CLASS_NAME = Object.fromEntries(CLASS_OPTIONS.map((c) => [c.index, c.name]));
 
 // The play-sheet form: a SpellOption plus the class indexes it belongs to.
 export type UserSpell = SpellOption & { classes: string[] };
@@ -615,34 +510,14 @@ function toSpellOption(id: string, name: string, d: UserSpellData): UserSpell {
 }
 
 export async function getUserSpells(): Promise<UserSpell[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "spell")
-    .order("name");
-
-  return (data ?? []).map((row) => toSpellOption(row.id, row.name, row.data as unknown as UserSpellData));
+  return (await listContent("spell")).map((row) =>
+    toSpellOption(row.id, row.name, row.data as unknown as UserSpellData),
+  );
 }
 
 // The owner's homebrew spells as CompendiumSpell rows, for the /spells page.
 export async function getUserCompendiumSpells(): Promise<CompendiumSpell[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "spell")
-    .order("name");
-
-  return (data ?? []).map((row) => {
+  return (await listContent("spell")).map((row) => {
     const d = row.data as unknown as UserSpellData;
     return {
       index: `${USER_SPELL_PREFIX}${row.id}`,
@@ -674,13 +549,17 @@ function validateSpell(name: string, data: UserSpellData): string | null {
   return null;
 }
 
-// Trim/clamp every field to safe bounds before persisting.
+// Trim/clamp every field to safe bounds before persisting. A homebrew spell
+// may target a homebrew class (`user-class:{id}`), so class indexes accept
+// either a real SRD class or that prefix.
 function cleanSpellData(d: UserSpellData): UserSpellData {
   const s = (v: unknown, n = 200) => (typeof v === "string" ? v.trim().slice(0, n) : "");
   return {
     level: Math.min(9, Math.max(0, Math.round(Number(d.level) || 0))),
     school: s(d.school, 40),
-    classes: (Array.isArray(d.classes) ? d.classes : []).filter((c) => CLASS_NAME[c]),
+    classes: (Array.isArray(d.classes) ? d.classes : []).filter(
+      (c) => CLASS_NAME[c] || c.startsWith(USER_CLASS_PREFIX),
+    ),
     castingTime: s(d.castingTime),
     range: s(d.range),
     duration: s(d.duration),
@@ -702,23 +581,10 @@ function cleanSpellData(d: UserSpellData): UserSpellData {
 }
 
 export async function createUserSpell(name: string, data: UserSpellData): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const clean = cleanSpellData(data);
   const err = validateSpell(name, clean);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "spell",
-    name: name.trim(),
-    data: clean as unknown as Json,
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return insertContent("spell", name, clean as unknown as Json);
 }
 
 export async function updateUserSpell(
@@ -726,39 +592,14 @@ export async function updateUserSpell(
   name: string,
   data: UserSpellData,
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const clean = cleanSpellData(data);
   const err = validateSpell(name, clean);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({ name: name.trim(), data: clean as unknown as Json, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return updateContent("spell", id, name, clean as unknown as Json);
 }
 
 export async function deleteUserSpell(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id)
-    .eq("kind", "spell");
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("spell", id);
 }
 
 // ── Custom classes (kind='class') ──────────────────────────────────────────
@@ -766,29 +607,17 @@ export async function deleteUserSpell(id: string): Promise<UserContentResult> {
 // spellcasting + per-level features. Merged into the class list (builder + play
 // sheet), and its features into the play sheet's Features list. See UserClassData
 // for the scope (no interactive class resources / starting gear / skill grants).
-const ABILITY_KEY_NAME = Object.fromEntries(ABILITY_OPTIONS.map((a) => [a.index, a.name]));
 
 // ClassOption plus the class's per-level features (which the SRD keeps in a
 // separate `features` table — this carries them alongside).
 export type UserClass = ClassOption & { features: (ClassFeature & { classIndex: string })[] };
 
 export async function getUserClasses(): Promise<UserClass[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name, data")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "class")
-    .order("name");
-
-  return (data ?? []).map((row) => {
+  return (await listContent("class")).map((row) => {
     const d = row.data as unknown as UserClassData;
     const index = `${USER_CLASS_PREFIX}${row.id}`;
     const spellcastingAbility =
-      d.spellcastingAbility && ABILITY_KEY_NAME[d.spellcastingAbility]
+      d.spellcastingAbility && ABILITY_NAME[d.spellcastingAbility]
         ? (d.spellcastingAbility as AbilityKey)
         : null;
     const features = [...(d.features ?? [])]
@@ -806,8 +635,8 @@ export async function getUserClasses(): Promise<UserClass[]> {
       hitDie: HIT_DIE_OPTIONS.includes(d.hitDie) ? d.hitDie : 8,
       primaryAbilityDesc: null,
       savingThrows: (d.savingThrows ?? [])
-        .filter((s) => ABILITY_KEY_NAME[s])
-        .map((s) => ({ index: s, name: ABILITY_KEY_NAME[s] })),
+        .filter((s) => ABILITY_NAME[s])
+        .map((s) => ({ index: s, name: ABILITY_NAME[s] })),
       proficiencyChoices: [],
       startingEquipmentDesc: null,
       startingEquipmentFirstOption: [],
@@ -823,16 +652,10 @@ export async function getUserClasses(): Promise<UserClass[]> {
 // custom-spell form's class picker (a homebrew spell can target a homebrew
 // caster class).
 export async function getUserClassOptions(): Promise<{ index: string; name: string }[]> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return [];
-  const { data } = await supabase
-    .from("user_content")
-    .select("id, name")
-    .eq("user_id", userData.user.id)
-    .eq("kind", "class")
-    .order("name");
-  return (data ?? []).map((row) => ({ index: `${USER_CLASS_PREFIX}${row.id}`, name: row.name }));
+  return (await listContent("class")).map((row) => ({
+    index: `${USER_CLASS_PREFIX}${row.id}`,
+    name: row.name,
+  }));
 }
 
 function cleanClassData(d: UserClassData): UserClassData {
@@ -869,23 +692,10 @@ function validateClass(name: string, d: UserClassData): string | null {
 }
 
 export async function createUserClass(name: string, data: UserClassData): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const clean = cleanClassData(data);
   const err = validateClass(name, clean);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase.from("user_content").insert({
-    user_id: userData.user.id,
-    kind: "class",
-    name: name.trim(),
-    data: clean as unknown as Json,
-  });
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return insertContent("class", name, clean as unknown as Json);
 }
 
 export async function updateUserClass(
@@ -893,37 +703,12 @@ export async function updateUserClass(
   name: string,
   data: UserClassData,
 ): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
   const clean = cleanClassData(data);
   const err = validateClass(name, clean);
   if (err) return { success: false, error: err };
-
-  const { error } = await supabase
-    .from("user_content")
-    .update({ name: name.trim(), data: clean as unknown as Json, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return updateContent("class", id, name, clean as unknown as Json);
 }
 
 export async function deleteUserClass(id: string): Promise<UserContentResult> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return { success: false, error: "You need to sign in." };
-
-  const { error } = await supabase
-    .from("user_content")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id)
-    .eq("kind", "class");
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath("/homebrew");
-  return { success: true };
+  return deleteContent("class", id);
 }

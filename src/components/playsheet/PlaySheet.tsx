@@ -80,6 +80,7 @@ import type {
   SpellOption,
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
+import { CounterStepper, ResourceRow } from "./ResourceCounter";
 import ShareControl from "./ShareControl";
 import CharacterAvatar from "./CharacterAvatar";
 import CharacterBio from "./CharacterBio";
@@ -3329,25 +3330,12 @@ export default function PlaySheet({
                     Roll Divine Spark
                   </button>
                 )}
-                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                  <button
-                    onClick={restoreChannelDivinity}
-                    disabled={play.expendedChannelDivinity <= 0}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    +
-                  </button>
-                  <span className="font-heading font-bold text-tavern-text">
-                    {sheet.channelDivinityMax - play.expendedChannelDivinity}/{sheet.channelDivinityMax}
-                  </span>
-                  <button
-                    onClick={expendChannelDivinity}
-                    disabled={play.expendedChannelDivinity >= sheet.channelDivinityMax}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    &minus;
-                  </button>
-                </div>
+                <CounterStepper
+                  remaining={sheet.channelDivinityMax - play.expendedChannelDivinity}
+                  max={sheet.channelDivinityMax}
+                  onRestore={restoreChannelDivinity}
+                  onExpend={expendChannelDivinity}
+                />
               </div>
             </div>
           )}
@@ -3400,103 +3388,36 @@ export default function PlaySheet({
           )}
 
           {sheet.bardicInspirationMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Bardic Inspiration (d{sheet.bardicInspirationDie})
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Confer a die as a Bonus Action — see Features below for the full effect. Regains
-                  all uses on a Long Rest{sheet.level >= 5 ? " or Short Rest" : ""}.
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreBardicInspiration}
-                  disabled={play.expendedBardicInspiration <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.bardicInspirationMax - play.expendedBardicInspiration}/
-                  {sheet.bardicInspirationMax}
-                </span>
-                <button
-                  onClick={expendBardicInspiration}
-                  disabled={play.expendedBardicInspiration >= sheet.bardicInspirationMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title={`Bardic Inspiration (d${sheet.bardicInspirationDie})`}
+              description={`Confer a die as a Bonus Action — see Features below for the full effect. Regains all uses on a Long Rest${sheet.level >= 5 ? " or Short Rest" : ""}.`}
+              remaining={sheet.bardicInspirationMax - play.expendedBardicInspiration}
+              max={sheet.bardicInspirationMax}
+              onRestore={restoreBardicInspiration}
+              onExpend={expendBardicInspiration}
+            />
           )}
 
           {sheet.wildShapeMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Wild Shape
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Bonus Action to transform — see Features below for known forms and the full
-                  effect. Regains 1 use on a Short Rest, all uses on a Long Rest.
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreWildShape}
-                  disabled={play.expendedWildShape <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.wildShapeMax - play.expendedWildShape}/{sheet.wildShapeMax}
-                </span>
-                <button
-                  onClick={expendWildShape}
-                  disabled={play.expendedWildShape >= sheet.wildShapeMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title="Wild Shape"
+              description="Bonus Action to transform — see Features below for known forms and the full effect. Regains 1 use on a Short Rest, all uses on a Long Rest."
+              remaining={sheet.wildShapeMax - play.expendedWildShape}
+              max={sheet.wildShapeMax}
+              onRestore={restoreWildShape}
+              onExpend={expendWildShape}
+            />
           )}
 
           {sheet.favoredEnemyMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Favored Enemy
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Cast Hunter&apos;s Mark without a spell slot — see Features below for the full
-                  effect. Regains all uses on a Long Rest.
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreFavoredEnemy}
-                  disabled={play.expendedFavoredEnemy <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.favoredEnemyMax - play.expendedFavoredEnemy}/{sheet.favoredEnemyMax}
-                </span>
-                <button
-                  onClick={expendFavoredEnemy}
-                  disabled={play.expendedFavoredEnemy >= sheet.favoredEnemyMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title="Favored Enemy"
+              description="Cast Hunter's Mark without a spell slot — see Features below for the full effect. Regains all uses on a Long Rest."
+              remaining={sheet.favoredEnemyMax - play.expendedFavoredEnemy}
+              max={sheet.favoredEnemyMax}
+              onRestore={restoreFavoredEnemy}
+              onExpend={expendFavoredEnemy}
+            />
           )}
 
           {sheet.secondWindMax > 0 && (
@@ -3535,70 +3456,25 @@ export default function PlaySheet({
           )}
 
           {sheet.actionSurgeMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Action Surge
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Take one additional action this turn (not the Magic action). Regains all uses on
-                  a Short or Long Rest
-                  {sheet.actionSurgeMax > 1 ? " — only once per turn even with 2 uses available." : "."}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreActionSurge}
-                  disabled={play.expendedActionSurge <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.actionSurgeMax - play.expendedActionSurge}/{sheet.actionSurgeMax}
-                </span>
-                <button
-                  onClick={expendActionSurge}
-                  disabled={play.expendedActionSurge >= sheet.actionSurgeMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title="Action Surge"
+              description={`Take one additional action this turn (not the Magic action). Regains all uses on a Short or Long Rest${sheet.actionSurgeMax > 1 ? " — only once per turn even with 2 uses available." : "."}`}
+              remaining={sheet.actionSurgeMax - play.expendedActionSurge}
+              max={sheet.actionSurgeMax}
+              onRestore={restoreActionSurge}
+              onExpend={expendActionSurge}
+            />
           )}
 
           {sheet.indomitableMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Indomitable
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Reroll a failed saving throw, adding {formatModifier(sheet.level)} to the new
-                  roll. Regains all uses on a Long Rest only.
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreIndomitable}
-                  disabled={play.expendedIndomitable <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.indomitableMax - play.expendedIndomitable}/{sheet.indomitableMax}
-                </span>
-                <button
-                  onClick={expendIndomitable}
-                  disabled={play.expendedIndomitable >= sheet.indomitableMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title="Indomitable"
+              description={`Reroll a failed saving throw, adding ${formatModifier(sheet.level)} to the new roll. Regains all uses on a Long Rest only.`}
+              remaining={sheet.indomitableMax - play.expendedIndomitable}
+              max={sheet.indomitableMax}
+              onRestore={restoreIndomitable}
+              onExpend={expendIndomitable}
+            />
           )}
 
           {sheet.rageMax > 0 && (
@@ -3670,25 +3546,12 @@ export default function PlaySheet({
                     Short or Long Rest.
                   </div>
                 </div>
-                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                  <button
-                    onClick={restoreFocusPoint}
-                    disabled={play.expendedFocusPoints <= 0}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    +
-                  </button>
-                  <span className="font-heading font-bold text-tavern-text">
-                    {sheet.focusPointsMax - play.expendedFocusPoints}/{sheet.focusPointsMax}
-                  </span>
-                  <button
-                    onClick={expendFocusPoint}
-                    disabled={play.expendedFocusPoints >= sheet.focusPointsMax}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    &minus;
-                  </button>
-                </div>
+                <CounterStepper
+                  remaining={sheet.focusPointsMax - play.expendedFocusPoints}
+                  max={sheet.focusPointsMax}
+                  onRestore={restoreFocusPoint}
+                  onExpend={expendFocusPoint}
+                />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
@@ -3799,36 +3662,14 @@ export default function PlaySheet({
           )}
 
           {sheet.stonecunningMax > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-              <div>
-                <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                  Stonecunning
-                </div>
-                <div className="text-xs text-tavern-muted">
-                  Bonus Action for Tremorsense (60 ft, on/touching stone) for 10 minutes. Regains
-                  all uses on a Long Rest only.
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                <button
-                  onClick={restoreStonecunning}
-                  disabled={play.expendedStonecunning <= 0}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  +
-                </button>
-                <span className="font-heading font-bold text-tavern-text">
-                  {sheet.stonecunningMax - play.expendedStonecunning}/{sheet.stonecunningMax}
-                </span>
-                <button
-                  onClick={expendStonecunning}
-                  disabled={play.expendedStonecunning >= sheet.stonecunningMax}
-                  className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                >
-                  &minus;
-                </button>
-              </div>
-            </div>
+            <ResourceRow
+              title="Stonecunning"
+              description="Bonus Action for Tremorsense (60 ft, on/touching stone) for 10 minutes. Regains all uses on a Long Rest only."
+              remaining={sheet.stonecunningMax - play.expendedStonecunning}
+              max={sheet.stonecunningMax}
+              onRestore={restoreStonecunning}
+              onExpend={expendStonecunning}
+            />
           )}
 
           {sheet.adrenalineRushMax > 0 && (
@@ -4787,59 +4628,26 @@ export default function PlaySheet({
                 <h3 className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
                   Sorcery Points
                 </h3>
-                <div className="mt-2 flex items-center justify-between rounded-md border border-tavern-border px-3 py-2 sm:max-w-[200px]">
-                  <button
-                    onClick={restoreSorceryPoint}
-                    disabled={play.expendedSorceryPoints <= 0}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    +
-                  </button>
-                  <span className="font-heading font-bold text-tavern-text">
-                    {sheet.sorceryPointsMax - play.expendedSorceryPoints}/{sheet.sorceryPointsMax}
-                  </span>
-                  <button
-                    onClick={expendSorceryPoint}
-                    disabled={play.expendedSorceryPoints >= sheet.sorceryPointsMax}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    &minus;
-                  </button>
+                <div className="mt-2 sm:max-w-[200px]">
+                  <CounterStepper
+                    remaining={sheet.sorceryPointsMax - play.expendedSorceryPoints}
+                    max={sheet.sorceryPointsMax}
+                    onRestore={restoreSorceryPoint}
+                    onExpend={expendSorceryPoint}
+                  />
                 </div>
               </div>
             )}
 
             {sheet.innateSorceryMax > 0 && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
-                <div>
-                  <div className="font-heading text-xs font-bold tracking-wider text-tavern-gold-light uppercase">
-                    Innate Sorcery
-                  </div>
-                  <div className="text-xs text-tavern-muted">
-                    Bonus Action: for 1 minute your Spell Save DC is +1 and you have Advantage on
-                    your spell attack rolls. {sheet.innateSorceryMax} uses per Long Rest.
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 rounded-md border border-tavern-border px-3 py-1.5">
-                  <button
-                    onClick={restoreInnateSorcery}
-                    disabled={play.expendedInnateSorcery <= 0}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    +
-                  </button>
-                  <span className="font-heading font-bold text-tavern-text">
-                    {sheet.innateSorceryMax - play.expendedInnateSorcery}/{sheet.innateSorceryMax}
-                  </span>
-                  <button
-                    onClick={useInnateSorcery}
-                    disabled={play.expendedInnateSorcery >= sheet.innateSorceryMax}
-                    className="rounded-md border border-tavern-border px-2 text-tavern-gold-light hover:border-tavern-gold-light disabled:opacity-30"
-                  >
-                    &minus;
-                  </button>
-                </div>
-              </div>
+              <ResourceRow
+                title="Innate Sorcery"
+                description={`Bonus Action: for 1 minute your Spell Save DC is +1 and you have Advantage on your spell attack rolls. ${sheet.innateSorceryMax} uses per Long Rest.`}
+                remaining={sheet.innateSorceryMax - play.expendedInnateSorcery}
+                max={sheet.innateSorceryMax}
+                onRestore={restoreInnateSorcery}
+                onExpend={useInnateSorcery}
+              />
             )}
 
             {sheet.metamagicKnownMax > 0 && (

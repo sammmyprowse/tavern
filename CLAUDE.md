@@ -3383,3 +3383,62 @@ caster's DC (a rare dual-caster-with-subclass-spells edge); armor/weapon/tool
 multiclass proficiency grants are informational; owner-gated pending pickers
 (ASI/Expertise/skill/subclass, Level Up class chooser + prereq gating) are
 type-/build-verified but not exercisable in the unauthenticated preview.
+
+## Architecture assessment pass — caching, dedup, consolidation
+A full app assessment (data flow, duplication, fetch patterns) followed by five
+fixes in one pass:
+
+**1. Print page bugs (real, found by the assessment).** `/characters/[id]/print`
+was a stale fork of the play-sheet page's loading logic: it still used the bare
+`{...EMPTY_DRAFT, ...draft}` merge (no `normalizeDraft`), so any pre-multiclass
+character printed with class level 1 resources (wrong slots/hit dice); it only
+fetched the primary class's features/spells; and it knew nothing about homebrew
+content (a homebrew-species/class character printed as "Couldn't build this
+character"). All fixed to mirror the play-sheet page: normalizeDraft, per-class
+fetches filtered by `sheet.classLevels`, owner homebrew merged into refs,
+multiclass subtitle ("Fighter 5 / Wizard 3") and hit-dice pool ("3d10, 2d6").
+Verified live on a legacy character (3d10 hit dice, Spell DC 12 — was level-1
+values before). **Lesson: any page that loads a draft must use `normalizeDraft`
+and consider homebrew refs — don't fork the play-sheet page's loader.**
+
+**2. SRD reads are now cached** (`srdCache` in srd.ts = `unstable_cache`,
+1-hour revalidate, tag "srd"). Every getter became an internal `fetch*` function
+with a cached export of the same name — call sites unchanged. This was the
+single biggest perf win: every page previously re-downloaded every SRD dataset
+from Supabase per request (all routes are dynamic). Two constraints baked in:
+values round-trip through JSON, so **nothing cached may be a Map** — the two
+Map-shaped lookups (equipment, magic items) cache flat arrays and rebuild the
+Map per call; and `cookies()`-using code must never move inside a cached fn
+(srd.ts uses the anon client only). Deliberately did NOT enable
+`cacheComponents`/"use cache" — that changes the whole rendering model.
+SRD edits via SQL now take up to an hour to appear (or revalidateTag("srd")).
+
+**3. Spell parsing deduped + play-sheet fetch waterfall flattened.**
+`parseSpellRow()` in srd.ts replaces the byte-identical mappers that were
+copy-pasted between getSpellsForClass/getSpellsByIndex. The play-sheet page's
+4-5 sequential await stages after the first batch (user content → per-class →
+lineage → cantrip picker → subclass spells) collapsed into ONE `Promise.all` —
+everything there depends only on the draft + already-fetched refs.
+
+**4. Homebrew CRUD consolidated.** actions.ts: 26 copies of the auth preamble →
+`requireUser()/listContent()/insertContent()/updateContent()/deleteContent()`
+internal helpers ("use server" only restricts EXPORTED values; internal non-async
+helpers are fine); each exported action is now validation + a one-line helper
+call (929 → 714 lines). Consolidation also fixed a real latent bug:
+`cleanSpellData` was silently stripping homebrew-class targets from spell class
+lists (the form offered them; the server filter rejected `user-class:` indexes).
+The six manager components now share `shell.tsx` (ManagerHeader, ManagerItemCard,
+ManagerFormActions, ManagerEmptyNote); each manager owns only its form fields.
+
+**5. PlaySheet decomposition (first increment).** New
+`playsheet/ResourceCounter.tsx`: `CounterStepper` (the +/− n/max strip) and
+`ResourceRow` (title + blurb + stepper). Converted the 10 plain-stepper resource
+blocks (Channel Divinity, Bardic Inspiration, Wild Shape, Favored Enemy, Action
+Surge, Indomitable, Focus Points, Stonecunning, Sorcery Points, Innate Sorcery);
+blocks with asymmetric controls (Second Wind/Rage's restore-only counters, Lay
+on Hands' spend-input, the per-level slot rows) deliberately kept their own
+markup. PlaySheet: 6,195 → ~6,000 lines. **Remaining decomposition increments
+(not yet done):** the 4 spell-row renderers → a shared SpellRow, the 5+
+select-up-to-N pickers → a MultiSelectPicker, and the per-card collapse chrome.
+Verified live: counters render and expend/restore correctly (Channel Divinity
+2/2 → 1/2 on click).

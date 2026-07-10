@@ -18,6 +18,7 @@ import {
   getSpellsForClass,
   getSpellsByIndex,
   getTraitDescriptions,
+  type SpellOption,
 } from "@/lib/srd";
 import {
   LINEAGE_CANTRIP_CLASS,
@@ -110,32 +111,87 @@ export default async function CharacterPlaySheet({
   }
 
   const isOwner = userData.user?.id === character.user_id;
-  // The owner's custom homebrew feats are offered alongside the built-in feats
-  // in the picker (and resolve their name/description in the Features list).
-  // Only the owner sees their own homebrew, so this is skipped for viewers.
-  const userFeats = isOwner ? await getUserFeats() : [];
-  const allGeneralFeats = [...generalFeats, ...userFeats];
-  // The owner's custom subclasses are offered in the play-sheet subclass picker
-  // for the matching class (tagged Homebrew like the dev-authored ones).
-  const userSubclasses = isOwner ? await getUserSubclasses() : [];
-  // Owner's homebrew backgrounds/species so a character built on them resolves
-  // correctly on the sheet (name, skills, traits, feat).
-  const [userBackgrounds, userSpecies, userSpells, userClasses] = isOwner
-    ? await Promise.all([getUserBackgrounds(), getUserSpecies(), getUserSpells(), getUserClasses()])
-    : [[], [], [], []];
-  // Merged against EMPTY_DRAFT the same way the builder wizard's localStorage
-  // hydration already is — a character saved before some later CharacterDraft
-  // field existed (weaponMasteryChoices, fightingStyleChoices, etc.) has a
-  // raw DB row that's simply missing that key, and a bare cast leaves it
-  // `undefined` rather than that field's real default. Any code that calls
-  // an array method on it (e.g. `.length`) then throws for every character
-  // saved before that field shipped — confirmed live with a hand-inserted
-  // pre-Weapon-Mastery draft, the same trap CLAUDE.md already documents for
-  // the builder wizard's own localStorage path, just never fixed here too.
   // normalizeDraft merges against EMPTY_DRAFT (surviving the missing-key trap
-  // for rows saved before a field existed) AND backfills the multiclass fields
-  // for legacy single-class rows — see character.ts.
+  // for rows saved before a field existed — see CLAUDE.md) AND backfills the
+  // multiclass fields for legacy single-class rows — see character.ts.
   const draft = normalizeDraft(character.draft as unknown as CharacterDraft);
+
+  // Everything below depends only on the draft + the reference lists already
+  // fetched above, so it all goes in ONE parallel batch (this used to be 4-5
+  // sequential await stages): the owner's homebrew content, each class's
+  // features/subclasses/spells, lineage spell details, the swappable-cantrip
+  // class list, and subclass always-prepared spell details.
+  const classList = orderedClasses(draft);
+  const characterSubspecies = subspecies.find((s) => s.index === draft.subspeciesIndex) ?? null;
+  const lineageSpellIndexes = (characterSubspecies?.traits ?? [])
+    .filter((t) => t.index.startsWith("lineage-spell-"))
+    .map((t) => t.index.replace(/^lineage-spell-/, ""));
+  // Base-species cantrips (e.g. Tiefling's Thaumaturgy via Otherworldly
+  // Presence) live on the species, not a lineage-spell-* subspecies trait.
+  // Looked up against the SRD species list only — a homebrew species never
+  // carries SPECIES_CANTRIP_SPELL trait indexes, so this matches the old
+  // merged-list behaviour.
+  const characterSpecies = species.find((s) => s.index === draft.speciesIndex) ?? null;
+  const speciesCantripIndexes = (characterSpecies?.traits ?? [])
+    .map((t) => SPECIES_CANTRIP_SPELL[t.index])
+    .filter((idx): idx is string => Boolean(idx));
+  // Subspecies with a swappable cantrip (currently only High Elf) need that
+  // class's full cantrip list for the picker.
+  const lineageCantripClass = draft.subspeciesIndex
+    ? (LINEAGE_CANTRIP_CLASS[draft.subspeciesIndex] ?? null)
+    : null;
+  // Subclass always-prepared spells across every class's chosen subclass. A
+  // few 2024-only spells aren't in the 2014 dataset and render name-only.
+  const subclassSpellIndexes = classList.flatMap((c) =>
+    (SUBCLASS_PREPARED_SPELLS[c.subclassIndex ?? ""] ?? []).flatMap((m) =>
+      m.spells.map((s) => s.index),
+    ),
+  );
+
+  const [
+    userFeats,
+    userSubclasses,
+    userBackgrounds,
+    userSpecies,
+    userSpells,
+    userClasses,
+    perClass,
+    lineageSpellData,
+    lineageClassSpells,
+    subclassSpellData,
+  ] = await Promise.all([
+    // Owner-only homebrew content: offered in the pickers and needed to
+    // resolve a character built on homebrew species/background/class/spells.
+    isOwner ? getUserFeats() : [],
+    isOwner ? getUserSubclasses() : [],
+    isOwner ? getUserBackgrounds() : [],
+    isOwner ? getUserSpecies() : [],
+    isOwner ? getUserSpells() : [],
+    isOwner ? getUserClasses() : [],
+    // Features/subclasses/spells per class the character has levels in
+    // (primary first) — a multiclass sheet shows both classes' content.
+    Promise.all(
+      classList.map(async (c) => {
+        const [classFeatures, classSubclasses, classSpellList] = await Promise.all([
+          getFeaturesForClass(c.classIndex),
+          getSubclassesForClass(c.classIndex),
+          getSpellsForClass(c.classIndex),
+        ]);
+        return {
+          classIndex: c.classIndex,
+          subclassIndex: c.subclassIndex,
+          features: classFeatures,
+          subclassOptions: classSubclasses,
+          classSpells: classSpellList,
+        };
+      }),
+    ),
+    getSpellsByIndex([...lineageSpellIndexes, ...speciesCantripIndexes]),
+    lineageCantripClass ? getSpellsForClass(lineageCantripClass) : ([] as SpellOption[]),
+    getSpellsByIndex(subclassSpellIndexes),
+  ]);
+
+  const allGeneralFeats = [...generalFeats, ...userFeats];
   const allSpecies = [...species, ...userSpecies];
   const allBackgrounds = [...backgrounds, ...userBackgrounds];
   const allClasses = [...classes, ...userClasses];
@@ -145,27 +201,6 @@ export default async function CharacterPlaySheet({
     ...traitDescriptions,
     ...Object.fromEntries(userSpecies.flatMap((s) => Object.entries(s.traitDescriptions))),
   };
-
-  // Every class the character has levels in (primary first). Features,
-  // subclasses, and spell lists are fetched per class so a multiclass sheet
-  // shows both classes' content (a single-class character just has one entry).
-  const classList = orderedClasses(draft);
-  const perClass = await Promise.all(
-    classList.map(async (c) => {
-      const [classFeatures, classSubclasses, classSpellList] = await Promise.all([
-        getFeaturesForClass(c.classIndex),
-        getSubclassesForClass(c.classIndex),
-        getSpellsForClass(c.classIndex),
-      ]);
-      return {
-        classIndex: c.classIndex,
-        subclassIndex: c.subclassIndex,
-        features: classFeatures,
-        subclassOptions: classSubclasses,
-        classSpells: classSpellList,
-      };
-    }),
-  );
 
   // Base-class features, each tagged with its owning class so the Features list
   // can filter by that class's level (a Wizard-3 feature shows only if the
@@ -202,36 +237,11 @@ export default async function CharacterPlaySheet({
   );
   const classSpells = perClass[0] ? spellsForClass(perClass[0].classIndex, perClass[0].classSpells) : [];
 
-  // Fetch description/combat data for the specific spells this subspecies
-  // grants (Fire Bolt for Infernal Tiefling, Dancing Lights for Drow, etc.)
-  // by collecting their indexes directly from the subspecies trait list rather
-  // than fetching an entire class's spell catalog.
-  const characterSubspecies = subspecies.find((s) => s.index === draft.subspeciesIndex) ?? null;
-  const lineageSpellIndexes = (characterSubspecies?.traits ?? [])
-    .filter((t) => t.index.startsWith("lineage-spell-"))
-    .map((t) => t.index.replace(/^lineage-spell-/, ""));
-  // Base-species cantrips (e.g. Tiefling's Thaumaturgy via Otherworldly
-  // Presence) live on the species, not a lineage-spell-* subspecies trait —
-  // collect their spell indexes too so the at-will cantrip can be surfaced.
-  const characterSpecies = allSpecies.find((s) => s.index === draft.speciesIndex) ?? null;
-  const speciesCantripIndexes = (characterSpecies?.traits ?? [])
-    .map((t) => SPECIES_CANTRIP_SPELL[t.index])
-    .filter((idx): idx is string => Boolean(idx));
-  const lineageSpellData = await getSpellsByIndex([
-    ...lineageSpellIndexes,
-    ...speciesCantripIndexes,
-  ]);
-
-  // For subspecies with a swappable cantrip (currently only High Elf), also
-  // fetch all cantrips from that class so the picker can show the full list.
-  const lineageCantripClass = draft.subspeciesIndex
-    ? (LINEAGE_CANTRIP_CLASS[draft.subspeciesIndex] ?? null)
-    : null;
+  // Swappable-cantrip picker options (High Elf): all cantrips from the
+  // lineage's class, with the owner's homebrew cantrips for that class merged
+  // in the same way as the main pickers.
   const cantripPickerSpells = lineageCantripClass
-    ? (lineageCantripClass === draft.classIndex
-        ? classSpells
-        : await getSpellsForClass(lineageCantripClass)
-      ).filter((s) => s.level === 0)
+    ? spellsForClass(lineageCantripClass, lineageClassSpells).filter((s) => s.level === 0)
     : [];
 
   // Combine: specific lineage spell data + any cantrip picker options not
@@ -242,17 +252,6 @@ export default async function CharacterPlaySheet({
     ...lineageSpellData,
     ...cantripPickerSpells.filter((s) => !seenIndexes.has(s.index)),
   ];
-
-  // Detail data (description/range/attack/damage) for subclass always-prepared
-  // spells (Life Domain / Fiend / Draconic Sorcery), fetched by slug. A few
-  // 2024-only spells aren't in the 2014 dataset and simply won't resolve here —
-  // the play sheet shows those as name-only rows.
-  const subclassSpellIndexes = classList.flatMap((c) =>
-    (SUBCLASS_PREPARED_SPELLS[c.subclassIndex ?? ""] ?? []).flatMap((m) =>
-      m.spells.map((s) => s.index),
-    ),
-  );
-  const subclassSpellData = await getSpellsByIndex(subclassSpellIndexes);
 
   return (
     <PlaySheet

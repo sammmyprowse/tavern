@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { supabase } from "./supabase";
 import type { AbilityKey, ArmorClassData } from "./character";
 import {
@@ -6,6 +7,19 @@ import {
   OFFICIAL_BACKGROUND_DESCRIPTIONS,
   LINEAGE_DESCRIPTIONS,
 } from "./flavor-text";
+
+// SRD content is static reference data — it only changes when the content
+// tables are deliberately edited. Every getter in this file is wrapped in
+// Next's data cache (the internal fetch* functions do the actual Supabase
+// reads), so each dataset costs one round trip per hour per server instance
+// instead of one per page view. Function arguments are part of the cache key
+// automatically (per-class fetches cache per class). Values round-trip
+// through JSON, so nothing cached here may be a Map — the two Map-shaped
+// lookups cache flat arrays and rebuild the Map per call. Everything is
+// tagged "srd" so a future admin flow can revalidateTag("srd") after editing
+// content; until then edits show up within an hour.
+const srdCache = <A extends unknown[], T>(name: string, fn: (...args: A) => Promise<T>) =>
+  unstable_cache(fn, [`srd-${name}`], { revalidate: 3600, tags: ["srd"] });
 
 export interface SpeciesOption {
   index: string;
@@ -238,7 +252,7 @@ function parseAllEquipmentOptions(optionsBlock: unknown): EquipmentBundleItem[][
 // species missing from the free SRD's roster) are tagged ruleset='homebrew'
 // — see CLAUDE.md's "Homebrew species" section and
 // supabase/seed/homebrew-species.json for the full writeup.
-export async function getSpeciesList(): Promise<SpeciesOption[]> {
+async function fetchSpeciesList(): Promise<SpeciesOption[]> {
   const [{ data: species }, { data: subspecies }] = await Promise.all([
     supabase.from("species").select("index, name, size, speed, ruleset, data").in("ruleset", ["2024", "homebrew"]),
     supabase.from("subspecies").select("species_index").eq("ruleset", "2024"),
@@ -266,7 +280,7 @@ export async function getSpeciesList(): Promise<SpeciesOption[]> {
     });
 }
 
-export async function getSubspeciesList(): Promise<SubspeciesOption[]> {
+async function fetchSubspeciesList(): Promise<SubspeciesOption[]> {
   const { data } = await supabase
     .from("subspecies")
     .select("index, name, species_index, data")
@@ -298,7 +312,7 @@ export async function getSubspeciesList(): Promise<SubspeciesOption[]> {
 // needs the description regardless of source. A plain object, not a Map —
 // Map instances don't survive the Server Component -> Client Component
 // props boundary (React's RSC serialization doesn't support them).
-export async function getTraitDescriptions(): Promise<Record<string, string>> {
+async function fetchTraitDescriptions(): Promise<Record<string, string>> {
   const { data } = await supabase.from("traits").select("index, data");
   const result: Record<string, string> = {};
   for (const t of data ?? []) {
@@ -308,7 +322,7 @@ export async function getTraitDescriptions(): Promise<Record<string, string>> {
   return result;
 }
 
-export async function getClassesList(): Promise<ClassOption[]> {
+async function fetchClassesList(): Promise<ClassOption[]> {
   const { data } = await supabase
     .from("classes")
     .select("index, name, hit_die, data")
@@ -350,7 +364,7 @@ export async function getClassesList(): Promise<ClassOption[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getBackgroundsList(): Promise<BackgroundOption[]> {
+async function fetchBackgroundsList(): Promise<BackgroundOption[]> {
   const [{ data }, { data: featsData }] = await Promise.all([
     supabase.from("backgrounds").select("index, name, ruleset, data").in("ruleset", ["2024", "homebrew"]),
     supabase.from("feats").select("index, data").in("ruleset", ["2024", "homebrew"]),
@@ -403,7 +417,7 @@ export async function getBackgroundsList(): Promise<BackgroundOption[]> {
     });
 }
 
-export async function getAbilityScoresList(): Promise<AbilityScoreInfo[]> {
+async function fetchAbilityScoresList(): Promise<AbilityScoreInfo[]> {
   const { data } = await supabase
     .from("ability_scores")
     .select("index, name, data")
@@ -420,13 +434,17 @@ export async function getAbilityScoresList(): Promise<AbilityScoreInfo[]> {
   });
 }
 
-export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupItem>> {
+// Returns a flat array (not the Map the public getter exposes) because this
+// is the function that gets cached, and unstable_cache round-trips values
+// through JSON — a Map would silently serialize to {}. getEquipmentLookup
+// below rebuilds the Map per call from the cached array.
+async function fetchEquipmentItems(): Promise<EquipmentLookupItem[]> {
   const { data } = await supabase
     .from("equipment")
     .select("index, name, categories, weight, cost_qty, cost_unit, data")
     .eq("ruleset", "2024");
 
-  const map = new Map<string, EquipmentLookupItem>();
+  const items: EquipmentLookupItem[] = [];
   for (const item of data ?? []) {
     const d = item.data as {
       armor_class?: ArmorClassData;
@@ -439,7 +457,7 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       range?: { normal?: number; long?: number };
       throw_range?: { normal?: number; long?: number };
     };
-    map.set(item.index, {
+    items.push({
       index: item.index,
       name: item.name,
       categories: item.categories,
@@ -467,7 +485,7 @@ export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupI
       throwRangeLong: d.throw_range?.long,
     });
   }
-  return map;
+  return items;
 }
 
 export interface MagicItemLookupEntry {
@@ -496,25 +514,24 @@ const MAGIC_ITEM_CATEGORY_LABELS: Record<string, string> = {
   staffs: "Staffs",
 };
 
-export async function getMagicItemLookup(): Promise<Map<string, MagicItemLookupEntry>> {
+// Array-shaped for the cache, same reasoning as fetchEquipmentItems.
+async function fetchMagicItems(): Promise<MagicItemLookupEntry[]> {
   const { data } = await supabase
     .from("magic_items")
     .select("index, name, equipment_category, rarity, data")
     .eq("ruleset", "2024");
 
-  const map = new Map<string, MagicItemLookupEntry>();
-  for (const item of data ?? []) {
+  return (data ?? []).map((item) => {
     const d = item.data as { desc?: string; attunement?: boolean };
-    map.set(item.index, {
+    return {
       index: item.index,
       name: item.name,
       category: MAGIC_ITEM_CATEGORY_LABELS[item.equipment_category ?? ""] ?? "Wondrous Items",
       rarity: item.rarity,
       requiresAttunement: d.attunement ?? false,
       description: d.desc ?? "",
-    });
-  }
-  return map;
+    };
+  });
 }
 
 export interface SpellOption {
@@ -558,7 +575,7 @@ export interface CompendiumSpell {
 
 // Every spell, fully detailed, for the reference compendium page. Sorted by
 // level then name.
-export async function getAllSpells(): Promise<CompendiumSpell[]> {
+async function fetchAllSpells(): Promise<CompendiumSpell[]> {
   const { data } = await supabase
     .from("spells")
     .select("index, name, level, school, concentration, ritual, data")
@@ -601,7 +618,49 @@ export async function getAllSpells(): Promise<CompendiumSpell[]> {
 // text. Unlike features/subclasses, there's no `class_index` column here, so
 // class membership is checked against the nested `data.classes[]` array
 // client-side rather than pushed down as a Postgres filter.
-export async function getSpellsForClass(classIndex: string): Promise<SpellOption[]> {
+// One spell row → SpellOption. Shared by fetchSpellsForClass and
+// fetchSpellsByIndex (this mapper used to be copy-pasted in both).
+function parseSpellRow(s: {
+  index: string;
+  name: string;
+  level: number | null;
+  school: string | null;
+  concentration: boolean | null;
+  ritual: boolean | null;
+  data: unknown;
+}): SpellOption {
+  const d = s.data as {
+    desc?: string[];
+    range?: string;
+    attack_type?: string;
+    dc?: { dc_type?: { index?: string } };
+    damage?: {
+      damage_type?: { index?: string };
+      damage_at_character_level?: Record<string, string>;
+      damage_at_slot_level?: Record<string, string>;
+    };
+  };
+  const cantripScaling = d.damage?.damage_at_character_level ?? null;
+  const slotScaling = d.damage?.damage_at_slot_level ?? null;
+  const rawAttack = d.attack_type ?? null;
+  return {
+    index: s.index,
+    name: s.name,
+    level: s.level ?? 0,
+    school: s.school,
+    concentration: s.concentration ?? false,
+    ritual: s.ritual ?? false,
+    description: d.desc ? d.desc.join("\n\n") : null,
+    range: d.range?.replace(" feet", " ft") ?? null,
+    attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
+    dcType: d.dc?.dc_type?.index ?? null,
+    damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
+    damageType: d.damage?.damage_type?.index ?? null,
+    cantripScaling,
+  };
+}
+
+async function fetchSpellsForClass(classIndex: string): Promise<SpellOption[]> {
   const { data } = await supabase
     .from("spells")
     .select("index, name, level, school, concentration, ritual, data")
@@ -612,37 +671,7 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
       const classes = (s.data as { classes?: { index: string }[] }).classes ?? [];
       return classes.some((c) => c.index === classIndex);
     })
-    .map((s) => {
-      const d = s.data as {
-        desc?: string[];
-        range?: string;
-        attack_type?: string;
-        dc?: { dc_type?: { index?: string } };
-        damage?: {
-          damage_type?: { index?: string };
-          damage_at_character_level?: Record<string, string>;
-          damage_at_slot_level?: Record<string, string>;
-        };
-      };
-      const cantripScaling = d.damage?.damage_at_character_level ?? null;
-      const slotScaling = d.damage?.damage_at_slot_level ?? null;
-      const rawAttack = d.attack_type ?? null;
-      return {
-        index: s.index,
-        name: s.name,
-        level: s.level ?? 0,
-        school: s.school,
-        concentration: s.concentration ?? false,
-        ritual: s.ritual ?? false,
-        description: d.desc ? d.desc.join("\n\n") : null,
-        range: d.range?.replace(" feet", " ft") ?? null,
-        attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
-        dcType: d.dc?.dc_type?.index ?? null,
-        damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
-        damageType: d.damage?.damage_type?.index ?? null,
-        cantripScaling,
-      };
-    })
+    .map(parseSpellRow)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
@@ -650,7 +679,7 @@ export async function getSpellsForClass(classIndex: string): Promise<SpellOption
 // Used to look up description/combat data for lineage spells (e.g. a
 // Tiefling's Fire Bolt, a Drow's Dancing Lights) without fetching an entire
 // class's spell list.
-export async function getSpellsByIndex(indexes: string[]): Promise<SpellOption[]> {
+async function fetchSpellsByIndex(indexes: string[]): Promise<SpellOption[]> {
   if (indexes.length === 0) return [];
   const { data } = await supabase
     .from("spells")
@@ -658,37 +687,7 @@ export async function getSpellsByIndex(indexes: string[]): Promise<SpellOption[]
     .eq("ruleset", "2014")
     .in("index", indexes);
 
-  return (data ?? []).map((s) => {
-    const d = s.data as {
-      desc?: string[];
-      range?: string;
-      attack_type?: string;
-      dc?: { dc_type?: { index?: string } };
-      damage?: {
-        damage_type?: { index?: string };
-        damage_at_character_level?: Record<string, string>;
-        damage_at_slot_level?: Record<string, string>;
-      };
-    };
-    const cantripScaling = d.damage?.damage_at_character_level ?? null;
-    const slotScaling = d.damage?.damage_at_slot_level ?? null;
-    const rawAttack = d.attack_type ?? null;
-    return {
-      index: s.index,
-      name: s.name,
-      level: s.level ?? 0,
-      school: s.school,
-      concentration: s.concentration ?? false,
-      ritual: s.ritual ?? false,
-      description: d.desc ? d.desc.join("\n\n") : null,
-      range: d.range?.replace(" feet", " ft") ?? null,
-      attackType: (rawAttack === "ranged" ? "ranged" : rawAttack === "melee" ? "melee" : null) as "melee" | "ranged" | null,
-      dcType: d.dc?.dc_type?.index ?? null,
-      damageDice: cantripScaling?.["1"] ?? (slotScaling ? (slotScaling[String(s.level ?? 1)] ?? null) : null),
-      damageType: d.damage?.damage_type?.index ?? null,
-      cantripScaling,
-    };
-  });
+  return (data ?? []).map(parseSpellRow);
 }
 
 export interface ClassFeature {
@@ -698,7 +697,7 @@ export interface ClassFeature {
   description: string | null;
 }
 
-export async function getFeaturesForClass(classIndex: string): Promise<ClassFeature[]> {
+async function fetchFeaturesForClass(classIndex: string): Promise<ClassFeature[]> {
   const { data } = await supabase
     .from("features")
     .select("index, name, level_index, data")
@@ -741,7 +740,7 @@ export interface SubclassOption {
 // so the homebrew rows (3 more per class, reaching the real PHB's 4
 // total) are most of what this returns. Mirrors getSpeciesList's/
 // getGeneralFeatsList's existing official+homebrew pattern.
-export async function getSubclassesForClass(classIndex: string): Promise<SubclassOption[]> {
+async function fetchSubclassesForClass(classIndex: string): Promise<SubclassOption[]> {
   const { data } = await supabase
     .from("subclasses")
     .select("index, name, ruleset, data")
@@ -774,7 +773,7 @@ export interface FeatOption {
   isHomebrew: boolean;
 }
 
-export async function getGeneralFeatsList(): Promise<FeatOption[]> {
+async function fetchGeneralFeatsList(): Promise<FeatOption[]> {
   const { data } = await supabase
     .from("feats")
     .select("index, name, ruleset, data")
@@ -802,7 +801,7 @@ export async function getGeneralFeatsList(): Promise<FeatOption[]> {
 // feats in the feat picker only at level 19. Full descriptions ship in the
 // data (each boon's mechanical effect + its "score to 30" clause for one
 // ability), surfaced the same informational way as every other non-ASI feat.
-export async function getEpicBoonFeats(): Promise<FeatOption[]> {
+async function fetchEpicBoonFeats(): Promise<FeatOption[]> {
   const { data } = await supabase
     .from("feats")
     .select("index, name, ruleset, data")
@@ -830,7 +829,7 @@ export async function getEpicBoonFeats(): Promise<FeatOption[]> {
 // unlike backgrounds/general feats, that gap hasn't been homebrew-padded
 // (not requested), so this list is shorter than the official one — disclosed
 // in CLAUDE.md, not silently presented as complete.
-export async function getFightingStyleFeats(): Promise<FeatOption[]> {
+async function fetchFightingStyleFeats(): Promise<FeatOption[]> {
   const { data } = await supabase
     .from("feats")
     .select("index, name, data")
@@ -859,7 +858,7 @@ export interface MasteryPropertyInfo {
   description: string;
 }
 
-export async function getWeaponMasteryProperties(): Promise<MasteryPropertyInfo[]> {
+async function fetchWeaponMasteryProperties(): Promise<MasteryPropertyInfo[]> {
   const { data } = await supabase.from("weapon_mastery_properties").select("index, name, data");
 
   return (data ?? []).map((p) => {
@@ -868,7 +867,7 @@ export async function getWeaponMasteryProperties(): Promise<MasteryPropertyInfo[
   });
 }
 
-export async function getLanguagesList(): Promise<LanguageOption[]> {
+async function fetchLanguagesList(): Promise<LanguageOption[]> {
   const { data } = await supabase
     .from("languages")
     .select("index, name, data")
@@ -885,7 +884,7 @@ export async function getLanguagesList(): Promise<LanguageOption[]> {
   });
 }
 
-export async function getSkillsList(): Promise<SkillInfo[]> {
+async function fetchSkillsList(): Promise<SkillInfo[]> {
   const { data } = await supabase
     .from("skills")
     .select("index, name, ability_score, data")
@@ -902,4 +901,40 @@ export async function getSkillsList(): Promise<SkillInfo[]> {
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ── Cached public getters ───────────────────────────────────────────────────
+// Same names/signatures the rest of the app has always imported — only the
+// caching wrapper is new. See the srdCache note at the top of this file.
+export const getSpeciesList = srdCache("speciesList", fetchSpeciesList);
+export const getSubspeciesList = srdCache("subspeciesList", fetchSubspeciesList);
+export const getTraitDescriptions = srdCache("traitDescriptions", fetchTraitDescriptions);
+export const getClassesList = srdCache("classesList", fetchClassesList);
+export const getBackgroundsList = srdCache("backgroundsList", fetchBackgroundsList);
+export const getAbilityScoresList = srdCache("abilityScoresList", fetchAbilityScoresList);
+export const getAllSpells = srdCache("allSpells", fetchAllSpells);
+export const getSpellsForClass = srdCache("spellsForClass", fetchSpellsForClass);
+export const getSpellsByIndex = srdCache("spellsByIndex", fetchSpellsByIndex);
+export const getFeaturesForClass = srdCache("featuresForClass", fetchFeaturesForClass);
+export const getSubclassesForClass = srdCache("subclassesForClass", fetchSubclassesForClass);
+export const getGeneralFeatsList = srdCache("generalFeatsList", fetchGeneralFeatsList);
+export const getEpicBoonFeats = srdCache("epicBoonFeats", fetchEpicBoonFeats);
+export const getFightingStyleFeats = srdCache("fightingStyleFeats", fetchFightingStyleFeats);
+export const getWeaponMasteryProperties = srdCache("weaponMasteryProperties", fetchWeaponMasteryProperties);
+export const getLanguagesList = srdCache("languagesList", fetchLanguagesList);
+export const getSkillsList = srdCache("skillsList", fetchSkillsList);
+
+// The two Map-shaped lookups: the ARRAY is what's cached (Maps don't survive
+// the cache's JSON round-trip); the Map is rebuilt per call — cheap (~200
+// entries) next to the Supabase round trip being saved.
+const getEquipmentItems = srdCache("equipmentItems", fetchEquipmentItems);
+export async function getEquipmentLookup(): Promise<Map<string, EquipmentLookupItem>> {
+  const items = await getEquipmentItems();
+  return new Map(items.map((i) => [i.index, i]));
+}
+
+const getMagicItems = srdCache("magicItems", fetchMagicItems);
+export async function getMagicItemLookup(): Promise<Map<string, MagicItemLookupEntry>> {
+  const items = await getMagicItems();
+  return new Map(items.map((i) => [i.index, i]));
 }

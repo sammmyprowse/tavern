@@ -7,6 +7,12 @@ import {
   deleteUserBackground,
 } from "@/app/homebrew/actions";
 import { ABILITY_OPTIONS, ORIGIN_FEAT_OPTIONS } from "@/lib/user-content";
+import {
+  ManagerHeader,
+  ManagerItemCard,
+  ManagerFormActions,
+  ManagerEmptyNote,
+} from "@/components/homebrew/shell";
 
 export interface HomebrewBackground {
   id: string;
@@ -103,21 +109,12 @@ export default function BackgroundManager({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-tavern-muted">
-          Custom backgrounds appear in the builder&apos;s Background step for you, tagged homebrew:
-          2 skill proficiencies, a 3-ability bonus choice, and an Origin feat. (They grant no
-          starting equipment or gold — a small simplification.)
-        </p>
-        {!formOpen && (
-          <button
-            onClick={startCreate}
-            className="shrink-0 rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
-          >
-            + New Background
-          </button>
-        )}
-      </div>
+      <ManagerHeader
+        blurb="Custom backgrounds appear in the builder's Background step for you, tagged homebrew: 2 skill proficiencies, a 3-ability bonus choice, and an Origin feat. (They grant no starting equipment or gold — a small simplification.)"
+        buttonLabel="+ New Background"
+        formOpen={formOpen}
+        onCreate={startCreate}
+      />
 
       {formOpen && (
         <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
@@ -198,54 +195,30 @@ export default function BackgroundManager({
             ))}
           </select>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={save}
-              disabled={pending || !name.trim() || chosenSkills.length !== 2 || chosenAbilities.length !== 3 || !featIndex}
-              className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-            <button onClick={cancel} disabled={pending} className="text-xs text-tavern-muted hover:text-tavern-gold-light">
-              Cancel
-            </button>
-            {error && <span className="text-xs text-tavern-oxblood-light">{error}</span>}
-          </div>
+          <ManagerFormActions
+            pending={pending}
+            disabled={!name.trim() || chosenSkills.length !== 2 || chosenAbilities.length !== 3 || !featIndex}
+            error={error}
+            onSave={save}
+            onCancel={cancel}
+          />
         </div>
       )}
 
       <div className="mt-4 space-y-2">
         {backgrounds.length === 0 && !formOpen && (
-          <p className="text-sm text-tavern-muted italic">
+          <ManagerEmptyNote>
             No custom backgrounds yet. Create one and it&apos;ll be selectable in the builder.
-          </p>
+          </ManagerEmptyNote>
         )}
         {backgrounds.map((b) => (
-          <div key={b.id} className="rounded-md border border-tavern-border bg-tavern-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-heading font-bold text-tavern-text">
-                  {b.name}
-                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                    Homebrew
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-tavern-muted">
-                  {b.skills.map((s) => skills.find((x) => x.index === s)?.name ?? s).join(", ")} ·{" "}
-                  {b.abilities.map((a) => ABILITY_NAME[a] ?? a).join("/")} ·{" "}
-                  {FEAT_NAME[b.featIndex] ?? b.featIndex}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button onClick={() => startEdit(b)} className="text-xs text-tavern-gold-light hover:text-tavern-gold">
-                  Edit
-                </button>
-                <button onClick={() => remove(b.id)} className="text-xs text-tavern-muted hover:text-tavern-oxblood-light">
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <ManagerItemCard key={b.id} name={b.name} onEdit={() => startEdit(b)} onDelete={() => remove(b.id)}>
+            <p className="mt-1 text-[11px] text-tavern-muted">
+              {b.skills.map((s) => skills.find((x) => x.index === s)?.name ?? s).join(", ")} ·{" "}
+              {b.abilities.map((a) => ABILITY_NAME[a] ?? a).join("/")} ·{" "}
+              {FEAT_NAME[b.featIndex] ?? b.featIndex}
+            </p>
+          </ManagerItemCard>
         ))}
       </div>
     </div>

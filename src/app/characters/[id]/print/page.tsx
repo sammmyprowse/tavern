@@ -10,8 +10,14 @@ import {
   getFeaturesForClass,
   getSpellsForClass,
 } from "@/lib/srd";
-import { EMPTY_DRAFT, formatModifier, type CharacterDraft } from "@/lib/character";
+import { normalizeDraft, orderedClasses, formatModifier, type CharacterDraft } from "@/lib/character";
 import { buildCharacterSheet, resolveWeapons, computeAC } from "@/lib/character-sheet";
+import {
+  getUserBackgrounds,
+  getUserSpecies,
+  getUserSpells,
+  getUserClasses,
+} from "@/app/homebrew/actions";
 import PrintButton from "@/components/playsheet/PrintButton";
 
 export const metadata = { title: "Print Character — Tavern" };
@@ -20,16 +26,25 @@ export default async function PrintCharacter({ params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: character }, species, subspecies, classes, backgrounds, skills, equipment] =
-    await Promise.all([
-      supabase.from("characters").select("id, draft").eq("id", id).maybeSingle(),
-      getSpeciesList(),
-      getSubspeciesList(),
-      getClassesList(),
-      getBackgroundsList(),
-      getSkillsList(),
-      getEquipmentLookup(),
-    ]);
+  const [
+    { data: userData },
+    { data: character },
+    species,
+    subspecies,
+    classes,
+    backgrounds,
+    skills,
+    equipment,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("characters").select("id, user_id, draft").eq("id", id).maybeSingle(),
+    getSpeciesList(),
+    getSubspeciesList(),
+    getClassesList(),
+    getBackgroundsList(),
+    getSkillsList(),
+    getEquipmentLookup(),
+  ]);
 
   if (!character) {
     return (
@@ -39,15 +54,47 @@ export default async function PrintCharacter({ params }: { params: Promise<{ id:
     );
   }
 
-  const draft = { ...EMPTY_DRAFT, ...(character.draft as unknown as CharacterDraft) };
-  const sheet = buildCharacterSheet(draft, { species, subspecies, classes, backgrounds, skills });
+  // Same load-boundary handling as the play sheet: normalizeDraft (EMPTY_DRAFT
+  // merge + multiclass backfill for legacy rows) and the owner's homebrew
+  // content merged into the SRD refs, so a character built on a homebrew
+  // species/background/class prints correctly.
+  const isOwner = userData.user?.id === character.user_id;
+  const [userBackgrounds, userSpecies, userSpells, userClasses] = isOwner
+    ? await Promise.all([getUserBackgrounds(), getUserSpecies(), getUserSpells(), getUserClasses()])
+    : [[], [], [], []];
+
+  const draft = normalizeDraft(character.draft as unknown as CharacterDraft);
+  const sheet = buildCharacterSheet(draft, {
+    species: [...species, ...userSpecies],
+    subspecies,
+    classes: [...classes, ...userClasses],
+    backgrounds: [...backgrounds, ...userBackgrounds],
+    skills,
+  });
   if (!sheet) {
     return <div className="p-8 text-center text-tavern-muted">Couldn&apos;t build this character.</div>;
   }
 
-  const [features, classSpells] = draft.classIndex
-    ? await Promise.all([getFeaturesForClass(draft.classIndex), getSpellsForClass(draft.classIndex)])
-    : [[], []];
+  // Features and spells fetched per class the character has levels in (a
+  // multiclass printout shows both classes' features, each capped at that
+  // class's own level), plus homebrew class features / spells for the owner.
+  const classList = orderedClasses(draft);
+  const perClass = await Promise.all(
+    classList.map(async (c) => ({
+      classIndex: c.classIndex,
+      features: await getFeaturesForClass(c.classIndex),
+      spells: await getSpellsForClass(c.classIndex),
+    })),
+  );
+  const features = [
+    ...perClass.flatMap((p) =>
+      p.features.filter((f) => f.level <= (sheet.classLevels[p.classIndex] ?? 0)),
+    ),
+    ...userClasses.flatMap((uc) =>
+      uc.features.filter((f) => f.level <= (sheet.classLevels[uc.index] ?? 0)),
+    ),
+  ];
+  const classSpells = [...perClass.flatMap((p) => p.spells), ...userSpells];
 
   const weapons = resolveWeapons(
     sheet.ownedEquipment,
@@ -62,9 +109,9 @@ export default async function PrintCharacter({ params }: { params: Promise<{ id:
     sheet.ownedEquipment.map((i) => i.index).filter((i): i is string => Boolean(i)),
   );
   const unarmoredDefenseBonus =
-    sheet.classIndex === "barbarian"
+    (sheet.classLevels["barbarian"] ?? 0) > 0
       ? sheet.modifiers.con
-      : sheet.classIndex === "monk"
+      : (sheet.classLevels["monk"] ?? 0) > 0
         ? sheet.modifiers.wis
         : 0;
   const ac = computeAC(
@@ -78,17 +125,34 @@ export default async function PrintCharacter({ params }: { params: Promise<{ id:
   );
 
   const spellNameByIndex = new Map(classSpells.map((s) => [s.index, s.name]));
-  const cantripNames = draft.knownCantrips.map((i) => spellNameByIndex.get(i) ?? i);
-  const preparedNames = draft.preparedSpells.map((i) => spellNameByIndex.get(i) ?? i);
-  const featureNames = features.filter((f) => f.level <= sheet.level).map((f) => f.name);
+  // Primary class spells live in the legacy flat arrays; each additional
+  // class's in its keyed bucket — union them for the printout.
+  const allCantrips = [
+    ...draft.knownCantrips,
+    ...Object.values(draft.classCantrips ?? {}).flat(),
+  ];
+  const allPrepared = [
+    ...draft.preparedSpells,
+    ...Object.values(draft.classPreparedSpells ?? {}).flat(),
+  ];
+  const cantripNames = allCantrips.map((i) => spellNameByIndex.get(i) ?? i);
+  const preparedNames = allPrepared.map((i) => spellNameByIndex.get(i) ?? i);
+  // Already filtered per owning class's level above.
+  const featureNames = features.map((f) => f.name);
   const equipmentNames = sheet.ownedEquipment
     .filter((i) => !i.isMoney && i.name)
     .map((i) => (i.count > 1 ? `${i.count}× ${i.name}` : i.name));
 
+  // Single class: "Fighter". Multiclass: "Fighter 5 / Wizard 3".
+  const classLabel =
+    sheet.classes.length > 1
+      ? sheet.classes.map((c) => `${c.className} ${c.level}`).join(" / ")
+      : sheet.className;
+  const hitDiceLabel = sheet.hitDicePool.map((h) => `${h.count}d${h.die}`).join(", ");
   const subtitleBits = [
     `Level ${sheet.level}`,
     sheet.subspeciesName ? `${sheet.speciesName} (${sheet.subspeciesName})` : sheet.speciesName,
-    sheet.className,
+    classLabel,
     sheet.backgroundName,
   ];
 
@@ -121,7 +185,7 @@ export default async function PrintCharacter({ params }: { params: Promise<{ id:
           ["Speed", sheet.speed ?? "—"],
           ["Prof", formatModifier(sheet.proficiencyBonus)],
           ["Pass. Perc", sheet.passivePerception],
-          ["Hit Die", `d${sheet.hitDie}`],
+          ["Hit Dice", hitDiceLabel],
           ...(sheet.spellSaveDC != null ? [["Spell DC", sheet.spellSaveDC] as const] : []),
         ].map(([label, value]) => (
           <div key={label} className="rounded border border-black/40 p-1">

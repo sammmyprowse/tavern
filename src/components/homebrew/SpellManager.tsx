@@ -8,6 +8,12 @@ import {
   ABILITY_OPTIONS,
   type UserSpellData,
 } from "@/lib/user-content";
+import {
+  ManagerHeader,
+  ManagerItemCard,
+  ManagerFormActions,
+  ManagerEmptyNote,
+} from "@/components/homebrew/shell";
 
 export interface HomebrewSpell extends UserSpellData {
   id: string;
@@ -121,21 +127,12 @@ export default function SpellManager({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-tavern-muted">
-          Custom spells appear in the spell compendium and in the prepared/cantrip pickers for the
-          classes you assign, on your own characters — tagged homebrew. Attack/save/damage fields
-          drive the Attack and Damage buttons; everything else is shown as rules text.
-        </p>
-        {!formOpen && (
-          <button
-            onClick={startCreate}
-            className="shrink-0 rounded-md border border-tavern-gold/60 bg-tavern-bg px-3 py-1.5 text-xs font-bold tracking-wide text-tavern-gold-light uppercase hover:border-tavern-gold"
-          >
-            + New Spell
-          </button>
-        )}
-      </div>
+      <ManagerHeader
+        blurb="Custom spells appear in the spell compendium and in the prepared/cantrip pickers for the classes you assign, on your own characters — tagged homebrew. Attack/save/damage fields drive the Attack and Damage buttons; everything else is shown as rules text."
+        buttonLabel="+ New Spell"
+        formOpen={formOpen}
+        onCreate={startCreate}
+      />
 
       {formOpen && (
         <div className="mt-4 rounded-lg border border-tavern-gold/40 bg-tavern-card p-4">
@@ -285,58 +282,37 @@ export default function SpellManager({
             </label>
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={save}
-              disabled={pending || !name.trim() || f.classes.length === 0}
-              className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-            >
-              {pending ? "Saving…" : "Save"}
-            </button>
-            <button onClick={cancel} disabled={pending} className="text-xs text-tavern-muted hover:text-tavern-gold-light">
-              Cancel
-            </button>
-            {error && <span className="text-xs text-tavern-oxblood-light">{error}</span>}
-          </div>
+          <ManagerFormActions
+            pending={pending}
+            disabled={!name.trim() || f.classes.length === 0}
+            error={error}
+            onSave={save}
+            onCancel={cancel}
+          />
         </div>
       )}
 
       <div className="mt-4 space-y-2">
         {spells.length === 0 && !formOpen && (
-          <p className="text-sm text-tavern-muted italic">
+          <ManagerEmptyNote>
             No custom spells yet. Create one and it&apos;ll appear in the compendium and your
             characters&apos; spell pickers.
-          </p>
+          </ManagerEmptyNote>
         )}
         {spells.map((s) => (
-          <div key={s.id} className="rounded-md border border-tavern-border bg-tavern-card p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-heading font-bold text-tavern-text">
-                  {s.name}
-                  <span className="ml-2 text-xs font-normal text-tavern-muted">
-                    {s.level === 0 ? "Cantrip" : `Level ${s.level}`} · {s.school}
-                  </span>
-                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                    Homebrew
-                  </span>
-                </div>
-                {s.classes.length > 0 && (
-                  <p className="mt-1 text-[11px] text-tavern-muted">
-                    {s.classes.map((c) => CLASS_NAME[c] ?? c).join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button onClick={() => startEdit(s)} className="text-xs text-tavern-gold-light hover:text-tavern-gold">
-                  Edit
-                </button>
-                <button onClick={() => remove(s.id)} className="text-xs text-tavern-muted hover:text-tavern-oxblood-light">
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
+          <ManagerItemCard
+            key={s.id}
+            name={s.name}
+            meta={`${s.level === 0 ? "Cantrip" : `Level ${s.level}`} · ${s.school}`}
+            onEdit={() => startEdit(s)}
+            onDelete={() => remove(s.id)}
+          >
+            {s.classes.length > 0 && (
+              <p className="mt-1 text-[11px] text-tavern-muted">
+                {s.classes.map((c) => CLASS_NAME[c] ?? c).join(", ")}
+              </p>
+            )}
+          </ManagerItemCard>
         ))}
       </div>
     </div>
