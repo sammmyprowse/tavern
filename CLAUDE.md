@@ -3442,3 +3442,28 @@ markup. PlaySheet: 6,195 → ~6,000 lines. **Remaining decomposition increments
 select-up-to-N pickers → a MultiSelectPicker, and the per-card collapse chrome.
 Verified live: counters render and expend/restore correctly (Channel Divinity
 2/2 → 1/2 on click).
+
+## PlaySheet decomposition — second increment (SheetPrimitives)
+`playsheet/SheetPrimitives.tsx` now holds the remaining shared chrome:
+- **CardHeader** — the plain full-width title + collapse-arrow card header
+  (Conditions & Status, Species Traits, Features, Attacks, Equipment). Cards
+  with extra header controls (Edit buttons, pending highlights — Fighting
+  Style/Weapon Mastery/Spells/HP) keep their own markup deliberately.
+- **ExpandableRow** — name + optional right label, tap-to-expand rules text
+  (Features, Species Traits, chosen Fighting Styles).
+- **PickerOption** — a selectable choose-up-to-N option with a SEPARATE
+  "Show details" toggle (so reading never selects): Fighting Style, Weapon
+  Mastery, Metamagic, cantrip and prepared-spell pickers. `rightLabelTone`
+  ("muted"|"gold") preserves Weapon Mastery's gold property label.
+- **SaveCancelRow** — the picker commit row (all five pickers).
+- **SpellRow** — the Spells-card entry (name + HB badge + meta line +
+  expandable description + call-site-supplied action buttons). Converted the
+  known-cantrips and prepared-spells lists; the subclass-spells and lineage-
+  spells rows were deliberately NOT converted (name-only fallback rows and
+  at-will/free-cast labels make their structure genuinely different).
+PlaySheet is now ~5,770 lines (from 6,195 pre-decomposition). Expansion state
+stays in PlaySheet's expandedFeatures set — primitives take expanded/onToggle
+props, never own state. Verified live on public characters: cantrip SpellRows
+render identical meta lines with working Attack/Damage buttons and expansion;
+Fighting Style (1/1)/Weapon Mastery (3/3) cards render with Defense row; no
+console errors.

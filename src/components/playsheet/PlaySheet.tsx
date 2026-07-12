@@ -81,6 +81,7 @@ import type {
 } from "@/lib/srd";
 import DiceLog from "./DiceLog";
 import { CounterStepper, ResourceRow } from "./ResourceCounter";
+import { CardHeader, ExpandableRow, PickerOption, SaveCancelRow, SpellRow } from "./SheetPrimitives";
 import ShareControl from "./ShareControl";
 import CharacterAvatar from "./CharacterAvatar";
 import CharacterBio from "./CharacterBio";
@@ -3850,12 +3851,11 @@ export default function PlaySheet({
 
         {/* Conditions & Status */}
         <div id="status" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-          <button onClick={() => toggleSection("status")} className="flex w-full items-center justify-between">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Conditions &amp; Status
-            </h2>
-            <span className="text-xs text-tavern-muted">{collapsedSections.has("status") ? "▸" : "▾"}</span>
-          </button>
+          <CardHeader
+            title="Conditions & Status"
+            collapsed={collapsedSections.has("status")}
+            onToggle={() => toggleSection("status")}
+          />
           {!collapsedSections.has("status") && (<>
             {/* Exhaustion */}
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-tavern-border p-3">
@@ -4219,21 +4219,14 @@ export default function PlaySheet({
               <div className="mt-2 space-y-1">
                 {knownFightingStyleDetails.map((f) => {
                   const key = `fighting-style-${f.index}`;
-                  const expanded = expandedFeatures.has(key);
                   return (
-                    <div key={key} className="rounded-md border border-tavern-border">
-                      <button
-                        onClick={() => toggleFeature(key)}
-                        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                      >
-                        <span className="text-tavern-text">{f.name}</span>
-                      </button>
-                      {expanded && f.description && (
-                        <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                          {f.description}
-                        </p>
-                      )}
-                    </div>
+                    <ExpandableRow
+                      key={key}
+                      name={f.name}
+                      description={f.description}
+                      expanded={expandedFeatures.has(key)}
+                      onToggle={() => toggleFeature(key)}
+                    />
                   );
                 })}
                 {knownFightingStyleDetails.length === 0 && (
@@ -4248,52 +4241,24 @@ export default function PlaySheet({
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {fightingStyleFeats.map((f) => {
                     const key = `picker-fighting-style-${f.index}`;
-                    const expanded = expandedFeatures.has(key);
-                    const selected = selectedFightingStyle.includes(f.index);
                     return (
-                      <div
+                      <PickerOption
                         key={f.index}
-                        className={`rounded-md border ${
-                          selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
-                        }`}
-                      >
-                        <button
-                          onClick={() => toggleFightingStyleSelection(f.index, sheet.fightingStyleKnownMax)}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                        >
-                          <span className="text-tavern-text">{f.name}</span>
-                        </button>
-                        <button
-                          onClick={() => toggleFeature(key)}
-                          className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
-                        >
-                          {expanded ? "Hide details" : "Show details"}
-                        </button>
-                        {expanded && (
-                          <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                            {f.description}
-                          </p>
-                        )}
-                      </div>
+                        name={f.name}
+                        description={f.description}
+                        selected={selectedFightingStyle.includes(f.index)}
+                        onSelect={() => toggleFightingStyleSelection(f.index, sheet.fightingStyleKnownMax)}
+                        detailsExpanded={expandedFeatures.has(key)}
+                        onToggleDetails={() => toggleFeature(key)}
+                      />
                     );
                   })}
                 </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <button
-                    onClick={saveFightingStyle}
-                    disabled={fightingStylePending}
-                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setFightingStylePickerOpen(false)}
-                    disabled={fightingStylePending}
-                    className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <SaveCancelRow
+                  pending={fightingStylePending}
+                  onSave={saveFightingStyle}
+                  onCancel={() => setFightingStylePickerOpen(false)}
+                />
               </div>
             )}
             </>}
@@ -4376,62 +4341,29 @@ export default function PlaySheet({
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {masterableWeapons.map((w) => {
                     const key = `picker-weapon-mastery-${w.index}`;
-                    const expanded = expandedFeatures.has(key);
-                    const selected = selectedWeaponMastery.includes(w.index);
                     const description = w.mastery
-                      ? masteryProperties.find((p) => p.index === w.mastery!.index)?.description
+                      ? masteryProperties.find((p) => p.index === w.mastery!.index)?.description ?? null
                       : null;
                     return (
-                      <div
+                      <PickerOption
                         key={w.index}
-                        className={`rounded-md border ${
-                          selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
-                        }`}
-                      >
-                        <button
-                          onClick={() => toggleWeaponMasterySelection(w.index, weaponMasteryMax)}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                        >
-                          <span className="text-tavern-text">{w.name}</span>
-                          <span className="text-xs tracking-wide text-tavern-gold-light uppercase">
-                            {w.mastery?.name}
-                          </span>
-                        </button>
-                        {description && (
-                          <>
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "Hide details" : "Show details"}
-                            </button>
-                            {expanded && (
-                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                                {description}
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </div>
+                        name={w.name}
+                        rightLabel={w.mastery?.name}
+                        rightLabelTone="gold"
+                        description={description}
+                        selected={selectedWeaponMastery.includes(w.index)}
+                        onSelect={() => toggleWeaponMasterySelection(w.index, weaponMasteryMax)}
+                        detailsExpanded={expandedFeatures.has(key)}
+                        onToggleDetails={() => toggleFeature(key)}
+                      />
                     );
                   })}
                 </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <button
-                    onClick={saveWeaponMastery}
-                    disabled={weaponMasteryPending}
-                    className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setWeaponMasteryPickerOpen(false)}
-                    disabled={weaponMasteryPending}
-                    className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <SaveCancelRow
+                  pending={weaponMasteryPending}
+                  onSave={saveWeaponMastery}
+                  onCancel={() => setWeaponMasteryPickerOpen(false)}
+                />
               </div>
             )}
             </>}
@@ -4707,55 +4639,25 @@ export default function PlaySheet({
                     <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                       {METAMAGIC_OPTIONS.map((m) => {
                         const key = `picker-metamagic-${m.key}`;
-                        const expanded = expandedFeatures.has(key);
-                        const selected = selectedMetamagic.includes(m.key);
                         return (
-                          <div
+                          <PickerOption
                             key={m.key}
-                            className={`rounded-md border ${
-                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
-                            }`}
-                          >
-                            <button
-                              onClick={() => toggleMetamagicSelection(m.key, sheet.metamagicKnownMax)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                            >
-                              <span className="text-tavern-text">{m.name}</span>
-                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                                {m.cost}
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "Hide details" : "Show details"}
-                            </button>
-                            {expanded && (
-                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                                {m.description}
-                              </p>
-                            )}
-                          </div>
+                            name={m.name}
+                            rightLabel={m.cost}
+                            description={m.description}
+                            selected={selectedMetamagic.includes(m.key)}
+                            onSelect={() => toggleMetamagicSelection(m.key, sheet.metamagicKnownMax)}
+                            detailsExpanded={expandedFeatures.has(key)}
+                            onToggleDetails={() => toggleFeature(key)}
+                          />
                         );
                       })}
                     </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <button
-                        onClick={saveMetamagic}
-                        disabled={metamagicPending}
-                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setMetamagicPickerOpen(false)}
-                        disabled={metamagicPending}
-                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    <SaveCancelRow
+                      pending={metamagicPending}
+                      onSave={saveMetamagic}
+                      onCancel={() => setMetamagicPickerOpen(false)}
+                    />
                   </div>
                 )}
               </div>
@@ -4806,43 +4708,24 @@ export default function PlaySheet({
                   <div className="mt-2 space-y-2">
                     {knownCantripDetails.map((s) => {
                       const key = `spell-${s.index}`;
-                      const expanded = expandedFeatures.has(key);
                       const damageDice = getCantripDamageDice(s);
-                      const attackBonus = activeAttackBonus;
-                      const saveDC = activeSaveDC;
                       return (
-                        <div key={key} className="rounded-md border border-tavern-border p-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="flex-1 text-left"
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-heading font-bold text-tavern-text">
-                                {s.name}
-                                {s.isHomebrew && (
-                                  <span className="ml-1.5 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                                    HB
-                                  </span>
-                                )}
-                              </span>
-                                <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
-                              </div>
-                              <div className="mt-0.5 text-xs text-tavern-muted">
-                                Cantrip{s.school ? ` · ${s.school}` : ""}
-                                {s.range ? ` · ${s.range}` : ""}
-                                {s.concentration ? " · Concentration" : ""}
-                                {s.ritual ? " · Ritual" : ""}
-                                {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
-                              </div>
-                            </button>
-                            <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                        <SpellRow
+                          key={key}
+                          name={s.name}
+                          isHomebrew={s.isHomebrew}
+                          metaLine={`Cantrip${s.school ? ` · ${s.school}` : ""}${s.range ? ` · ${s.range}` : ""}${s.concentration ? " · Concentration" : ""}${s.ritual ? " · Ritual" : ""}${s.dcType ? ` · DC ${activeSaveDC} ${s.dcType.toUpperCase()} save` : ""}`}
+                          description={s.description}
+                          expanded={expandedFeatures.has(key)}
+                          onToggle={() => toggleFeature(key)}
+                          actions={
+                            <>
                               {s.attackType && (
                                 <button
-                                  onClick={() => rollSpellAttack(s.name, attackBonus)}
+                                  onClick={() => rollSpellAttack(s.name, activeAttackBonus)}
                                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
                                 >
-                                  Attack {formatModifier(attackBonus)}
+                                  Attack {formatModifier(activeAttackBonus)}
                                 </button>
                               )}
                               {damageDice && (
@@ -4861,14 +4744,9 @@ export default function PlaySheet({
                                   Cast
                                 </button>
                               )}
-                            </div>
-                          </div>
-                          {expanded && s.description && (
-                            <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
-                              {s.description}
-                            </p>
-                          )}
-                        </div>
+                            </>
+                          }
+                        />
                       );
                     })}
                     {knownCantripDetails.length === 0 && (
@@ -4883,55 +4761,25 @@ export default function PlaySheet({
                     <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                       {cantripOptions.map((s) => {
                         const key = `picker-spell-${s.index}`;
-                        const expanded = expandedFeatures.has(key);
-                        const selected = selectedCantrips.includes(s.index);
                         return (
-                          <div
+                          <PickerOption
                             key={s.index}
-                            className={`rounded-md border ${
-                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
-                            }`}
-                          >
-                            <button
-                              onClick={() => toggleCantripSelection(s.index, activeCantripsKnown)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                            >
-                              <span className="text-tavern-text">{s.name}</span>
-                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                                {s.school}
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "Hide details" : "Show details"}
-                            </button>
-                            {expanded && s.description && (
-                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                                {s.description}
-                              </p>
-                            )}
-                          </div>
+                            name={s.name}
+                            rightLabel={s.school}
+                            description={s.description}
+                            selected={selectedCantrips.includes(s.index)}
+                            onSelect={() => toggleCantripSelection(s.index, activeCantripsKnown)}
+                            detailsExpanded={expandedFeatures.has(key)}
+                            onToggleDetails={() => toggleFeature(key)}
+                          />
                         );
                       })}
                     </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <button
-                        onClick={saveCantrips}
-                        disabled={spellsPending}
-                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setCantripPickerOpen(false)}
-                        disabled={spellsPending}
-                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    <SaveCancelRow
+                      pending={spellsPending}
+                      onSave={saveCantrips}
+                      onCancel={() => setCantripPickerOpen(false)}
+                    />
                   </div>
                 )}
               </div>
@@ -4957,42 +4805,23 @@ export default function PlaySheet({
                   <div className="mt-2 space-y-2">
                     {preparedSpellDetails.map((s) => {
                       const key = `spell-${s.index}`;
-                      const expanded = expandedFeatures.has(key);
-                      const attackBonus = activeAttackBonus;
-                      const saveDC = activeSaveDC;
                       return (
-                        <div key={key} className="rounded-md border border-tavern-border p-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="flex-1 text-left"
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-heading font-bold text-tavern-text">
-                                {s.name}
-                                {s.isHomebrew && (
-                                  <span className="ml-1.5 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
-                                    HB
-                                  </span>
-                                )}
-                              </span>
-                                <span className="text-xs text-tavern-muted">{expanded ? "▴" : "▾"}</span>
-                              </div>
-                              <div className="mt-0.5 text-xs text-tavern-muted">
-                                Level {s.level}{s.school ? ` · ${s.school}` : ""}
-                                {s.range ? ` · ${s.range}` : ""}
-                                {s.concentration ? " · Concentration" : ""}
-                                {s.ritual ? " · Ritual" : ""}
-                                {s.dcType ? ` · DC ${saveDC} ${s.dcType.toUpperCase()} save` : ""}
-                              </div>
-                            </button>
-                            <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                        <SpellRow
+                          key={key}
+                          name={s.name}
+                          isHomebrew={s.isHomebrew}
+                          metaLine={`Level ${s.level}${s.school ? ` · ${s.school}` : ""}${s.range ? ` · ${s.range}` : ""}${s.concentration ? " · Concentration" : ""}${s.ritual ? " · Ritual" : ""}${s.dcType ? ` · DC ${activeSaveDC} ${s.dcType.toUpperCase()} save` : ""}`}
+                          description={s.description}
+                          expanded={expandedFeatures.has(key)}
+                          onToggle={() => toggleFeature(key)}
+                          actions={
+                            <>
                               {s.attackType && (
                                 <button
-                                  onClick={() => rollSpellAttack(s.name, attackBonus)}
+                                  onClick={() => rollSpellAttack(s.name, activeAttackBonus)}
                                   className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light"
                                 >
-                                  Attack {formatModifier(attackBonus)}
+                                  Attack {formatModifier(activeAttackBonus)}
                                 </button>
                               )}
                               {s.damageDice && (
@@ -5009,14 +4838,9 @@ export default function PlaySheet({
                               >
                                 Cast
                               </button>
-                            </div>
-                          </div>
-                          {expanded && s.description && (
-                            <p className="mt-2 border-t border-tavern-border pt-2 text-xs whitespace-pre-line text-tavern-muted">
-                              {s.description}
-                            </p>
-                          )}
-                        </div>
+                            </>
+                          }
+                        />
                       );
                     })}
                     {preparedSpellDetails.length === 0 && (
@@ -5031,55 +4855,25 @@ export default function PlaySheet({
                     <div className="mt-2 grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
                       {preparedOptions.map((s) => {
                         const key = `picker-spell-${s.index}`;
-                        const expanded = expandedFeatures.has(key);
-                        const selected = selectedPrepared.includes(s.index);
                         return (
-                          <div
+                          <PickerOption
                             key={s.index}
-                            className={`rounded-md border ${
-                              selected ? "border-tavern-gold bg-tavern-card" : "border-tavern-border"
-                            }`}
-                          >
-                            <button
-                              onClick={() => togglePreparedSelection(s.index, activePreparedCount)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                            >
-                              <span className="text-tavern-text">{s.name}</span>
-                              <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                                Lvl {s.level} &middot; {s.school}
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => toggleFeature(key)}
-                              className="block w-full px-3 py-1 text-left text-[10px] text-tavern-muted hover:text-tavern-gold-light"
-                            >
-                              {expanded ? "Hide details" : "Show details"}
-                            </button>
-                            {expanded && s.description && (
-                              <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                                {s.description}
-                              </p>
-                            )}
-                          </div>
+                            name={s.name}
+                            rightLabel={`Lvl ${s.level} · ${s.school}`}
+                            description={s.description}
+                            selected={selectedPrepared.includes(s.index)}
+                            onSelect={() => togglePreparedSelection(s.index, activePreparedCount)}
+                            detailsExpanded={expandedFeatures.has(key)}
+                            onToggleDetails={() => toggleFeature(key)}
+                          />
                         );
                       })}
                     </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <button
-                        onClick={savePrepared}
-                        disabled={spellsPending}
-                        className="rounded-md bg-tavern-oxblood px-3 py-1.5 text-xs font-bold text-tavern-parchment hover:bg-tavern-oxblood-light disabled:opacity-50"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setPreparedPickerOpen(false)}
-                        disabled={spellsPending}
-                        className="text-xs text-tavern-muted hover:text-tavern-gold-light disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    <SaveCancelRow
+                      pending={spellsPending}
+                      onSave={savePrepared}
+                      onCancel={() => setPreparedPickerOpen(false)}
+                    />
                   </div>
                 )}
               </div>
@@ -5399,37 +5193,23 @@ export default function PlaySheet({
         {/* Species Traits */}
         {speciesTraits.length > 0 && (
           <div id="species-traits" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <button onClick={() => toggleSection("species-traits")} className="flex w-full items-center justify-between">
-              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-                Species Traits
-              </h2>
-              <span className="text-xs text-tavern-muted">{collapsedSections.has("species-traits") ? "▸" : "▾"}</span>
-            </button>
+            <CardHeader
+              title="Species Traits"
+              collapsed={collapsedSections.has("species-traits")}
+              onToggle={() => toggleSection("species-traits")}
+            />
             {!collapsedSections.has("species-traits") && (
             <div className="mt-3 space-y-1">
-              {speciesTraits.map((trait) => {
-                const expanded = expandedFeatures.has(trait.index);
-                return (
-                  <div key={trait.index} className="rounded-md border border-tavern-border">
-                    <button
-                      onClick={() => toggleFeature(trait.index)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                    >
-                      <span className="text-tavern-text">{trait.name}</span>
-                      {trait.level > 1 && (
-                        <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                          Lvl {trait.level}
-                        </span>
-                      )}
-                    </button>
-                    {expanded && trait.description && (
-                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                        {trait.description}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+              {speciesTraits.map((trait) => (
+                <ExpandableRow
+                  key={trait.index}
+                  name={trait.name}
+                  rightLabel={trait.level > 1 ? `Lvl ${trait.level}` : null}
+                  description={trait.description}
+                  expanded={expandedFeatures.has(trait.index)}
+                  onToggle={() => toggleFeature(trait.index)}
+                />
+              ))}
             </div>
             )}
           </div>
@@ -5438,33 +5218,23 @@ export default function PlaySheet({
         {/* Features */}
         {unlockedFeatures.length > 0 && (
           <div id="features" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <button onClick={() => toggleSection("features")} className="flex w-full items-center justify-between">
-              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-                Features
-              </h2>
-              <span className="text-xs text-tavern-muted">{collapsedSections.has("features") ? "▸" : "▾"}</span>
-            </button>
+            <CardHeader
+              title="Features"
+              collapsed={collapsedSections.has("features")}
+              onToggle={() => toggleSection("features")}
+            />
             {!collapsedSections.has("features") && (
             <div className="mt-3 space-y-1">
               {unlockedFeatures.map((feature) => {
-                const expanded = expandedFeatures.has(feature.index);
                 return (
-                  <div key={feature.index} className="rounded-md border border-tavern-border">
-                    <button
-                      onClick={() => toggleFeature(feature.index)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-tavern-bg"
-                    >
-                      <span className="text-tavern-text">{feature.name}</span>
-                      <span className="text-xs tracking-wide text-tavern-muted uppercase">
-                        Lvl {feature.level}
-                      </span>
-                    </button>
-                    {expanded && feature.description && (
-                      <p className="border-t border-tavern-border px-3 py-2 text-xs whitespace-pre-line text-tavern-muted">
-                        {feature.description}
-                      </p>
-                    )}
-                  </div>
+                  <ExpandableRow
+                    key={feature.index}
+                    name={feature.name}
+                    rightLabel={`Lvl ${feature.level}`}
+                    description={feature.description}
+                    expanded={expandedFeatures.has(feature.index)}
+                    onToggle={() => toggleFeature(feature.index)}
+                  />
                 );
               })}
             </div>
@@ -5475,12 +5245,11 @@ export default function PlaySheet({
         {/* Attacks */}
         {(weapons.length > 0 || clsLvl("paladin") > 0) && (
           <div id="attacks" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-            <button onClick={() => toggleSection("attacks")} className="flex w-full items-center justify-between">
-              <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-                Attacks
-              </h2>
-              <span className="text-xs text-tavern-muted">{collapsedSections.has("attacks") ? "▸" : "▾"}</span>
-            </button>
+            <CardHeader
+              title="Attacks"
+              collapsed={collapsedSections.has("attacks")}
+              onToggle={() => toggleSection("attacks")}
+            />
             {!collapsedSections.has("attacks") && (<>
             {sheet.attacksPerAction > 1 && (
               <div className="mt-3 rounded-md border border-tavern-gold/40 bg-tavern-gold/5 p-3">
@@ -5670,12 +5439,11 @@ export default function PlaySheet({
 
         {/* Equipment */}
         <div id="equipment" className="mt-6 rounded-xl border border-tavern-border bg-tavern-card p-5">
-          <button onClick={() => toggleSection("equipment")} className="flex w-full items-center justify-between">
-            <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
-              Equipment
-            </h2>
-            <span className="text-xs text-tavern-muted">{collapsedSections.has("equipment") ? "▸" : "▾"}</span>
-          </button>
+          <CardHeader
+            title="Equipment"
+            collapsed={collapsedSections.has("equipment")}
+            onToggle={() => toggleSection("equipment")}
+          />
           {!collapsedSections.has("equipment") && (<>
           <div className="mt-3">
             <CurrencyTracker
