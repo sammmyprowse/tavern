@@ -212,6 +212,41 @@ export type Database = {
         }
         Relationships: []
       }
+      encounters: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          party_id: string
+          state: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          party_id: string
+          state?: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          party_id?: string
+          state?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "encounters_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipment: {
         Row: {
           categories: string[] | null
@@ -893,7 +928,7 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals["public"]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends

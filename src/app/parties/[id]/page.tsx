@@ -75,6 +75,14 @@ export default async function PartyRoster({
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <h1 className="font-heading text-3xl font-bold text-tavern-gold">{party.name}</h1>
           <div className="flex flex-wrap items-center gap-3">
+            {isLeader && (
+              <Link
+                href={`/parties/${party.id}/dm`}
+                className="rounded-md bg-tavern-oxblood px-3 py-1.5 font-heading text-xs font-bold tracking-wider text-tavern-parchment uppercase hover:bg-tavern-oxblood-light"
+              >
+                DM Screen
+              </Link>
+            )}
             {isLeader && <RenamePartyControl partyId={party.id} currentName={party.name} />}
             <CopyPartyLink partyId={party.id} />
           </div>

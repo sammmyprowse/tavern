@@ -3467,3 +3467,91 @@ props, never own state. Verified live on public characters: cantrip SpellRows
 render identical meta lines with working Attack/Damage buttons and expansion;
 Fighting Style (1/1)/Weapon Mastery (3/3) cards render with Defense row; no
 console errors.
+
+## DM screen (`/parties/[id]/dm`) — Tier 1 of the DM controls
+
+The party leader (`parties.created_by`) doubles as "the DM"; the DM screen is
+leader-only (server-checked in the page + RLS on `encounters`). Members see no
+DM Screen button and get a "leader only" message on direct navigation.
+
+**Monster data.** The SRD import always contained a `monsters` table (~334
+usable 2014-ruleset stat blocks; the 3 "2024" rows are a partial duplicate
+import and are ignored — same one-ruleset situation as spells). `srd.ts` gained
+`getMonsterList()` (index/name/type/size/CR/XP/AC/HP for browsing, sorted by
+CR) and `getMonstersByIndex(indexes)` (full stat blocks: abilities, saves +
+skills parsed from `proficiencies` via the `saving-throw-`/`skill-` index
+prefixes, actions with attack bonus + damage dice, traits, reactions,
+legendary actions, senses/immunities/languages), both `srdCache`d.
+
+**Encounters table.** `encounters` (id, party_id FK→parties cascade,
+created_by, name, state jsonb, created_at). RLS: every op requires
+`created_by = auth.uid()`; insert additionally requires being the party's
+leader. Players never read this table. All live combat state is the one
+`state` blob — `EncounterState` in `src/lib/encounter.ts` (`monsters[]` with
+per-instance key/name/maxHp/currentHp/initiative, `playerInitiatives` keyed by
+character id, round/turn/started), normalized on load by
+`normalizeEncounterState` (same EMPTY-merge pattern as normalizeDraft).
+Single-writer (the DM), whole-blob last-write-wins saves via
+`saveEncounterState`; create/delete actions live in `parties/actions.ts`.
+
+**2024 encounter math.** `encounter.ts` carries the 2024 DMG "XP Budget per
+Character" table (levels 1-20 × Low/Moderate/High). Party budget = sum over
+member levels; encounter XP = plain sum of monster XP (2024 dropped the 2014
+count multiplier); difficulty = highest band the total reaches (below Low =
+"Trivial"). Verified live: 2× level-3 PCs → 300/450/800, 4 Goblins (200 XP) =
+Trivial.
+
+**Page (`parties/[id]/dm/page.tsx`).** Dashboard table over
+`buildCharacterSheet` per member (class string, level, max HP, passive
+Perception, initiative, speed, per-class spell DCs). AC is deliberately
+absent — equipped armor lives in each player's client-side play state, the
+server can't know it (noted in the UI). A member character built on homebrew
+species/class/background derives null (homebrew refs are owner-scoped) and
+renders a fallback row pointing at the sheet. Encounter section =
+`components/dm/EncounterManager.tsx` (list/builder/run) +
+`MonsterCard.tsx`. Full stat blocks are fetched server-side for every monster
+index used by saved encounters — the builder→create→revalidate round-trip
+guarantees the run view always has them.
+
+**Builder.** Name/type-filtered monster list with per-monster count steppers,
+live XP total + difficulty vs the real party budget, creates the instance
+list ("Wolf 1/2/3" naming only when count > 1, HP = stat-block average).
+
+**Run view.** Initiative: monsters roll d20+DEX (per-row or "Roll all"),
+player values are typed in by the DM (they roll at the table), `turnOrder`
+sorts desc with null-initiative last and monster-first tiebreak; Start
+Combat/Next Turn advance turn + round (wrap increments round). Active
+combatant highlighted; monsters at 0 HP grey/strikethrough everywhere but
+stay in the order. MonsterCard = mini play sheet: CounterStepper HP + bulk
+Dmg/Heal input, tap-to-roll ability checks/saves/skills, SpellRow-based
+attack actions (Attack roll + Damage roll via lib/dice), ExpandableRow
+traits/reactions/legendary actions. All rolls land in a shared 30-entry log.
+The playsheet primitives (CounterStepper, SpellRow, ExpandableRow) are reused
+directly — no new row/counter chrome was written.
+
+**Gotcha hit again (React same-tick batching):** the roll log originally kept
+its next-id in useState; "Roll all monsters" pushes several entries in one
+tick, so every entry got the same stale id → duplicate-key errors. Fixed with
+a `useRef` counter incremented outside the setState updater.
+
+**Windows dev-server note:** ports 3000 AND 3100 fall inside this machine's
+Windows excluded TCP port ranges (`netsh interface ipv4 show
+excludedportrange protocol=tcp`) — the dev server runs on **4300** now
+(`.claude/launch.json`); the preview harness's named-config path kept
+pre-checking 3000 regardless, so the working recipe is `npm run dev -- -p
+4300` in background + preview by URL.
+
+**Verification status:** signed-out paths verified live (leader gate on /dm,
+no DM button for non-leaders, roster still renders). The interior UI
+(dashboard with the real party, builder math, full run view: initiative,
+turns, attack/damage rolls, HP/down states) was verified live behind a
+temporary leader-gate bypass + demo encounter, both reverted before commit.
+The signed-in persistence loop (create/save/delete encounter through RLS) is
+enforced by policy but wasn't exercised end-to-end — needs one click-through
+by the real leader account once deployed.
+
+Deliberately deferred (Tier 2/3 of the DM-controls plan, do not start
+unasked): DM-applied active effects on player sheets (needs a
+character_effects table + Supabase Realtime since play state is
+localStorage-only), condition pushes, homebrew monsters, party rest,
+per-character DM notes.

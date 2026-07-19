@@ -903,6 +903,197 @@ async function fetchSkillsList(): Promise<SkillInfo[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Monsters (DM screen / encounters) ───────────────────────────────────────
+// Monster data only exists complete in the 2014 ruleset (the 2024 rows are a
+// 3-monster partial import of duplicates — ignored), same situation as spells.
+
+export interface MonsterListEntry {
+  index: string;
+  name: string;
+  type: string;
+  size: string;
+  challengeRating: number;
+  xp: number;
+  armorClass: number;
+  hitPoints: number;
+}
+
+export interface MonsterAction {
+  name: string;
+  description: string;
+  // Present when the action is a resolvable attack: "+4 to hit, 2d4+2 piercing".
+  attackBonus: number | null;
+  damageDice: string | null;
+  damageType: string | null;
+}
+
+export interface MonsterStatBlock {
+  index: string;
+  name: string;
+  size: string;
+  type: string;
+  alignment: string;
+  challengeRating: number;
+  xp: number;
+  proficiencyBonus: number;
+  armorClass: number;
+  armorType: string | null;
+  hitPoints: number;
+  hitPointsRoll: string | null;
+  speed: Record<string, string>;
+  abilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  // Proficient saving throws / skills with their listed bonuses ("DEX +4").
+  savingThrows: { ability: string; bonus: number }[];
+  skills: { skill: string; bonus: number }[];
+  senses: Record<string, string | number>;
+  languages: string;
+  damageVulnerabilities: string[];
+  damageResistances: string[];
+  damageImmunities: string[];
+  conditionImmunities: string[];
+  specialAbilities: { name: string; description: string }[];
+  actions: MonsterAction[];
+  reactions: { name: string; description: string }[];
+  legendaryActions: { name: string; description: string }[];
+}
+
+interface RawMonsterAction {
+  name?: string;
+  desc?: string;
+  attack_bonus?: number;
+  damage?: { damage_dice?: string; damage_type?: { name?: string } }[];
+}
+
+interface RawMonsterData {
+  xp?: number;
+  alignment?: string;
+  hit_points?: number;
+  hit_points_roll?: string;
+  armor_class?: { type?: string; value?: number }[];
+  speed?: Record<string, string>;
+  strength?: number;
+  dexterity?: number;
+  constitution?: number;
+  intelligence?: number;
+  wisdom?: number;
+  charisma?: number;
+  proficiency_bonus?: number;
+  proficiencies?: { value?: number; proficiency?: { index?: string; name?: string } }[];
+  senses?: Record<string, string | number>;
+  languages?: string;
+  damage_vulnerabilities?: string[];
+  damage_resistances?: string[];
+  damage_immunities?: string[];
+  condition_immunities?: { name?: string }[];
+  special_abilities?: { name?: string; desc?: string }[];
+  actions?: RawMonsterAction[];
+  reactions?: { name?: string; desc?: string }[];
+  legendary_actions?: { name?: string; desc?: string }[];
+}
+
+function parseMonsterAction(a: RawMonsterAction): MonsterAction {
+  const dmg = a.damage?.find((d) => d.damage_dice);
+  return {
+    name: a.name ?? "",
+    description: a.desc ?? "",
+    attackBonus: a.attack_bonus ?? null,
+    damageDice: dmg?.damage_dice ?? null,
+    damageType: dmg?.damage_type?.name ?? null,
+  };
+}
+
+async function fetchMonsterList(): Promise<MonsterListEntry[]> {
+  const { data } = await supabase
+    .from("monsters")
+    .select("index, name, type, size, challenge_rating, data")
+    .eq("ruleset", "2014");
+
+  return (data ?? [])
+    .map((m) => {
+      const d = m.data as RawMonsterData;
+      return {
+        index: m.index,
+        name: m.name,
+        type: m.type ?? "",
+        size: m.size ?? "",
+        challengeRating: Number(m.challenge_rating ?? 0),
+        xp: d.xp ?? 0,
+        armorClass: d.armor_class?.[0]?.value ?? 10,
+        hitPoints: d.hit_points ?? 1,
+      };
+    })
+    .sort((a, b) => a.challengeRating - b.challengeRating || a.name.localeCompare(b.name));
+}
+
+// "saving-throw-dex" → DEX save; "skill-perception" → Perception skill.
+const SAVE_PROF_PREFIX = "saving-throw-";
+const SKILL_PROF_PREFIX = "skill-";
+
+async function fetchMonstersByIndex(indexes: string[]): Promise<MonsterStatBlock[]> {
+  if (indexes.length === 0) return [];
+  const { data } = await supabase
+    .from("monsters")
+    .select("index, name, type, size, challenge_rating, data")
+    .eq("ruleset", "2014")
+    .in("index", indexes);
+
+  return (data ?? []).map((m) => {
+    const d = m.data as RawMonsterData;
+    const savingThrows: { ability: string; bonus: number }[] = [];
+    const skills: { skill: string; bonus: number }[] = [];
+    for (const p of d.proficiencies ?? []) {
+      const idx = p.proficiency?.index ?? "";
+      if (idx.startsWith(SAVE_PROF_PREFIX)) {
+        savingThrows.push({ ability: idx.slice(SAVE_PROF_PREFIX.length).toUpperCase(), bonus: p.value ?? 0 });
+      } else if (idx.startsWith(SKILL_PROF_PREFIX)) {
+        const name = idx.slice(SKILL_PROF_PREFIX.length);
+        skills.push({ skill: name.charAt(0).toUpperCase() + name.slice(1), bonus: p.value ?? 0 });
+      }
+    }
+    return {
+      index: m.index,
+      name: m.name,
+      size: m.size ?? "",
+      type: m.type ?? "",
+      alignment: d.alignment ?? "unaligned",
+      challengeRating: Number(m.challenge_rating ?? 0),
+      xp: d.xp ?? 0,
+      proficiencyBonus: d.proficiency_bonus ?? 2,
+      armorClass: d.armor_class?.[0]?.value ?? 10,
+      armorType: d.armor_class?.[0]?.type ?? null,
+      hitPoints: d.hit_points ?? 1,
+      hitPointsRoll: d.hit_points_roll ?? null,
+      speed: d.speed ?? {},
+      abilities: {
+        str: d.strength ?? 10,
+        dex: d.dexterity ?? 10,
+        con: d.constitution ?? 10,
+        int: d.intelligence ?? 10,
+        wis: d.wisdom ?? 10,
+        cha: d.charisma ?? 10,
+      },
+      savingThrows,
+      skills,
+      senses: d.senses ?? {},
+      languages: d.languages ?? "",
+      damageVulnerabilities: d.damage_vulnerabilities ?? [],
+      damageResistances: d.damage_resistances ?? [],
+      damageImmunities: d.damage_immunities ?? [],
+      conditionImmunities: (d.condition_immunities ?? []).map((c) => c.name ?? "").filter(Boolean),
+      specialAbilities: (d.special_abilities ?? []).map((s) => ({
+        name: s.name ?? "",
+        description: s.desc ?? "",
+      })),
+      actions: (d.actions ?? []).map(parseMonsterAction),
+      reactions: (d.reactions ?? []).map((r) => ({ name: r.name ?? "", description: r.desc ?? "" })),
+      legendaryActions: (d.legendary_actions ?? []).map((l) => ({
+        name: l.name ?? "",
+        description: l.desc ?? "",
+      })),
+    };
+  });
+}
+
 // ── Cached public getters ───────────────────────────────────────────────────
 // Same names/signatures the rest of the app has always imported — only the
 // caching wrapper is new. See the srdCache note at the top of this file.
@@ -923,6 +1114,8 @@ export const getFightingStyleFeats = srdCache("fightingStyleFeats", fetchFightin
 export const getWeaponMasteryProperties = srdCache("weaponMasteryProperties", fetchWeaponMasteryProperties);
 export const getLanguagesList = srdCache("languagesList", fetchLanguagesList);
 export const getSkillsList = srdCache("skillsList", fetchSkillsList);
+export const getMonsterList = srdCache("monsterList", fetchMonsterList);
+export const getMonstersByIndex = srdCache("monstersByIndex", fetchMonstersByIndex);
 
 // The two Map-shaped lookups: the ARRAY is what's cached (Maps don't survive
 // the cache's JSON round-trip); the Map is rebuilt per call — cheap (~200
