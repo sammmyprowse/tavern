@@ -9,6 +9,7 @@ export const USER_BACKGROUND_PREFIX = "user-background:";
 export const USER_SPECIES_PREFIX = "user-species:";
 export const USER_SPELL_PREFIX = "user-spell:";
 export const USER_CLASS_PREFIX = "user-class:";
+export const USER_MONSTER_PREFIX = "user-monster:";
 
 export interface UserContentResult {
   success: boolean;
@@ -100,6 +101,41 @@ export interface UserSpellData {
   dcAbility: string | null; // ability index for the save, or null
   damageDice: string | null; // e.g. "2d6" (base; a cantrip scales in the text)
   damageType: string | null;
+}
+
+// ── Homebrew monsters (kind='monster') ──────────────────────────────────────
+// A homebrew monster mirrors the fields the DM screen's MonsterCard actually
+// uses; saves/skills/senses and legendary actions are deliberately out of
+// scope (the card tolerates their absence — it derives checks/saves from the
+// ability scores).
+
+export const MONSTER_SIZE_OPTIONS = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+
+export interface UserMonsterTrait {
+  name: string;
+  description: string;
+}
+
+export interface UserMonsterAction {
+  name: string;
+  description: string;
+  // Present when the action is a resolvable attack (drives the DM screen's
+  // Attack/Damage roll buttons, same as SRD monster actions).
+  attackBonus: number | null;
+  damageDice: string | null; // e.g. "2d6+3"
+  damageType: string | null;
+}
+
+export interface UserMonsterData {
+  size: string;
+  type: string;
+  armorClass: number;
+  hitPoints: number;
+  speed: string; // freeform, e.g. "30 ft., fly 60 ft."
+  challengeRating: number; // XP + proficiency bonus derive from this
+  abilities: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  traits: UserMonsterTrait[];
+  actions: UserMonsterAction[];
 }
 
 // The six abilities, for the custom-background ability-choice picker.

@@ -79,6 +79,8 @@ import type {
   FeatOption,
   SpellOption,
 } from "@/lib/srd";
+import type { CharacterEffect } from "@/lib/dm-effects";
+import DmEffectsPanel from "./DmEffectsPanel";
 import DiceLog from "./DiceLog";
 import { CounterStepper, ResourceRow } from "./ResourceCounter";
 import { CardHeader, ExpandableRow, PickerOption, SaveCancelRow, SpellRow } from "./SheetPrimitives";
@@ -121,6 +123,8 @@ interface PlaySheetProps {
   subclassSpellData: SpellOption[];
   isOwner: boolean;
   isPublic: boolean;
+  // DM-pushed effects (owner only — non-owners always get []).
+  dmEffects: CharacterEffect[];
   avatarUrl: string | null;
   bio: string | null;
   notes: string | null;
@@ -299,6 +303,7 @@ export default function PlaySheet({
   subclassSpellData,
   isOwner,
   isPublic,
+  dmEffects,
   avatarUrl,
   bio,
   notes,
@@ -2474,6 +2479,24 @@ export default function PlaySheet({
             You&apos;re viewing someone else&apos;s character. Rolls and HP changes here are
             local to your browser only — they don&apos;t affect the owner&apos;s copy.
           </p>
+        )}
+
+        {/* DM-pushed effects: prompts from the party leader's DM screen,
+            kept live via Realtime inside the panel. Owner-only — the page
+            never fetches effects for anyone else. */}
+        {isOwner && (
+          <DmEffectsPanel
+            characterId={characterId}
+            initialEffects={dmEffects}
+            onApplyRest={(rest) => (rest === "long" ? longRest() : shortRest())}
+            onTrackCondition={(conditionIndex) =>
+              setPlay((p) =>
+                p.conditions.includes(conditionIndex)
+                  ? p
+                  : { ...p, conditions: [...p.conditions, conditionIndex] },
+              )
+            }
+          />
         )}
 
         <SectionNav

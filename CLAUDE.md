@@ -3555,3 +3555,78 @@ unasked): DM-applied active effects on player sheets (needs a
 character_effects table + Supabase Realtime since play state is
 localStorage-only), condition pushes, homebrew monsters, party rest,
 per-character DM notes.
+(Tier 2 was subsequently built — see the next section.)
+
+## DM controls Tier 2 — pushed effects, party rest, DM notes, homebrew monsters
+
+**⚠️ MIGRATION NOT YET APPLIED.** The schema for this pass lives at
+`supabase/migrations/20260722100000_add_dm_effects_and_notes.sql` but was NOT
+applied to the live Supabase project — Supabase MCP access was declined during
+the session that built it, so everything was verified by tsc/lint/build only,
+nothing live. Before this feature works: apply that migration, then regenerate
+`database.types.ts` (it was hand-edited to match the migration — regenerating
+should produce no diff beyond formatting, which is the check that the hand
+edit was right). Everything below describes intended-and-typed behavior, not
+yet-observed behavior.
+
+**Design keystone: DM pushes are prompts, never mutations.** Play state
+(HP/slots/conditions) is client-side localStorage by deliberate long-standing
+design, so the server cannot and does not change it. A DM "Long Rest" is a row
+the player's sheet turns into an Apply/Dismiss banner; a pushed condition gets
+a Track button that adds it to the player's OWN tracked-conditions list (and
+deletes the row); a freeform effect is a labeled reminder. Dismissing deletes
+the row, which also clears it from the DM's screen.
+
+**`character_effects`** (id, character_id, party_id, created_by, kind
+∈ condition|effect|rest, name, data jsonb, created_at): INSERT is leader-only
+AND requires the target character to be in that party; SELECT/DELETE are each
+two OR'd permissive policies (character's owner / pushing leader). Shared
+types + row parser in `src/lib/dm-effects.ts`. Realtime: the migration does
+`replica identity full` + adds the table to the `supabase_realtime`
+publication — replica identity full is REQUIRED for the play sheet's DELETE
+events to pass the `character_id=eq.` filter (default replica identity only
+ships the PK on deletes, and filtered subscriptions silently drop such
+events).
+
+**Play sheet**: `DmEffectsPanel.tsx` (owner-only, rendered above SectionNav)
+holds effects state seeded from a server fetch in `characters/[id]/page.tsx`
+(added to the existing owner-only Promise.all batch) and subscribes to
+postgres_changes filtered by character_id. Rest banner calls the existing
+`shortRest()`/`longRest()`; Track calls into `play.conditions`. Dismiss also
+removes locally so the UI stays instant if the socket is down —
+`dismissCharacterEffect` (characters/actions.ts) relies on RLS alone, same
+documented pattern as `removeCharacterFromParty`.
+
+**DM screen**: `PartyControls.tsx` between the roster table and Encounters —
+party-wide Short/Long Rest buttons (`applyPartyRest` inserts one rest row per
+member), and per-member: active-effect chips with remove, a condition picker
+(excludes conditions already pushed to that member), a custom-effect
+name+description pair, and the private DM note (upsert; empty note DELETES
+the row rather than storing blanks — `party_character_notes`, leader-only
+RLS with no player-side policy at all). Note textarea uses the
+adjust-during-render local-copy pattern (same as CurrencyTracker).
+
+**Homebrew monsters**: `user_content` kind='monster' (seventh kind).
+`UserMonsterData` (user-content.ts) is deliberately scoped to what
+`MonsterCard` actually renders — no authored saves/skills/senses/legendary
+actions (the card derives checks/saves from ability scores). XP and
+proficiency bonus are NOT stored — both derive from the chosen CR via
+`CR_TO_XP`/`crProficiencyBonus` (encounter.ts; the SRD XP-by-CR table).
+`getUserMonsters()` (homebrew/actions.ts) returns full `MonsterStatBlock`s
+(index `user-monster:{id}`, `isHomebrew: true`); the DM page merges them into
+BOTH the builder pick list (badge chip, re-sorted CR-then-name) and
+`statBlocksByIndex`, and skips them in the `getMonstersByIndex` SRD fetch. A
+monster deleted after being saved into an encounter just has no stat block —
+`MonsterCard`'s prop was already `MonsterStatBlock | undefined`, so the run
+view degrades instead of crashing. `MonsterManager.tsx` on `/homebrew`
+follows SubclassManager's exact form pattern (traits + actions list editors).
+
+**Verification status:** `tsc`, lint (no new errors — the 6 existing errors
+are all pre-existing in the print page), and a full `next build` (with
+placeholder env vars; all routes dynamic) are clean. NOTHING in this pass was
+exercised live — it needs the migration applied first, then a real two-account
+click-through: leader pushes a condition/effect/rest → owner's sheet shows it
+(and updates live without reload), Apply Rest actually runs the right rest,
+Track lands the condition in the player's own list, dismiss clears both
+sides, DM notes save/clear, and a homebrew monster builds → appears in the
+builder → runs in an encounter.

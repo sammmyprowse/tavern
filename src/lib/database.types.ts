@@ -86,6 +86,54 @@ export type Database = {
         }
         Relationships: []
       }
+      character_effects: {
+        Row: {
+          character_id: string
+          created_at: string
+          created_by: string
+          data: Json
+          id: string
+          kind: string
+          name: string
+          party_id: string
+        }
+        Insert: {
+          character_id: string
+          created_at?: string
+          created_by: string
+          data?: Json
+          id?: string
+          kind: string
+          name: string
+          party_id: string
+        }
+        Update: {
+          character_id?: string
+          created_at?: string
+          created_by?: string
+          data?: Json
+          id?: string
+          kind?: string
+          name?: string
+          party_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "character_effects_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "character_effects_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       characters: {
         Row: {
           avatar_url: string | null
@@ -525,6 +573,45 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      party_character_notes: {
+        Row: {
+          character_id: string
+          created_by: string
+          note: string
+          party_id: string
+          updated_at: string
+        }
+        Insert: {
+          character_id: string
+          created_by: string
+          note?: string
+          party_id: string
+          updated_at?: string
+        }
+        Update: {
+          character_id?: string
+          created_by?: string
+          note?: string
+          party_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "party_character_notes_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "party_character_notes_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "parties"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       party_characters: {
         Row: {

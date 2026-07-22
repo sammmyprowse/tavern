@@ -13,7 +13,10 @@ import {
 import { normalizeDraft, type CharacterDraft } from "@/lib/character";
 import { buildCharacterSheet } from "@/lib/character-sheet";
 import { normalizeEncounterState, formatMod, type EncounterState } from "@/lib/encounter";
+import { parseCharacterEffectRow, type CharacterEffect, type CharacterEffectRow } from "@/lib/dm-effects";
+import { getUserMonsters } from "@/app/homebrew/actions";
 import EncounterManager from "@/components/dm/EncounterManager";
+import PartyControls from "@/components/dm/PartyControls";
 
 // The DM screen: party-leader-only. A stat dashboard over every member's
 // derived sheet plus the encounter builder/runner. AC is deliberately absent —
@@ -59,17 +62,27 @@ export default async function DmScreen({ params }: { params: Promise<{ id: strin
     );
   }
 
-  const [{ data: rosterRows }, { data: encounterRows }] = await Promise.all([
-    supabase
-      .from("party_characters")
-      .select("character_id, characters(id, name, draft, user_id)")
-      .eq("party_id", id),
-    supabase
-      .from("encounters")
-      .select("id, name, state, created_at")
-      .eq("party_id", id)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: rosterRows }, { data: encounterRows }, { data: effectRows }, { data: noteRows }] =
+    await Promise.all([
+      supabase
+        .from("party_characters")
+        .select("character_id, characters(id, name, draft, user_id)")
+        .eq("party_id", id),
+      supabase
+        .from("encounters")
+        .select("id, name, state, created_at")
+        .eq("party_id", id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("character_effects")
+        .select("id, character_id, party_id, kind, name, data, created_at")
+        .eq("party_id", id)
+        .order("created_at"),
+      supabase
+        .from("party_character_notes")
+        .select("character_id, note")
+        .eq("party_id", id),
+    ]);
 
   const roster = (rosterRows ?? [])
     .map((row) => row.characters)
@@ -90,16 +103,40 @@ export default async function DmScreen({ params }: { params: Promise<{ id: strin
     state: normalizeEncounterState(e.state as unknown as EncounterState),
   }));
 
-  // Full stat blocks for every monster already placed in a saved encounter.
-  // Newly built encounters trigger a server round-trip (create → revalidate),
-  // so this list is always complete by the time the run view renders.
+  // Full stat blocks for every monster already placed in a saved encounter,
+  // plus ALL of the leader's homebrew monsters (small, owner-scoped list —
+  // they're needed both as stat blocks and as builder list entries). Newly
+  // built encounters trigger a server round-trip (create → revalidate), so
+  // this list is always complete by the time the run view renders. A user
+  // monster that was deleted after being saved into an encounter simply has
+  // no stat block — MonsterCard tolerates that.
   const usedIndexes = [
     ...new Set(encounters.flatMap((e) => e.state.monsters.map((m) => m.index))),
   ];
-  const usedStatBlocks = await getMonstersByIndex(usedIndexes);
+  const [usedStatBlocks, userMonsters] = await Promise.all([
+    getMonstersByIndex(usedIndexes.filter((i) => !i.startsWith("user-monster:"))),
+    getUserMonsters(),
+  ]);
   const statBlocksByIndex: Record<string, MonsterStatBlock> = Object.fromEntries(
-    usedStatBlocks.map((sb) => [sb.index, sb]),
+    [...usedStatBlocks, ...userMonsters].map((sb) => [sb.index, sb]),
   );
+
+  // Homebrew monsters join the builder's pick list, re-sorted into the same
+  // CR-then-name order the SRD list arrives in.
+  const allMonsters = [
+    ...monsters,
+    ...userMonsters.map((sb) => ({
+      index: sb.index,
+      name: sb.name,
+      type: sb.type,
+      size: sb.size,
+      challengeRating: sb.challengeRating,
+      xp: sb.xp,
+      armorClass: sb.armorClass,
+      hitPoints: sb.hitPoints,
+      isHomebrew: true,
+    })),
+  ].sort((a, b) => a.challengeRating - b.challengeRating || a.name.localeCompare(b.name));
 
   const managerMembers = members.map((m) => ({
     id: m.id,
@@ -107,6 +144,15 @@ export default async function DmScreen({ params }: { params: Promise<{ id: strin
     level: m.draft.level,
     initiativeMod: m.sheet?.initiative ?? 0,
   }));
+
+  const effectsByCharacter: Record<string, CharacterEffect[]> = {};
+  for (const row of (effectRows ?? []) as CharacterEffectRow[]) {
+    const effect = parseCharacterEffectRow(row);
+    (effectsByCharacter[effect.characterId] ??= []).push(effect);
+  }
+  const notesByCharacter: Record<string, string> = Object.fromEntries(
+    (noteRows ?? []).map((n) => [n.character_id, n.note]),
+  );
 
   return (
     <div className="flex flex-1 flex-col px-4 py-10 sm:px-8">
@@ -186,9 +232,16 @@ export default async function DmScreen({ params }: { params: Promise<{ id: strin
           AC isn&apos;t shown — equipped armor is tracked on each player&apos;s own play sheet.
         </p>
 
+        <PartyControls
+          partyId={party.id}
+          members={members.map((m) => ({ id: m.id, name: m.name }))}
+          effectsByCharacter={effectsByCharacter}
+          notesByCharacter={notesByCharacter}
+        />
+
         <EncounterManager
           partyId={party.id}
-          monsters={monsters}
+          monsters={allMonsters}
           statBlocksByIndex={statBlocksByIndex}
           encounters={encounters}
           members={managerMembers}
