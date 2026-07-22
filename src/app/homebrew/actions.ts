@@ -12,7 +12,9 @@ import type {
   CompendiumSpell,
   ClassOption,
   ClassFeature,
+  MonsterStatBlock,
 } from "@/lib/srd";
+import { crToXp, crProficiencyBonus, CR_TO_XP } from "@/lib/encounter";
 import type { AbilityKey } from "@/lib/character";
 import type { Json } from "@/lib/database.types";
 import {
@@ -22,15 +24,18 @@ import {
   USER_SPECIES_PREFIX,
   USER_SPELL_PREFIX,
   USER_CLASS_PREFIX,
+  USER_MONSTER_PREFIX,
   ABILITY_OPTIONS,
   ORIGIN_FEAT_OPTIONS,
   CLASS_OPTIONS,
   HIT_DIE_OPTIONS,
+  MONSTER_SIZE_OPTIONS,
   type UserContentResult,
   type UserSubclassFeature,
   type UserSpeciesTrait,
   type UserSpellData,
   type UserClassData,
+  type UserMonsterData,
 } from "@/lib/user-content";
 
 // ── Shared user_content plumbing ────────────────────────────────────────────
@@ -711,4 +716,142 @@ export async function updateUserClass(
 
 export async function deleteUserClass(id: string): Promise<UserContentResult> {
   return deleteContent("class", id);
+}
+
+// ── Custom monsters (kind='monster') ────────────────────────────────────────
+// Surfaced on the DM screen for parties the user leads: merged into the
+// encounter builder's monster list and the run view's stat blocks (index
+// `user-monster:{id}`). Scope mirrors what MonsterCard actually renders —
+// saves/skills/senses/legendary actions are derived-or-absent, not authored.
+
+export async function getUserMonsters(): Promise<MonsterStatBlock[]> {
+  return (await listContent("monster")).map((row) => {
+    const d = row.data as unknown as UserMonsterData;
+    const cr = typeof d.challengeRating === "number" ? d.challengeRating : 0;
+    return {
+      index: `${USER_MONSTER_PREFIX}${row.id}`,
+      name: row.name,
+      size: d.size ?? "Medium",
+      type: d.type ?? "",
+      alignment: "unaligned",
+      challengeRating: cr,
+      xp: crToXp(cr),
+      proficiencyBonus: crProficiencyBonus(cr),
+      armorClass: d.armorClass ?? 10,
+      armorType: null,
+      hitPoints: d.hitPoints ?? 1,
+      hitPointsRoll: null,
+      speed: { walk: d.speed || "30 ft." },
+      abilities: {
+        str: d.abilities?.str ?? 10,
+        dex: d.abilities?.dex ?? 10,
+        con: d.abilities?.con ?? 10,
+        int: d.abilities?.int ?? 10,
+        wis: d.abilities?.wis ?? 10,
+        cha: d.abilities?.cha ?? 10,
+      },
+      savingThrows: [],
+      skills: [],
+      senses: {},
+      languages: "",
+      damageVulnerabilities: [],
+      damageResistances: [],
+      damageImmunities: [],
+      conditionImmunities: [],
+      specialAbilities: (d.traits ?? []).map((t) => ({
+        name: t.name,
+        description: t.description,
+      })),
+      actions: (d.actions ?? []).map((a) => ({
+        name: a.name,
+        description: a.description,
+        attackBonus: a.attackBonus,
+        damageDice: a.damageDice,
+        damageType: a.damageType,
+      })),
+      reactions: [],
+      legendaryActions: [],
+      isHomebrew: true,
+    };
+  });
+}
+
+const DAMAGE_DICE_RE = /^\d{1,2}d\d{1,3}([+-]\d{1,3})?$/;
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function cleanMonsterData(d: UserMonsterData): UserMonsterData {
+  return {
+    size: MONSTER_SIZE_OPTIONS.includes(d.size) ? d.size : "Medium",
+    type: (d.type ?? "").trim().slice(0, 50),
+    armorClass: clampInt(d.armorClass, 1, 30, 10),
+    hitPoints: clampInt(d.hitPoints, 1, 999, 1),
+    speed: (d.speed ?? "").trim().slice(0, 100),
+    challengeRating: `${d.challengeRating}` in CR_TO_XP ? d.challengeRating : 0,
+    abilities: {
+      str: clampInt(d.abilities?.str, 1, 30, 10),
+      dex: clampInt(d.abilities?.dex, 1, 30, 10),
+      con: clampInt(d.abilities?.con, 1, 30, 10),
+      int: clampInt(d.abilities?.int, 1, 30, 10),
+      wis: clampInt(d.abilities?.wis, 1, 30, 10),
+      cha: clampInt(d.abilities?.cha, 1, 30, 10),
+    },
+    traits: (d.traits ?? [])
+      .filter((t) => t.name.trim())
+      .slice(0, 20)
+      .map((t) => ({
+        name: t.name.trim().slice(0, 100),
+        description: (t.description ?? "").trim().slice(0, 2000),
+      })),
+    actions: (d.actions ?? [])
+      .filter((a) => a.name.trim())
+      .slice(0, 20)
+      .map((a) => ({
+        name: a.name.trim().slice(0, 100),
+        description: (a.description ?? "").trim().slice(0, 2000),
+        attackBonus:
+          typeof a.attackBonus === "number" && Number.isFinite(a.attackBonus)
+            ? clampInt(a.attackBonus, -5, 30, 0)
+            : null,
+        damageDice:
+          a.damageDice && DAMAGE_DICE_RE.test(a.damageDice.trim()) ? a.damageDice.trim() : null,
+        damageType: (a.damageType ?? "")?.trim().slice(0, 30) || null,
+      })),
+  };
+}
+
+function validateMonster(name: string, d: UserMonsterData): string | null {
+  if (!name.trim()) return "Give the monster a name.";
+  if (name.length > 100) return "That name's too long.";
+  if (d.actions.some((a) => a.damageDice === null && a.attackBonus !== null && !a.description))
+    return "An attack action needs damage dice or a description.";
+  return null;
+}
+
+export async function createUserMonster(
+  name: string,
+  data: UserMonsterData,
+): Promise<UserContentResult> {
+  const clean = cleanMonsterData(data);
+  const err = validateMonster(name, clean);
+  if (err) return { success: false, error: err };
+  return insertContent("monster", name, clean as unknown as Json);
+}
+
+export async function updateUserMonster(
+  id: string,
+  name: string,
+  data: UserMonsterData,
+): Promise<UserContentResult> {
+  const clean = cleanMonsterData(data);
+  const err = validateMonster(name, clean);
+  if (err) return { success: false, error: err };
+  return updateContent("monster", id, name, clean as unknown as Json);
+}
+
+export async function deleteUserMonster(id: string): Promise<UserContentResult> {
+  return deleteContent("monster", id);
 }

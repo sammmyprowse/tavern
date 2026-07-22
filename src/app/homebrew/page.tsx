@@ -7,6 +7,7 @@ import BackgroundManager, { type HomebrewBackground } from "@/components/homebre
 import SpeciesManager, { type HomebrewSpecies } from "@/components/homebrew/SpeciesManager";
 import SpellManager, { type HomebrewSpell } from "@/components/homebrew/SpellManager";
 import ClassManager, { type HomebrewClass } from "@/components/homebrew/ClassManager";
+import MonsterManager, { type HomebrewMonster } from "@/components/homebrew/MonsterManager";
 import {
   CLASS_OPTIONS,
   USER_CLASS_PREFIX,
@@ -14,6 +15,7 @@ import {
   type UserSpeciesTrait,
   type UserSpellData,
   type UserClassData,
+  type UserMonsterData,
 } from "@/lib/user-content";
 
 export const metadata = { title: "Homebrew — Tavern" };
@@ -44,7 +46,7 @@ export default async function HomebrewPage() {
       .from("user_content")
       .select("id, name, kind, data")
       .eq("user_id", userData.user.id)
-      .in("kind", ["feat", "subclass", "background", "species", "spell", "class"])
+      .in("kind", ["feat", "subclass", "background", "species", "spell", "class", "monster"])
       .order("name"),
     getSkillsList(),
   ]);
@@ -117,6 +119,9 @@ export default async function HomebrewPage() {
   const homebrewClasses: HomebrewClass[] = rows
     .filter((r) => r.kind === "class")
     .map((row) => ({ id: row.id, name: row.name, ...(row.data as unknown as UserClassData) }));
+  const homebrewMonsters: HomebrewMonster[] = rows
+    .filter((r) => r.kind === "monster")
+    .map((row) => ({ id: row.id, name: row.name, ...(row.data as unknown as UserMonsterData) }));
   const skillOptions = skills.map((s) => ({ index: s.index, name: s.name }));
   // A homebrew spell can target a homebrew (caster) class too.
   const spellClassOptions = [
@@ -183,6 +188,15 @@ export default async function HomebrewPage() {
         </h2>
         <div className="mt-2">
           <SpellManager spells={homebrewSpells} classOptions={spellClassOptions} />
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-heading text-sm font-bold tracking-wider text-tavern-gold-light uppercase">
+          Monsters
+        </h2>
+        <div className="mt-2">
+          <MonsterManager monsters={homebrewMonsters} />
         </div>
       </div>
     </div>

@@ -29,6 +29,7 @@ import {
   type CharacterDraft,
 } from "@/lib/character";
 import type { PersonalityAnswers } from "@/lib/personality";
+import { parseCharacterEffectRow, type CharacterEffectRow } from "@/lib/dm-effects";
 import type { InventoryItem } from "@/lib/inventory";
 import type { MagicItem } from "@/lib/magic-items";
 import type { Currency } from "@/lib/currency";
@@ -155,6 +156,7 @@ export default async function CharacterPlaySheet({
     userSpecies,
     userSpells,
     userClasses,
+    { data: effectRows },
     perClass,
     lineageSpellData,
     lineageClassSpells,
@@ -168,6 +170,15 @@ export default async function CharacterPlaySheet({
     isOwner ? getUserSpecies() : [],
     isOwner ? getUserSpells() : [],
     isOwner ? getUserClasses() : [],
+    // DM-pushed effects (owner only; RLS scopes the select to the owner's
+    // view anyway, this just skips the query for visitors).
+    isOwner
+      ? supabase
+          .from("character_effects")
+          .select("id, character_id, party_id, kind, name, data, created_at")
+          .eq("character_id", id)
+          .order("created_at")
+      : Promise.resolve({ data: null }),
     // Features/subclasses/spells per class the character has levels in
     // (primary first) — a multiclass sheet shows both classes' content.
     Promise.all(
@@ -279,6 +290,7 @@ export default async function CharacterPlaySheet({
       subclassSpellData={subclassSpellData}
       isOwner={isOwner}
       isPublic={character.is_public}
+      dmEffects={((effectRows ?? []) as CharacterEffectRow[]).map(parseCharacterEffectRow)}
       avatarUrl={character.avatar_url}
       bio={character.bio}
       notes={character.notes}

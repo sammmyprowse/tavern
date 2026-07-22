@@ -353,6 +353,25 @@ export async function deleteCharacter(characterId: string): Promise<DeleteCharac
   return { success: true };
 }
 
+// Owner-side dismissal of a DM-pushed effect (character_effects). No explicit
+// ownership filter is possible here (the owner test lives on the characters
+// row, not this one) — like removeCharacterFromParty, this relies entirely on
+// the table's OR'd delete policies: character's owner OR the pushing leader.
+export async function dismissCharacterEffect(effectId: string): Promise<SetBioResult> {
+  const supabase = await createClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    return { success: false, error: "You need to sign in to do that." };
+  }
+
+  const { error } = await supabase.from("character_effects").delete().eq("id", effectId);
+
+  if (error) return { success: false, error: error.message };
+
+  return { success: true };
+}
+
 export interface LevelUpResult {
   success: boolean;
   error?: string;

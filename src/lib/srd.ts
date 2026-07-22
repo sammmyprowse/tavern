@@ -916,6 +916,9 @@ export interface MonsterListEntry {
   xp: number;
   armorClass: number;
   hitPoints: number;
+  // True for the leader's own homebrew monsters merged into the list (never
+  // set by the SRD fetch below).
+  isHomebrew?: boolean;
 }
 
 export interface MonsterAction {
@@ -955,6 +958,8 @@ export interface MonsterStatBlock {
   actions: MonsterAction[];
   reactions: { name: string; description: string }[];
   legendaryActions: { name: string; description: string }[];
+  // True for the leader's own homebrew monsters (never set by the SRD fetch).
+  isHomebrew?: boolean;
 }
 
 interface RawMonsterAction {

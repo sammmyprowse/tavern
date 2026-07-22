@@ -334,6 +334,11 @@ function EncounterBuilder({
             >
               <div className="min-w-0 flex-1">
                 <span className="text-tavern-text">{m.name}</span>
+                {m.isHomebrew && (
+                  <span className="ml-2 rounded-full border border-tavern-gold-light/40 px-1.5 py-0.5 text-[9px] tracking-wider text-tavern-gold-light uppercase">
+                    Homebrew
+                  </span>
+                )}
                 <span className="ml-2 text-xs text-tavern-muted">
                   CR {crLabel(m.challengeRating)} · {m.type} · AC {m.armorClass} · {m.hitPoints} HP
                   · {m.xp} XP
