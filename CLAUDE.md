@@ -3559,15 +3559,15 @@ per-character DM notes.
 
 ## DM controls Tier 2 — pushed effects, party rest, DM notes, homebrew monsters
 
-**⚠️ MIGRATION NOT YET APPLIED.** The schema for this pass lives at
-`supabase/migrations/20260722100000_add_dm_effects_and_notes.sql` but was NOT
-applied to the live Supabase project — Supabase MCP access was declined during
-the session that built it, so everything was verified by tsc/lint/build only,
-nothing live. Before this feature works: apply that migration, then regenerate
-`database.types.ts` (it was hand-edited to match the migration — regenerating
-should produce no diff beyond formatting, which is the check that the hand
-edit was right). Everything below describes intended-and-typed behavior, not
-yet-observed behavior.
+**Migration applied.** The schema
+(`supabase/migrations/20260722100000_add_dm_effects_and_notes.sql`) is
+recorded in the repo AND applied to the live Supabase project (via MCP
+`apply_migration`, later in the same session once Supabase access was
+re-enabled). `database.types.ts` had been hand-edited to match; regenerating
+types afterward produced an identical result for both new tables, confirming
+the hand edit. Security advisors were re-run post-migration: nothing flagged
+on the new tables (the only warnings are the pre-existing avatars-bucket
+listing + leaked-password-protection ones).
 
 **Design keystone: DM pushes are prompts, never mutations.** Play state
 (HP/slots/conditions) is client-side localStorage by deliberate long-standing
@@ -3623,10 +3623,11 @@ follows SubclassManager's exact form pattern (traits + actions list editors).
 
 **Verification status:** `tsc`, lint (no new errors — the 6 existing errors
 are all pre-existing in the print page), and a full `next build` (with
-placeholder env vars; all routes dynamic) are clean. NOTHING in this pass was
-exercised live — it needs the migration applied first, then a real two-account
-click-through: leader pushes a condition/effect/rest → owner's sheet shows it
-(and updates live without reload), Apply Rest actually runs the right rest,
-Track lands the condition in the player's own list, dismiss clears both
-sides, DM notes save/clear, and a homebrew monster builds → appears in the
-builder → runs in an encounter.
+placeholder env vars; all routes dynamic) are clean, and the migration is
+applied (see above). The UI flows themselves have NOT been exercised live —
+still needs a real two-account click-through: leader pushes a
+condition/effect/rest → owner's sheet shows it (and updates live without
+reload), Apply Rest actually runs the right rest, Track lands the condition
+in the player's own list, dismiss clears both sides, DM notes save/clear,
+and a homebrew monster builds → appears in the builder → runs in an
+encounter.
